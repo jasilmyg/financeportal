@@ -1,0 +1,42 @@
+{
+  "exec_summary_targets": {
+    "value_penetration": 67.0,
+    "vol_penetration": 55.0,
+    "cards_penetration": 6.91,
+    "fin_value_cr": 460.0,
+    "card_value_cr": 47.41
+  },
+  "financier_volume_targets": {
+    "BAJAJ": 88779,
+    "HDB": 6341,
+    "IDFC": 4488,
+    "PFL": 134,
+    "TVS": 1574,
+    "DMI": 1708,
+    "PinelAb": 42.4,
+    "PayTm": 1.7,
+    "Benow": 3.3
+  },
+  "dmi_contest_brand_targets": {
+    "SAMSUNG": 72,
+    "VIVO": 72,
+    "OPPO": 72
+  },
+  "manpower_plans": {
+    "BAJAJ": 275,
+    "HDB": 180,
+    "IDFC": 120,
+    "TVS": 35,
+    "PFL": 29
+  },
+  "zone_map": {
+    "ALFAS": "NORTH",
+    "SAMEEM": "NORTH",
+    "SAMEER": "NORTH",
+    "KARNATAKA RDM": "KARNATAKA",
+    "MAHESH": "SOUTH",
+    "RENJITH": "SOUTH",
+    "VAIKASH": "SOUTH",
+    "VAISAKH": "SOUTH"
+  }
+}

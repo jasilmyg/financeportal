@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment / secrets
+.env
+
+# Large data files - exclude Excel/PPTX but keep JSON review data
+data/*.xlsx
+data/*.pptx
+
+# Generated standalone HTML (too large for git)
+myG_Finance_Portal.html
+netlify_deploy/

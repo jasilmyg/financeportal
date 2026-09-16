@@ -1,0 +1,1195 @@
+{
+  "category_performance": {
+    "qty": {
+      "BANK EMI": {
+        "BAJAJ": 0,
+        "Benow": 119,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 60,
+        "PFL": 0,
+        "PineLab": 253,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 432,
+        "paper_total": 0,
+        "card_total": 432,
+        "fin_share": 100
+      },
+      "CD PRODUCTS": {
+        "BAJAJ": 20256,
+        "Benow": 17,
+        "DMI": 2,
+        "HDB": 4823,
+        "IDFC": 3448,
+        "PAYTM": 2,
+        "PFL": 105,
+        "PineLab": 2480,
+        "TVS": 882,
+        "aCASH": 39774,
+        "apr_closing_pct": 47.5,
+        "last_week_pct": 45.1,
+        "total": 71789,
+        "paper_total": 29516,
+        "card_total": 2499,
+        "fin_share": 44.59596874172924
+      },
+      "HVA": {
+        "BAJAJ": 1697,
+        "Benow": 0,
+        "DMI": 24,
+        "HDB": 541,
+        "IDFC": 480,
+        "PAYTM": 18,
+        "PFL": 18,
+        "PineLab": 338,
+        "TVS": 73,
+        "aCASH": 4360,
+        "apr_closing_pct": 42.5,
+        "last_week_pct": 42.5,
+        "total": 7549,
+        "paper_total": 2833,
+        "card_total": 356,
+        "fin_share": 42.244005828586566
+      },
+      "LAPTOP": {
+        "BAJAJ": 2355,
+        "Benow": 48,
+        "DMI": 0,
+        "HDB": 613,
+        "IDFC": 171,
+        "PAYTM": 24,
+        "PFL": 0,
+        "PineLab": 800,
+        "TVS": 34,
+        "aCASH": 1945,
+        "apr_closing_pct": 64.7,
+        "last_week_pct": 66.1,
+        "total": 5990,
+        "paper_total": 3173,
+        "card_total": 872,
+        "fin_share": 67.52921535893155
+      },
+      "MOBILE": {
+        "BAJAJ": 31194,
+        "Benow": 272,
+        "DMI": 1128,
+        "HDB": 7047,
+        "IDFC": 4652,
+        "PAYTM": 192,
+        "PFL": 297,
+        "PineLab": 3553,
+        "TVS": 1944,
+        "aCASH": 21164,
+        "apr_closing_pct": 70,
+        "last_week_pct": 69.9,
+        "total": 71443,
+        "paper_total": 46262,
+        "card_total": 4017,
+        "fin_share": 70.37638397043797
+      },
+      "OTHERS": {
+        "BAJAJ": 348,
+        "Benow": 0,
+        "DMI": 1,
+        "HDB": 73,
+        "IDFC": 54,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 4,
+        "TVS": 9,
+        "aCASH": 1702,
+        "apr_closing_pct": 25,
+        "last_week_pct": 22.4,
+        "total": 2191,
+        "paper_total": 485,
+        "card_total": 4,
+        "fin_share": 22.318575992697397
+      },
+      "SA": {
+        "BAJAJ": 2209,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 470,
+        "IDFC": 615,
+        "PAYTM": 0,
+        "PFL": 3,
+        "PineLab": 0,
+        "TVS": 50,
+        "aCASH": 22537,
+        "apr_closing_pct": 13.8,
+        "last_week_pct": 13.2,
+        "total": 25884,
+        "paper_total": 3347,
+        "card_total": 0,
+        "fin_share": 12.930768042033689
+      }
+    },
+    "value": {
+      "BANK EMI": {
+        "BAJAJ": 0,
+        "Benow": 0.5,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0.1,
+        "PFL": 0,
+        "PineLab": 0.7,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 1.2999999999999998,
+        "paper_total": 0,
+        "card_total": 1.2999999999999998,
+        "fin_share": 100
+      },
+      "CD PRODUCTS": {
+        "BAJAJ": 58.5,
+        "Benow": 0.1,
+        "DMI": 0,
+        "HDB": 14.3,
+        "IDFC": 9.6,
+        "PAYTM": 0,
+        "PFL": 0.3,
+        "PineLab": 9.3,
+        "TVS": 2.6,
+        "aCASH": 99.6,
+        "apr_closing_pct": 51.2,
+        "last_week_pct": 49.1,
+        "total": 194.3,
+        "paper_total": 85.29999999999998,
+        "card_total": 9.4,
+        "fin_share": 48.7390633041688
+      },
+      "HVA": {
+        "BAJAJ": 2.6,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0.9,
+        "IDFC": 0.8,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0.7,
+        "TVS": 0.1,
+        "aCASH": 4,
+        "apr_closing_pct": 56.3,
+        "last_week_pct": 56.7,
+        "total": 9.1,
+        "paper_total": 4.3999999999999995,
+        "card_total": 0.7,
+        "fin_share": 56.043956043956044
+      },
+      "LAPTOP": {
+        "BAJAJ": 17.8,
+        "Benow": 0.3,
+        "DMI": 0,
+        "HDB": 4.4,
+        "IDFC": 1.3,
+        "PAYTM": 0.2,
+        "PFL": 0,
+        "PineLab": 5.7,
+        "TVS": 0.3,
+        "aCASH": 12.6,
+        "apr_closing_pct": 69.5,
+        "last_week_pct": 70.5,
+        "total": 42.599999999999994,
+        "paper_total": 23.800000000000004,
+        "card_total": 6.2,
+        "fin_share": 70.42253521126763
+      },
+      "MOBILE": {
+        "BAJAJ": 175,
+        "Benow": 1.4,
+        "DMI": 4.4,
+        "HDB": 35.9,
+        "IDFC": 25.2,
+        "PAYTM": 1.4,
+        "PFL": 1.4,
+        "PineLab": 19.7,
+        "TVS": 10.3,
+        "aCASH": 57.4,
+        "apr_closing_pct": 82.8,
+        "last_week_pct": 82.8,
+        "total": 332.0999999999999,
+        "paper_total": 252.20000000000002,
+        "card_total": 22.499999999999996,
+        "fin_share": 82.71604938271608
+      },
+      "OTHERS": {
+        "BAJAJ": 0.4,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0.1,
+        "IDFC": 0.1,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 1.6,
+        "apr_closing_pct": 27.9,
+        "last_week_pct": 24.5,
+        "total": 2.2,
+        "paper_total": 0.6,
+        "card_total": 0,
+        "fin_share": 27.27272727272727
+      },
+      "SA": {
+        "BAJAJ": 1.2,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0.3,
+        "IDFC": 0.3,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 11.4,
+        "apr_closing_pct": 14.9,
+        "last_week_pct": 14.2,
+        "total": 13.200000000000001,
+        "paper_total": 1.8,
+        "card_total": 0,
+        "fin_share": 13.636363636363635
+      }
+    },
+    "qty_totals": {
+      "totals": {
+        "aCASH": 91482,
+        "BAJAJ": 58059,
+        "HDB": 13567,
+        "IDFC": 9420,
+        "PFL": 423,
+        "TVS": 2992,
+        "DMI": 1155,
+        "PineLab": 7428,
+        "PAYTM": 296,
+        "Benow": 456
+      },
+      "grand_total": 185278,
+      "paper_total": 85616,
+      "card_total": 8180
+    },
+    "val_totals": {
+      "totals": {
+        "aCASH": 186.6,
+        "BAJAJ": 255.5,
+        "HDB": 55.9,
+        "IDFC": 37.3,
+        "PFL": 1.7,
+        "TVS": 13.3,
+        "DMI": 4.4,
+        "PineLab": 36.10000000000001,
+        "PAYTM": 1.7,
+        "Benow": 2.3
+      },
+      "grand_total": 594.8,
+      "paper_total": 368.1,
+      "card_total": 40.099999999999994
+    },
+    "sif": {
+      "BAJAJ": 62.591866731994116,
+      "HDB": 13.694267515923563,
+      "IDFC": 9.137677609015187,
+      "PFL": 0.4164625183733463,
+      "TVS": 3.2582067613914747,
+      "DMI": 1.077902988731014,
+      "PineLab": 8.843704066634004,
+      "PAYTM": 0.4164625183733463,
+      "Benow": 0.5634492895639391,
+      "paper_total": 90.17638412542871,
+      "card_total": 9.823615874571285
+    },
+    "asp": {
+      "BAJAJ": 44006.95843882947,
+      "HDB": 41202.91884720277,
+      "IDFC": 39596.602972399145,
+      "PFL": 40189.125295508275,
+      "TVS": 44451.87165775401,
+      "DMI": 38095.2380952381,
+      "PineLab": 48599.89229940766,
+      "PAYTM": 57432.432432432426,
+      "Benow": 50438.59649122806
+    }
+  },
+  "date": "2026-06-02",
+  "disbursement": {
+    "ageing_status": {
+      "BAJAJ FINANCE (DPF & CD)": {
+        "15_plus": [
+          124,
+          4536482
+        ],
+        "4_7_days": [
+          85,
+          3537529
+        ],
+        "8_15_days": [
+          63,
+          2378516
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          338,
+          12425523
+        ],
+        "total": [
+          272,
+          10452527
+        ]
+      },
+      "DMI FINANCE": {
+        "15_plus": [
+          7,
+          161723
+        ],
+        "4_7_days": [
+          2,
+          44565
+        ],
+        "8_15_days": [
+          1,
+          67999
+        ],
+        "90_plus": [
+          1,
+          14041
+        ],
+        "last_week": [
+          13,
+          310508
+        ],
+        "total": [
+          11,
+          288328
+        ]
+      },
+      "HDB FINANCE": {
+        "15_plus": [
+          137,
+          4805740
+        ],
+        "4_7_days": [
+          144,
+          5477183
+        ],
+        "8_15_days": [
+          67,
+          2634465
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          340,
+          12389806
+        ],
+        "total": [
+          348,
+          12917388
+        ]
+      },
+      "IDFC FIRST BANK LTD": {
+        "15_plus": [
+          23,
+          632820
+        ],
+        "4_7_days": [
+          22,
+          602374
+        ],
+        "8_15_days": [
+          14,
+          311426
+        ],
+        "90_plus": [
+          2,
+          9669
+        ],
+        "last_week": [
+          82,
+          1388854
+        ],
+        "total": [
+          61,
+          1556289
+        ]
+      },
+      "POONAWALLA FINCORP": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          6,
+          323516
+        ],
+        "8_15_days": [
+          1,
+          22700
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          29,
+          1109591
+        ],
+        "total": [
+          7,
+          346216
+        ]
+      },
+      "TVS CREDIT": {
+        "15_plus": [
+          7,
+          221773
+        ],
+        "4_7_days": [
+          20,
+          641443
+        ],
+        "8_15_days": [
+          6,
+          110487
+        ],
+        "90_plus": [
+          1,
+          14835
+        ],
+        "last_week": [
+          16,
+          576763
+        ],
+        "total": [
+          34,
+          988538
+        ]
+      }
+    },
+    "financiers": {
+      "BAJAJ": {
+        "last_week_pending_pct": 1.1,
+        "pending": 272,
+        "sourcing": 58059,
+        "pending_pct": 0.4684889508947795
+      },
+      "DMI": {
+        "last_week_pending_pct": 1.1,
+        "pending": 11,
+        "sourcing": 1155,
+        "pending_pct": 0.9523809523809524
+      },
+      "HDB": {
+        "last_week_pending_pct": 3.9,
+        "pending": 348,
+        "sourcing": 13567,
+        "pending_pct": 2.565047541829439
+      },
+      "IDFC": {
+        "last_week_pending_pct": 1.5,
+        "pending": 61,
+        "sourcing": 9420,
+        "pending_pct": 0.6475583864118897
+      },
+      "PFL": {
+        "last_week_pending_pct": 5.4,
+        "pending": 7,
+        "sourcing": 423,
+        "pending_pct": 1.6548463356973995
+      },
+      "TVS": {
+        "last_week_pending_pct": 0.8,
+        "pending": 34,
+        "sourcing": 2992,
+        "pending_pct": 1.1363636363636365
+      }
+    },
+    "top_stores_aged": [
+      {
+        "contributor": "FALNIR FUTURE",
+        "count": 50,
+        "days": 510,
+        "sno": 1,
+        "store": "THAMARASSERY FUTURE"
+      },
+      {
+        "contributor": "KONDOTTY FUTURE",
+        "count": 40,
+        "days": 132,
+        "sno": 2,
+        "store": "EDAPPAL"
+      },
+      {
+        "contributor": "POTTAMMAL FUTURE",
+        "count": 39,
+        "days": 114,
+        "sno": 3,
+        "store": "SABA"
+      },
+      {
+        "contributor": "THONDAYAD FUTURE",
+        "count": 32,
+        "days": 91,
+        "sno": 4,
+        "store": "VADAKKENCHERRY FUTURE"
+      },
+      {
+        "contributor": "PAYYANNUR FUTURE",
+        "count": 31,
+        "days": 85,
+        "sno": 5,
+        "store": "VADAKARA FUTURE"
+      }
+    ],
+    "totals": {
+      "sourcing": 85616,
+      "pending": 733,
+      "pending_pct": 0.8561483834797234
+    },
+    "ageing_totals": {
+      "4_7_days": [
+        279,
+        10626610
+      ],
+      "8_15_days": [
+        152,
+        5525593
+      ],
+      "15_plus": [
+        298,
+        10358538
+      ],
+      "90_plus": [
+        4,
+        38545
+      ],
+      "total": [
+        733,
+        26549286
+      ],
+      "last_week": [
+        818,
+        28201045
+      ]
+    }
+  },
+  "dmi_contest": {
+    "branches": {
+      "AREEKODE FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 5,
+        "VIVO": 0
+      },
+      "BALUSSERY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BALUSSERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BANK ROAD": {
+        "OPPO": 1,
+        "SAMSUNG": 1,
+        "VIVO": 3
+      },
+      "BATHERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 8,
+        "VIVO": 2
+      },
+      "BYPASS ROAD": {
+        "OPPO": 0,
+        "SAMSUNG": 8,
+        "VIVO": 1
+      },
+      "CAFE YMCA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "CAMWORLD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "CHEMMAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 4
+      },
+      "EDAKKARA": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 3
+      },
+      "EDAPPAL": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "EDAPPAL FUTURE": {
+        "OPPO": 8,
+        "SAMSUNG": 1,
+        "VIVO": 2
+      },
+      "FEROKE FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 0
+      },
+      "HI LITE MALL": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "IRITTY": {
+        "OPPO": 0,
+        "SAMSUNG": 6,
+        "VIVO": 0
+      },
+      "KALPETTA": {
+        "OPPO": 0,
+        "SAMSUNG": 4,
+        "VIVO": 0
+      },
+      "KANHANGAD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KANHANGAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KANNUR FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "KASARGOD": {
+        "OPPO": 2,
+        "SAMSUNG": 24,
+        "VIVO": 7
+      },
+      "KASARGOD FUTURE": {
+        "OPPO": 16,
+        "SAMSUNG": 59,
+        "VIVO": 15
+      },
+      "KINGSWAY": {
+        "OPPO": 0,
+        "SAMSUNG": 5,
+        "VIVO": 0
+      },
+      "KONDOTTY": {
+        "OPPO": 0,
+        "SAMSUNG": 4,
+        "VIVO": 0
+      },
+      "KONDOTTY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 3,
+        "VIVO": 0
+      },
+      "KOTTAKKAL": {
+        "OPPO": 0,
+        "SAMSUNG": 6,
+        "VIVO": 3
+      },
+      "KOTTAKKAL FUTURE": {
+        "OPPO": 4,
+        "SAMSUNG": 21,
+        "VIVO": 14
+      },
+      "KOYILANDY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KOYILANDY 2": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KUNNAMANGALAM FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KUTTIYADI": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 4
+      },
+      "KUTTIYADI FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 1
+      },
+      "LANDSHIP MALL": {
+        "OPPO": 0,
+        "SAMSUNG": 4,
+        "VIVO": 0
+      },
+      "MAHE": {
+        "OPPO": 0,
+        "SAMSUNG": 3,
+        "VIVO": 0
+      },
+      "MALAPPURAM": {
+        "OPPO": 1,
+        "SAMSUNG": 8,
+        "VIVO": 2
+      },
+      "MANANTHAVADY": {
+        "OPPO": 0,
+        "SAMSUNG": 3,
+        "VIVO": 0
+      },
+      "MANANTHAVADY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 25,
+        "VIVO": 0
+      },
+      "MANJERY": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 0
+      },
+      "MANNARKAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "MUKKOM": {
+        "OPPO": 1,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "NADAKKAVU FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "NARIKKUNI": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 2
+      },
+      "NILAMBUR FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "OTTAPALAM": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "P TOWER": {
+        "OPPO": 0,
+        "SAMSUNG": 7,
+        "VIVO": 0
+      },
+      "PALAKKAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 7,
+        "VIVO": 0
+      },
+      "PATTAMBI FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 2
+      },
+      "PAYYANNUR": {
+        "OPPO": 0,
+        "SAMSUNG": 3,
+        "VIVO": 3
+      },
+      "PAYYANNUR FUTURE": {
+        "OPPO": 1,
+        "SAMSUNG": 3,
+        "VIVO": 0
+      },
+      "PERAMBRA": {
+        "OPPO": 0,
+        "SAMSUNG": 6,
+        "VIVO": 0
+      },
+      "PERAMBRA FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 5
+      },
+      "PERINTHALMANNA FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 5,
+        "VIVO": 23
+      },
+      "POTTAMMAL FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 3,
+        "VIVO": 0
+      },
+      "PUTHIYARA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "RAMANATTUKARA": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 0
+      },
+      "SABA": {
+        "OPPO": 0,
+        "SAMSUNG": 2,
+        "VIVO": 0
+      },
+      "SABA MAHARANI": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 3
+      },
+      "SNPARK": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "TALIPARAMBA": {
+        "OPPO": 0,
+        "SAMSUNG": 9,
+        "VIVO": 0
+      },
+      "TB ROAD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 7
+      },
+      "THALASSERY": {
+        "OPPO": 2,
+        "SAMSUNG": 3,
+        "VIVO": 2
+      },
+      "THALASSERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 3,
+        "VIVO": 0
+      },
+      "THAMARASSERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "THANA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "THONDAYAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "TIRUR": {
+        "OPPO": 0,
+        "SAMSUNG": 11,
+        "VIVO": 0
+      },
+      "UPPALA": {
+        "OPPO": 9,
+        "SAMSUNG": 24,
+        "VIVO": 17
+      },
+      "VADAKARA": {
+        "OPPO": 6,
+        "SAMSUNG": 0,
+        "VIVO": 8
+      },
+      "VADAKARA FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 1
+      },
+      "VADAKKENCHERRY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 1,
+        "VIVO": 0
+      },
+      "VALANCHERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 19,
+        "VIVO": 1
+      },
+      "VENGARA": {
+        "OPPO": 2,
+        "SAMSUNG": 7,
+        "VIVO": 15
+      },
+      "WANDOOR": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "myG CARE BATHERY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "myG CARE PERUMANNA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      }
+    },
+    "summary": {
+      "OPPO": {
+        "achievement": 53,
+        "target": 72,
+        "gap": 19,
+        "achvt_pct": 73.61111111111111,
+        "trend": 78.97,
+        "trend_pct": 109.68055555555556
+      },
+      "SAMSUNG": {
+        "achievement": 331,
+        "target": 72,
+        "gap": -259,
+        "achvt_pct": 459.72222222222223,
+        "trend": 493.19,
+        "trend_pct": 684.9861111111111
+      },
+      "VIVO": {
+        "achievement": 150,
+        "target": 72,
+        "gap": -78,
+        "achvt_pct": 208.33333333333334,
+        "trend": 223.5,
+        "trend_pct": 310.41666666666663
+      }
+    }
+  },
+  "exec_summary": {
+    "monthwise_performance": {
+      "card_pct": [
+        6.23,
+        7.35,
+        null
+      ],
+      "card_value_cr": [
+        19.76,
+        20.28,
+        null
+      ],
+      "fin_value_cr": [
+        195.01,
+        193.12,
+        null
+      ],
+      "fin_value_pct": [
+        67.68,
+        69.99,
+        null
+      ],
+      "fin_vol_pct": [
+        50.69,
+        50.81,
+        null
+      ],
+      "months": [
+        "Apr",
+        "May",
+        "Jun"
+      ]
+    },
+    "target_achievement": {
+      "achievement": [
+        68.76,
+        50.74,
+        6.75,
+        407.89,
+        40.04
+      ],
+      "headers": [
+        "Metric",
+        "Value Penetration",
+        "Vol Penetration",
+        "Cards Penetration",
+        "Fin Value (Cr)",
+        "Card Value (Cr)"
+      ],
+      "last_month": [
+        67.68,
+        50.69,
+        6.33,
+        214.8,
+        19.8
+      ],
+      "last_week": [
+        68.59,
+        50.79,
+        6.42,
+        363.37,
+        34.46
+      ],
+      "qtr_trend": [
+        null,
+        null,
+        null,
+        618.6,
+        60.7
+      ],
+      "target": [
+        67,
+        55,
+        6.91,
+        460,
+        47.41
+      ]
+    }
+  },
+  "financier_targets": {
+    "BAJAJ": {
+      "achievement": 58059,
+      "target": 88779,
+      "gap": 30720,
+      "achvt_pct": 65.39722231608826,
+      "trend": 86507.91,
+      "trend_pct": 97.44186125097151
+    },
+    "Benow": {
+      "achievement": 2.3,
+      "target": 3.3,
+      "gap": 1,
+      "achvt_pct": 69.69696969696969,
+      "trend": 3.4269999999999996,
+      "trend_pct": 103.84848484848483
+    },
+    "DMI": {
+      "achievement": 1041,
+      "target": 1708,
+      "gap": 667,
+      "achvt_pct": 60.948477751756435,
+      "trend": 1551.09,
+      "trend_pct": 90.81323185011709
+    },
+    "HDB": {
+      "achievement": 5766,
+      "target": 6341,
+      "gap": 575,
+      "achvt_pct": 90.93202964832045,
+      "trend": 8591.34,
+      "trend_pct": 135.48872417599748
+    },
+    "IDFC": {
+      "achievement": 4462,
+      "target": 4488,
+      "gap": 26,
+      "achvt_pct": 99.42067736185383,
+      "trend": 6648.38,
+      "trend_pct": 148.13680926916223
+    },
+    "PFL": {
+      "achievement": 215,
+      "target": 134,
+      "gap": -81,
+      "achvt_pct": 160.44776119402985,
+      "trend": 320.35,
+      "trend_pct": 239.0671641791045
+    },
+    "PayTm": {
+      "achievement": 1.7,
+      "target": 1.7,
+      "gap": 0,
+      "achvt_pct": 100,
+      "trend": 2.533,
+      "trend_pct": 149
+    },
+    "PinelAb": {
+      "achievement": 36.1,
+      "target": 42.4,
+      "gap": 6.299999999999997,
+      "achvt_pct": 85.14150943396227,
+      "trend": 53.789,
+      "trend_pct": 126.86084905660377
+    },
+    "TVS": {
+      "achievement": 1443,
+      "target": 1574,
+      "gap": 131,
+      "achvt_pct": 91.67725540025413,
+      "trend": 2150.07,
+      "trend_pct": 136.59911054637865
+    }
+  },
+  "manpower": {
+    "BAJAJ": {
+      "current": 263,
+      "plan": 275,
+      "req": 12,
+      "gap": 12
+    },
+    "HDB": {
+      "current": 166,
+      "plan": 180,
+      "req": 14,
+      "gap": 14
+    },
+    "IDFC": {
+      "current": 92,
+      "plan": 120,
+      "req": 28,
+      "gap": 28
+    },
+    "PFL": {
+      "current": 14,
+      "plan": 29,
+      "req": 15,
+      "gap": 15
+    },
+    "TVS": {
+      "current": 25,
+      "plan": 35,
+      "req": 10,
+      "gap": 10
+    }
+  },
+  "status_as_of": "2026-05-31",
+  "financier_targets_totals": {
+    "paper": {
+      "target": 103024,
+      "achievement": 70986,
+      "gap": 32038,
+      "achvt_pct": 68.90239167572605,
+      "trend": 105769.14,
+      "trend_pct": 102.6645635968318
+    },
+    "card": {
+      "target": 47.4,
+      "achievement": 40.1,
+      "gap": 7.299999999999997,
+      "achvt_pct": 84.59915611814347,
+      "trend": 59.749,
+      "trend_pct": 126.05274261603377
+    }
+  },
+  "manpower_totals": {
+    "plan": 639,
+    "current": 560,
+    "req": 79,
+    "gap": 79
+  }
+}

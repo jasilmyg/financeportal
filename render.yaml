@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: myg-finance-portal
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2
+    envVars:
+      - key: CLICKHOUSE_HOST
+        value: pdhsuv47ec.ap-south-1.aws.clickhouse.cloud
+      - key: CLICKHOUSE_PORT
+        value: "8443"
+      - key: CLICKHOUSE_USER
+        value: default
+      - key: CLICKHOUSE_PASSWORD
+        sync: false
+      - key: CLICKHOUSE_DB
+        value: default
+      - key: PYTHON_VERSION
+        value: "3.11.0"

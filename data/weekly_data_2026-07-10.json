@@ -1,0 +1,1195 @@
+{
+  "category_performance": {
+    "qty": {
+      "BANK EMI": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "CD PRODUCTS": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "HVA": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "LAPTOP": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "MOBILE": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "OTHERS": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "SA": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      }
+    },
+    "value": {
+      "BANK EMI": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "CD PRODUCTS": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "HVA": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "LAPTOP": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "MOBILE": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "OTHERS": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      },
+      "SA": {
+        "BAJAJ": 0,
+        "Benow": 0,
+        "DMI": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PAYTM": 0,
+        "PFL": 0,
+        "PineLab": 0,
+        "TVS": 0,
+        "aCASH": 0,
+        "apr_closing_pct": 0,
+        "last_week_pct": 0,
+        "total": 0,
+        "paper_total": 0,
+        "card_total": 0,
+        "fin_share": 0
+      }
+    },
+    "qty_totals": {
+      "totals": {
+        "aCASH": 0,
+        "BAJAJ": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PFL": 0,
+        "TVS": 0,
+        "DMI": 0,
+        "PineLab": 0,
+        "PAYTM": 0,
+        "Benow": 0
+      },
+      "grand_total": 0,
+      "paper_total": 0,
+      "card_total": 0
+    },
+    "val_totals": {
+      "totals": {
+        "aCASH": 0,
+        "BAJAJ": 0,
+        "HDB": 0,
+        "IDFC": 0,
+        "PFL": 0,
+        "TVS": 0,
+        "DMI": 0,
+        "PineLab": 0,
+        "PAYTM": 0,
+        "Benow": 0
+      },
+      "grand_total": 0,
+      "paper_total": 0,
+      "card_total": 0
+    },
+    "sif": {
+      "BAJAJ": 0,
+      "HDB": 0,
+      "IDFC": 0,
+      "PFL": 0,
+      "TVS": 0,
+      "DMI": 0,
+      "PineLab": 0,
+      "PAYTM": 0,
+      "Benow": 0,
+      "paper_total": 0,
+      "card_total": 0
+    },
+    "asp": {
+      "BAJAJ": 0,
+      "HDB": 0,
+      "IDFC": 0,
+      "PFL": 0,
+      "TVS": 0,
+      "DMI": 0,
+      "PineLab": 0,
+      "PAYTM": 0,
+      "Benow": 0
+    }
+  },
+  "date": "2026-07-10",
+  "disbursement": {
+    "ageing_status": {
+      "BAJAJ FINANCE (DPF & CD)": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          0,
+          0
+        ],
+        "8_15_days": [
+          0,
+          0
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          0,
+          0
+        ],
+        "total": [
+          0,
+          0
+        ]
+      },
+      "DMI FINANCE": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          0,
+          0
+        ],
+        "8_15_days": [
+          0,
+          0
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          0,
+          0
+        ],
+        "total": [
+          0,
+          0
+        ]
+      },
+      "HDB FINANCE": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          0,
+          0
+        ],
+        "8_15_days": [
+          0,
+          0
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          0,
+          0
+        ],
+        "total": [
+          0,
+          0
+        ]
+      },
+      "IDFC FIRST BANK LTD": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          0,
+          0
+        ],
+        "8_15_days": [
+          0,
+          0
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          0,
+          0
+        ],
+        "total": [
+          0,
+          0
+        ]
+      },
+      "POONAWALLA FINCORP": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          0,
+          0
+        ],
+        "8_15_days": [
+          0,
+          0
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          0,
+          0
+        ],
+        "total": [
+          0,
+          0
+        ]
+      },
+      "TVS CREDIT": {
+        "15_plus": [
+          0,
+          0
+        ],
+        "4_7_days": [
+          0,
+          0
+        ],
+        "8_15_days": [
+          0,
+          0
+        ],
+        "90_plus": [
+          0,
+          0
+        ],
+        "last_week": [
+          0,
+          0
+        ],
+        "total": [
+          0,
+          0
+        ]
+      }
+    },
+    "financiers": {
+      "BAJAJ": {
+        "last_week_pending_pct": 0,
+        "pending": 0,
+        "sourcing": 0,
+        "pending_pct": 0
+      },
+      "DMI": {
+        "last_week_pending_pct": 0,
+        "pending": 0,
+        "sourcing": 0,
+        "pending_pct": 0
+      },
+      "HDB": {
+        "last_week_pending_pct": 0,
+        "pending": 0,
+        "sourcing": 0,
+        "pending_pct": 0
+      },
+      "IDFC": {
+        "last_week_pending_pct": 0,
+        "pending": 0,
+        "sourcing": 0,
+        "pending_pct": 0
+      },
+      "PFL": {
+        "last_week_pending_pct": 0,
+        "pending": 0,
+        "sourcing": 0,
+        "pending_pct": 0
+      },
+      "TVS": {
+        "last_week_pending_pct": 0,
+        "pending": 0,
+        "sourcing": 0,
+        "pending_pct": 0
+      }
+    },
+    "top_stores_aged": [
+      {
+        "contributor": "",
+        "count": 0,
+        "days": 0,
+        "sno": 1,
+        "store": ""
+      },
+      {
+        "contributor": "",
+        "count": 0,
+        "days": 0,
+        "sno": 2,
+        "store": ""
+      },
+      {
+        "contributor": "",
+        "count": 0,
+        "days": 0,
+        "sno": 3,
+        "store": ""
+      },
+      {
+        "contributor": "",
+        "count": 0,
+        "days": 0,
+        "sno": 4,
+        "store": ""
+      },
+      {
+        "contributor": "",
+        "count": 0,
+        "days": 0,
+        "sno": 5,
+        "store": ""
+      }
+    ],
+    "totals": {
+      "sourcing": 0,
+      "pending": 0,
+      "pending_pct": 0
+    },
+    "ageing_totals": {
+      "4_7_days": [
+        0,
+        0
+      ],
+      "8_15_days": [
+        0,
+        0
+      ],
+      "15_plus": [
+        0,
+        0
+      ],
+      "90_plus": [
+        0,
+        0
+      ],
+      "total": [
+        0,
+        0
+      ],
+      "last_week": [
+        0,
+        0
+      ]
+    }
+  },
+  "dmi_contest": {
+    "branches": {
+      "AREEKODE FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BALUSSERY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BALUSSERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BANK ROAD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BATHERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "BYPASS ROAD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "CAFE YMCA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "CAMWORLD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "CHEMMAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "EDAKKARA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "EDAPPAL": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "EDAPPAL FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "FEROKE FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "HI LITE MALL": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "IRITTY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KALPETTA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KANHANGAD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KANHANGAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KANNUR FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KASARGOD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KASARGOD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KINGSWAY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KONDOTTY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KONDOTTY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KOTTAKKAL": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KOTTAKKAL FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KOYILANDY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KOYILANDY 2": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KUNNAMANGALAM FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KUTTIYADI": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "KUTTIYADI FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "LANDSHIP MALL": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MAHE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MALAPPURAM": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MANANTHAVADY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MANANTHAVADY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MANJERY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MANNARKAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "MUKKOM": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "NADAKKAVU FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "NARIKKUNI": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "NILAMBUR FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "OTTAPALAM": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "P TOWER": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PALAKKAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PATTAMBI FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PAYYANNUR": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PAYYANNUR FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PERAMBRA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PERAMBRA FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PERINTHALMANNA FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "POTTAMMAL FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "PUTHIYARA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "RAMANATTUKARA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "SABA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "SABA MAHARANI": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "SNPARK": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "TALIPARAMBA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "TB ROAD": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "THALASSERY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "THALASSERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "THAMARASSERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "THANA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "THONDAYAD FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "TIRUR": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "UPPALA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "VADAKARA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "VADAKARA FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "VADAKKENCHERRY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "VALANCHERY FUTURE": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "VENGARA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "WANDOOR": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "myG CARE BATHERY": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      },
+      "myG CARE PERUMANNA": {
+        "OPPO": 0,
+        "SAMSUNG": 0,
+        "VIVO": 0
+      }
+    },
+    "summary": {
+      "OPPO": {
+        "achievement": 0,
+        "target": 72,
+        "gap": 72,
+        "achvt_pct": 0,
+        "trend": 0,
+        "trend_pct": 0
+      },
+      "SAMSUNG": {
+        "achievement": 0,
+        "target": 72,
+        "gap": 72,
+        "achvt_pct": 0,
+        "trend": 0,
+        "trend_pct": 0
+      },
+      "VIVO": {
+        "achievement": 0,
+        "target": 72,
+        "gap": 72,
+        "achvt_pct": 0,
+        "trend": 0,
+        "trend_pct": 0
+      }
+    }
+  },
+  "exec_summary": {
+    "monthwise_performance": {
+      "card_pct": [
+        0,
+        0,
+        0
+      ],
+      "card_value_cr": [
+        0,
+        0,
+        0
+      ],
+      "fin_value_cr": [
+        0,
+        0,
+        0
+      ],
+      "fin_value_pct": [
+        0,
+        0,
+        0
+      ],
+      "fin_vol_pct": [
+        0,
+        0,
+        0
+      ],
+      "months": [
+        "Apr",
+        "May",
+        "Jun"
+      ]
+    },
+    "target_achievement": {
+      "achievement": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "headers": [
+        "Metric",
+        "Value Penetration",
+        "Vol Penetration",
+        "Cards Penetration",
+        "Fin Value (Cr)",
+        "Card Value (Cr)"
+      ],
+      "last_month": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "last_week": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qtr_trend": [
+        null,
+        null,
+        null,
+        0,
+        0
+      ],
+      "target": [
+        67,
+        55,
+        6.91,
+        460,
+        47.41
+      ]
+    }
+  },
+  "financier_targets": {
+    "BAJAJ": {
+      "achievement": 0,
+      "target": 88779,
+      "gap": 88779,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "Benow": {
+      "achievement": 0,
+      "target": 3.3,
+      "gap": 3.3,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "DMI": {
+      "achievement": 0,
+      "target": 1708,
+      "gap": 1708,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "HDB": {
+      "achievement": 0,
+      "target": 6341,
+      "gap": 6341,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "IDFC": {
+      "achievement": 0,
+      "target": 4488,
+      "gap": 4488,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "PFL": {
+      "achievement": 0,
+      "target": 134,
+      "gap": 134,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "PayTm": {
+      "achievement": 0,
+      "target": 1.7,
+      "gap": 1.7,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "PinelAb": {
+      "achievement": 0,
+      "target": 42.4,
+      "gap": 42.4,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "TVS": {
+      "achievement": 0,
+      "target": 1574,
+      "gap": 1574,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    }
+  },
+  "manpower": {
+    "BAJAJ": {
+      "current": 0,
+      "plan": 275,
+      "req": 275,
+      "gap": 275
+    },
+    "HDB": {
+      "current": 0,
+      "plan": 180,
+      "req": 180,
+      "gap": 180
+    },
+    "IDFC": {
+      "current": 0,
+      "plan": 120,
+      "req": 120,
+      "gap": 120
+    },
+    "PFL": {
+      "current": 0,
+      "plan": 29,
+      "req": 29,
+      "gap": 29
+    },
+    "TVS": {
+      "current": 0,
+      "plan": 35,
+      "req": 35,
+      "gap": 35
+    }
+  },
+  "status_as_of": "2026-07-10",
+  "financier_targets_totals": {
+    "paper": {
+      "target": 103024,
+      "achievement": 0,
+      "gap": 103024,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    },
+    "card": {
+      "target": 47.4,
+      "achievement": 0,
+      "gap": 47.4,
+      "achvt_pct": 0,
+      "trend": 0,
+      "trend_pct": 0
+    }
+  },
+  "manpower_totals": {
+    "plan": 639,
+    "current": 0,
+    "req": 639,
+    "gap": 639
+  }
+}

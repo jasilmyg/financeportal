@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consumer Finance Review Automation Portal</title>
+  
+  <script>
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+      const errDiv = document.createElement("div");
+      errDiv.style = "position:fixed;top:0;left:0;width:100%;background:red;color:white;z-index:9999;padding:10px;font-weight:bold;";
+      errDiv.innerText = `JS Error: ${msg} at line ${lineNo}`;
+      document.body.appendChild(errDiv);
+      return false;
+    };
+  </script>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/static/css/style.css?v=20260915_dark_v4">
+  <!-- Three.js for 3D background -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <!-- 3D Animated Background Canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  
+  <!-- myG SPLASH LOADER -->
+  <div id="splash-loader">
+    <style>
+      #splash-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(145deg, #fff7f2 0%, #fff 40%, #fff4ee 100%);
+        transition: opacity 0.7s ease, transform 0.7s ease;
+        overflow: hidden;
+      }
+      #splash-loader.fade-out {
+        opacity: 0;
+        transform: scale(1.04);
+        pointer-events: none;
+      }
+
+      /* Background decorative circles */
+      .sl-bg-ring {
+        position: absolute;
+        border-radius: 50%;
+        border: 1.5px solid rgba(232, 92, 20, 0.10);
+        animation: sl-bg-pulse 4s ease-in-out infinite;
+      }
+      .sl-bg-ring:nth-child(1) { width: 320px; height: 320px; animation-delay: 0s; }
+      .sl-bg-ring:nth-child(2) { width: 480px; height: 480px; animation-delay: 0.5s; border-color: rgba(232,92,20,0.07); }
+      .sl-bg-ring:nth-child(3) { width: 640px; height: 640px; animation-delay: 1s;  border-color: rgba(232,92,20,0.04); }
+      @keyframes sl-bg-pulse {
+        0%, 100% { transform: scale(1); opacity: 0.8; }
+        50%       { transform: scale(1.04); opacity: 0.4; }
+      }
+
+      /* Outer spinner ring */
+      .sl-spinner-ring {
+        position: absolute;
+        width: 190px;
+        height: 190px;
+        border-radius: 50%;
+        border: 2.5px solid rgba(232, 92, 20, 0.12);
+        border-top-color: #e85c14;
+        border-right-color: #ff7c3a;
+        animation: sl-spin 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      @keyframes sl-spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Inner counter-spin ring */
+      .sl-spinner-ring-inner {
+        position: absolute;
+        width: 165px;
+        height: 165px;
+        border-radius: 50%;
+        border: 1.5px dashed rgba(232, 92, 20, 0.18);
+        animation: sl-spin-reverse 3s linear infinite;
+      }
+      @keyframes sl-spin-reverse { to { transform: rotate(-360deg); } }
+
+      /* Orbiting dots */
+      .sl-orbit {
+        position: absolute;
+        width: 210px;
+        height: 210px;
+        animation: sl-spin 2.5s linear infinite;
+      }
+      .sl-orbit-dot {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #e85c14;
+        top: -4px;
+        left: 50%;
+        transform: translateX(-50%);
+        box-shadow: 0 0 8px rgba(232,92,20,0.6);
+      }
+      .sl-orbit-dot.dot2 { top: auto; bottom: -4px; background: #ff7c3a; width: 5px; height: 5px; }
+
+      /* Logo container */
+      .sl-logo-wrap {
+        position: relative;
+        width: 140px;
+        height: 140px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: sl-logo-in 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        z-index: 2;
+      }
+      @keyframes sl-logo-in {
+        from { opacity: 0; transform: scale(0.6); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+
+      /* The myG orange box */
+      .sl-logo-box {
+        width: 110px;
+        height: 110px;
+        background: linear-gradient(145deg, #ff6b22 0%, #e85c14 60%, #d14a0a 100%);
+        border-radius: 22px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        box-shadow:
+          0 16px 48px rgba(232, 92, 20, 0.38),
+          0 4px 12px rgba(232, 92, 20, 0.22),
+          inset 0 1px 0 rgba(255,255,255,0.2);
+        animation: sl-logo-pulse 2.4s ease-in-out infinite;
+        position: relative;
+        overflow: hidden;
+      }
+      @keyframes sl-logo-pulse {
+        0%, 100% { box-shadow: 0 16px 48px rgba(232,92,20,0.38), 0 4px 12px rgba(232,92,20,0.22), inset 0 1px 0 rgba(255,255,255,0.2); }
+        50%       { box-shadow: 0 20px 60px rgba(232,92,20,0.55), 0 6px 18px rgba(232,92,20,0.35), inset 0 1px 0 rgba(255,255,255,0.2); }
+      }
+
+      /* Sheen on logo box */
+      .sl-logo-box::before {
+        content: '';
+        position: absolute;
+        top: -30px; left: -30px;
+        width: 80px; height: 80px;
+        background: rgba(255,255,255,0.15);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      /* myG Text */
+      .sl-myg-text {
+        font-family: 'Outfit', 'Arial Black', sans-serif;
+        font-weight: 900;
+        font-size: 38px;
+        color: #ffffff;
+        line-height: 1;
+        letter-spacing: -1px;
+        margin-bottom: 2px;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      }
+      .sl-myg-sub {
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 7px;
+        color: rgba(255,255,255,0.90);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .sl-tm {
+        font-size: 12px;
+        font-weight: 400;
+        vertical-align: super;
+        line-height: 0;
+        margin-left: 1px;
+        opacity: 0.8;
+      }
+
+      /* Portal title below logo */
+      .sl-title {
+        margin-top: 32px;
+        text-align: center;
+        animation: sl-fade-up 0.8s 0.4s ease both;
+        z-index: 2;
+      }
+      @keyframes sl-fade-up {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .sl-title h2 {
+        font-family: 'Outfit', sans-serif;
+        font-size: 22px;
+        font-weight: 800;
+        color: #1a1a2e;
+        letter-spacing: -0.03em;
+        margin-bottom: 4px;
+      }
+      .sl-title p {
+        font-family: 'Inter', sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        color: #6b7fa3;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .sl-title .sl-orange { color: #e85c14; }
+
+      /* Progress bar */
+      .sl-progress-wrap {
+        margin-top: 36px;
+        width: 220px;
+        z-index: 2;
+        animation: sl-fade-up 0.8s 0.6s ease both;
+      }
+      .sl-progress-track {
+        width: 100%;
+        height: 4px;
+        background: rgba(232, 92, 20, 0.12);
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+      }
+      .sl-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #e85c14, #ff9a3c, #e85c14);
+        background-size: 200% 100%;
+        border-radius: 4px;
+        width: 0%;
+        transition: width 0.3s ease;
+        animation: sl-shimmer 1.5s linear infinite;
+      }
+      @keyframes sl-shimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      .sl-progress-label {
+        text-align: center;
+        margin-top: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #e85c14;
+        letter-spacing: 0.05em;
+        font-family: 'Inter', sans-serif;
+      }
+
+      /* Finance tagline */
+      .sl-tagline {
+        position: absolute;
+        bottom: 36px;
+        font-size: 11px;
+        color: rgba(107, 127, 163, 0.7);
+        font-family: 'Inter', sans-serif;
+        letter-spacing: 0.06em;
+        animation: sl-fade-up 0.8s 0.8s ease both;
+      }
+    </style>
+
+    <!-- Decorative background rings -->
+    <div class="sl-bg-ring"></div>
+    <div class="sl-bg-ring"></div>
+    <div class="sl-bg-ring"></div>
+
+    <!-- Spinner rings -->
+    <div class="sl-spinner-ring"></div>
+    <div class="sl-spinner-ring-inner"></div>
+
+    <!-- Orbiting dots -->
+    <div class="sl-orbit">
+      <div class="sl-orbit-dot"></div>
+      <div class="sl-orbit-dot dot2"></div>
+    </div>
+
+    <!-- Logo -->
+    <div class="sl-logo-wrap">
+      <div class="sl-logo-box">
+        <div class="sl-myg-text">myG<span class="sl-tm">&trade;</span></div>
+        <div class="sl-myg-sub">MY GEN DIGITAL HUB</div>
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="sl-title">
+      <h2>Finance <span class="sl-orange">Automation</span> Portal</h2>
+      <p>Consumer Finance Dept.</p>
+    </div>
+
+    <!-- Progress -->
+    <div class="sl-progress-wrap">
+      <div class="sl-progress-track">
+        <div class="sl-progress-bar" id="sl-progress-bar"></div>
+      </div>
+      <div class="sl-progress-label" id="sl-progress-label">Initializing...</div>
+    </div>
+
+    <div class="sl-tagline">myG Finance &mdash; Powered by Analytics</div>
+  </div>
+
+  <script>
+  (function() {
+    const loader    = document.getElementById('splash-loader');
+    const bar       = document.getElementById('sl-progress-bar');
+    const label     = document.getElementById('sl-progress-label');
+    const steps     = [
+      { pct: 20, text: 'Loading modules...' },
+      { pct: 45, text: 'Preparing dashboard...' },
+      { pct: 70, text: 'Fetching live data...' },
+      { pct: 90, text: 'Almost ready...' },
+      { pct: 100, text: 'Ready!' },
+    ];
+    let i = 0;
+    function nextStep() {
+      if (i >= steps.length) return;
+      const s = steps[i++];
+      bar.style.width = s.pct + '%';
+      label.textContent = s.text;
+      if (i < steps.length) setTimeout(nextStep, 380 + Math.random() * 260);
+    }
+    setTimeout(nextStep, 300);
+
+    function hideSplash() {
+      loader.classList.add('fade-out');
+      setTimeout(() => { loader.style.display = 'none'; }, 800);
+    }
+
+    // Hide when fully loaded
+    if (document.readyState === 'complete') {
+      setTimeout(hideSplash, 1800);
+    } else {
+      window.addEventListener('load', () => setTimeout(hideSplash, 1400));
+    }
+  })();
+  </script>
+
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo-container">
+        <div class="logo-icon"><i data-lucide="line-chart"></i></div>
+        <div class="logo-text">
+          <h1>myG Finance</h1>
+          <p>Automation Portal</p>
+        </div>
+      </div>
+      
+      <nav class="nav-menu">
+        <li class="nav-item active" data-tab="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </li>
+        <li class="nav-item" data-tab="exec-summary">
+          <i data-lucide="presentation"></i>
+          <span>Exec Summary</span>
+        </li>
+        <li class="nav-item" data-tab="category">
+          <i data-lucide="layers"></i>
+          <span>Category Performance</span>
+        </li>
+        <li class="nav-item" data-tab="zone">
+          <i data-lucide="map"></i>
+          <span>Zone Performance</span>
+        </li>
+        <li class="nav-item" data-tab="price">
+          <i data-lucide="tag"></i>
+          <span>Price Range</span>
+        </li>
+        <li class="nav-item" data-tab="brand">
+          <i data-lucide="star"></i>
+          <span>Brand Performance</span>
+        </li>
+        <li class="nav-item" data-tab="store">
+          <i data-lucide="store"></i>
+          <span>Store Performance</span>
+        </li>
+        <li class="nav-item" data-tab="team">
+          <i data-lucide="users"></i>
+          <span>Team Performance</span>
+        </li>
+        <li class="nav-item" data-tab="cleaner">
+          <i data-lucide="wand-2"></i>
+          <span>Data Cleaner</span>
+        </li>
+        <li class="nav-item" data-tab="settings">
+          <i data-lucide="settings"></i>
+          <span>Global Targets</span>
+        </li>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <p>Consumer Finance Dept.</p>
+        <p style="opacity: 0.5; margin-top: 4px;">v1.0.0</p>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Top Control Bar -->
+      <header class="control-bar">
+        <div class="date-controls">
+          <label style="font-size: 13px; color: var(--text-muted); font-weight: 500;">Review Date:</label>
+
+          <!-- Smart Period Picker wrapper -->
+          <div class="period-picker" id="periodPicker">
+
+            <!-- Daily / Custom: plain date input (shown only when timeframe=daily or custom) -->
+            <input type="date" class="date-select" id="reviewDateSelect"
+                   style="padding: 0 10px; display:block;" />
+                   
+            <!-- End Date: shown only when timeframe=custom -->
+            <span id="endDateSeparator" style="display:none; color:var(--text-muted); font-size: 13px; font-weight: 500; margin: 0 8px;">to</span>
+            <input type="date" class="date-select" id="endDateSelect"
+                   style="padding: 0 10px; display:none;" />
+
+            <!-- Year input (shown for monthly + quarterly) -->
+            <input type="number" id="periodYear" class="date-select"
+                   min="2018" max="2035" placeholder="Year"
+                   style="width:78px; text-align:center; display:none; padding:0 6px;" />
+
+            <!-- Month pills (shown for monthly) -->
+            <div id="monthPills" class="period-pills" style="display:none;">
+              <button class="period-pill" data-mo="1">Jan</button>
+              <button class="period-pill" data-mo="2">Feb</button>
+              <button class="period-pill" data-mo="3">Mar</button>
+              <button class="period-pill" data-mo="4">Apr</button>
+              <button class="period-pill" data-mo="5">May</button>
+              <button class="period-pill" data-mo="6">Jun</button>
+              <button class="period-pill" data-mo="7">Jul</button>
+              <button class="period-pill" data-mo="8">Aug</button>
+              <button class="period-pill" data-mo="9">Sep</button>
+              <button class="period-pill" data-mo="10">Oct</button>
+              <button class="period-pill" data-mo="11">Nov</button>
+              <button class="period-pill" data-mo="12">Dec</button>
+            </div>
+
+            <!-- Quarter pills (shown for quarterly) -->
+            <div id="quarterPills" class="period-pills" style="display:none;">
+              <button class="period-pill" data-q="1">Q1</button>
+              <button class="period-pill" data-q="2">Q2</button>
+              <button class="period-pill" data-q="3">Q3</button>
+              <button class="period-pill" data-q="4">Q4</button>
+            </div>
+          </div>
+
+          <!-- Timeframe selector -->
+          <div class="date-selector-wrapper">
+            <select class="date-select" id="timeframeSelect">
+              <option value="daily">Daily</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          <button class="btn" id="btnNewDate"><i data-lucide="plus"></i> New Date</button>
+
+          <!-- ClickHouse source toggle + status badge -->
+          <div class="ch-source-group" id="chSourceGroup" title="Toggle data source between uploaded Excel and live ClickHouse database">
+            <button class="ch-source-btn" id="btnSourceToggle" onclick="window.toggleDataSource()">
+              <span class="ch-source-icon">⚡</span>
+              <span id="chSourceLabel">Live DB</span>
+            </button>
+            <div class="ch-status-badge" id="chStatusBadge" title="ClickHouse connection status">
+              <span class="ch-dot" id="chStatusDot"></span>
+              <span class="ch-status-text" id="chStatusText">···</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="action-buttons">
+          <button class="btn btn-success" id="btnSaveData"><i data-lucide="save"></i> Save Changes</button>
+          <button class="btn btn-primary" id="btnExportExcel"><i data-lucide="file-spreadsheet"></i> Export Excel</button>
+          <button class="btn btn-primary" id="btnExportPptx"><i data-lucide="file-output"></i> Export Slide Deck</button>
+        </div>
+      </header>
+
+      <!-- Pages Container -->
+      <div class="page-body">
+        
+        <!-- DASHBOARD TAB -->
+        <div class="tab-page active" id="tab-dashboard">
+          <div class="dashboard-grid">
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span>Finance Pen. (Value)</span>
+                <i data-lucide="percent"></i>
+              </div>
+              <div class="kpi-value" id="kpi-val-pen">0.0%</div>
+              <div class="kpi-footer">
+                <span>Value Penetration</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span>Finance Pen. (Volume)</span>
+                <i data-lucide="activity"></i>
+              </div>
+              <div class="kpi-value" id="kpi-vol-pen">0.0%</div>
+              <div class="kpi-footer">
+                <span>Volume Penetration</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span>Card Pen. (Volume)</span>
+                <i data-lucide="credit-card"></i>
+              </div>
+              <div class="kpi-value" id="kpi-card-pen">0.0%</div>
+              <div class="kpi-footer">
+                <span>Card Volume Penetration</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span>Total Sourcing</span>
+                <i data-lucide="box"></i>
+              </div>
+              <div class="kpi-value" id="kpi-vol-src">0</div>
+              <div class="kpi-footer">
+                <span>Total units sold</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-visuals">
+            <div class="visual-card">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+                <h3 id="chartTitle" style="margin:0;">Financier Target vs Achievement &mdash; Volume (Units)</h3>
+                <div style="display:flex; gap:6px;">
+                  <button id="btn-chart-volume" onclick="setChartMode('volume')"
+                    style="padding:5px 14px; border-radius:20px; border:1.5px solid #2563eb; background:rgba(79,172,254,0.2); color:#2563eb; font-size:12px; font-weight:600; cursor:pointer;">
+                    &#128202; Volume
+                  </button>
+                  <button id="btn-chart-value" onclick="setChartMode('value')"
+                    style="padding:5px 14px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.15); background:transparent; color:#94a3b8; font-size:12px; font-weight:600; cursor:pointer;">
+                    &#128176; Value
+                  </button>
+                </div>
+              </div>
+              <div style="flex-grow: 1; position: relative; min-height:260px;">
+                <canvas id="financierChart"></canvas>
+              </div>
+            </div>
+            
+            <div class="visual-card" style="justify-content: center; align-items: center; text-align: center; gap: 12px; padding: 40px;">
+              <i data-lucide="sparkles" style="font-size: 48px; color: var(--accent-cyan); width: 48px; height: 48px;"></i>
+              <h2 style="font-size: 20px; margin-top: 12px;">Weekly TM Review</h2>
+              <p style="color: var(--text-muted); font-size: 13px; max-width: 250px;">
+                Enter raw financier data, adjust monthly projections, and download fully-formatted Excel summaries and updated slides instantly.
+              </p>
+              <div class="upload-zone" id="csvDragZone" style="width: 100%; margin-top: 16px;">
+                <i data-lucide="upload-cloud"></i>
+                <p>Drag & Drop Weekly Sourcing CSV</p>
+                <p style="font-size: 10px; margin-top: 4px; opacity: 0.5;">Auto-fills Sourcing & Pending Counts</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- EXEC SUMMARY TAB -->
+        <div class="tab-page" id="tab-exec-summary">
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Q1 (AMJ'26) Performance</h2>
+              <span class="badge">Auto-Calculates GAPs and Trend Projections</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-target-ach" style="border-collapse: separate; border-spacing: 0;">
+                <thead>
+                  <!-- GROUP HEADER ROW -->
+                  <tr>
+                    <th rowspan="2" style="vertical-align: middle; text-align: left;">Metric</th>
+                    <th colspan="3" class="num-align" style="text-align: center; letter-spacing: 0.5px; font-size: 12px; padding: 8px 12px;">Finance Penetration</th>
+                    <th colspan="2" class="num-align" style="text-align: center; letter-spacing: 0.5px; font-size: 12px; padding: 8px 12px;">Value Target</th>
+                  </tr>
+                  <!-- SUB-HEADER ROW -->
+                  <tr>
+                    <th class="num-align" style="font-size: 11px; padding: 6px 10px;">Value</th>
+                    <th class="num-align" style="font-size: 11px; padding: 6px 10px;">Vol</th>
+                    <th class="num-align" style="font-size: 11px; padding: 6px 10px;">Cards</th>
+                    <th class="num-align" style="font-size: 11px; padding: 6px 10px;">Fin. Value</th>
+                    <th class="num-align" style="font-size: 11px; padding: 6px 10px;">Card Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Filled by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Monthwise Performance (Q1)</h2>
+              <span class="badge">Monthly Metrics Tracking</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-monthwise">
+                <thead>
+                  <tr>
+                    <th>Key Objectives</th>
+                    <th class="num-align">Apr</th>
+                    <th class="num-align">May</th>
+                    <th class="num-align">Jun</th>
+                    <th class="num-align">Q1 Total / Avg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Filled by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- CATEGORY TAB -->
+        <div class="tab-page" id="tab-category">
+          <div class="category-filters-bar" style="display: flex; gap: 15px; padding: 15px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; margin-bottom: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by RBM</label>
+              <select id="cat-filter-rbm" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All RBMs</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by BDM</label>
+              <select id="cat-filter-bdm" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All BDMs</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by Store</label>
+              <select id="cat-filter-store" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All Stores</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by Staff</label>
+              <select id="cat-filter-staff" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All Staff</option>
+              </select>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h2>Product Category Performance - Volume (Qty)</h2>
+                <span class="badge">Quantity Sourcing Grid</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="font-size: 13px; color: var(--text-muted);">Filter Brand:</label>
+                <select id="filter-brand" class="date-select" style="width: 150px; padding: 4px 8px; height: 32px; font-size: 13px; margin-right: 15px;">
+                  <option value="ALL">All Brands</option>
+                </select>
+                <label style="font-size: 13px; color: var(--text-muted);">Filter Category:</label>
+                <select id="filter-category" class="date-select" style="width: 150px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                  <option value="ALL">All Categories</option>
+                  <option value="CD PRODUCTS">CD PRODUCTS</option>
+                  <option value="LAPTOP">LAPTOP</option>
+                  <option value="MOBILE">MOBILE</option>
+                  <option value="HVA">HVA</option>
+                  <option value="SA">SA</option>
+                  <option value="OTHERS">OTHERS</option>
+                  <option value="BANK EMI">BANK EMI</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-cat-qty">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="num-align">aCASH</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align">Total</th>
+                    <th class="num-align">Fin Share</th>
+                    <th class="num-align">Paper Total</th>
+                    <th class="num-align">Card Total</th>
+                    <th class="num-align">Last Week</th>
+                    <th class="num-align">Apr Close</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Filled by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Product Category Performance - Value (in Cr)</h2>
+              <span class="badge">Value Sourcing Grid</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-cat-value">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="num-align">aCASH</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align">Total</th>
+                    <th class="num-align">Fin Share</th>
+                    <th class="num-align">Paper Total</th>
+                    <th class="num-align">Card Total</th>
+                    <th class="num-align">Last Week</th>
+                    <th class="num-align">Apr Close</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Filled by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ZONE PERFORMANCE TAB -->
+        <div class="tab-page" id="tab-zone">
+          <!-- FILTERS BAR -->
+          <div class="category-filters-bar" style="display: flex; gap: 15px; padding: 15px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Select Zone</label>
+              <select id="zone-rbm-filter" class="date-select" style="width: 180px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="ALL">All Zones</option>
+              </select>
+            </div>
+            <div style="margin-left: auto;">
+              <span class="badge" style="background: rgba(79,172,254,0.15); color: #2563eb;">Category &times; Financier by Zone</span>
+            </div>
+          </div>
+
+          <!-- VOLUME TABLE -->
+          <div class="data-card" style="margin-bottom: 20px;">
+            <div class="card-title">
+              <h2>Zone Performance &mdash; Volume (Count)</h2>
+              <span class="badge">Category-wise Financier Qty</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-zone-cat-qty">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="num-align">aCash</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align" style="font-weight:700; color:#2563eb;">Total</th>
+                    <th class="num-align" style="color:#d97706;">Fin Share</th>
+                    <th class="num-align" style="color:#a3f0bb;">Paper Total</th>
+                    <th class="num-align" style="color:#b6c0f3;">Card Total</th>
+                  </tr>
+                </thead>
+                <tbody id="zone-cat-qty-body">
+                  <tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:30px;">Select a timeframe to load data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- VALUE TABLE -->
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Zone Performance &mdash; Value (&#8377;)</h2>
+              <span class="badge">Category-wise Financier Value</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-zone-cat-val">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="num-align">aCash</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align" style="font-weight:700; color:#2563eb;">Total</th>
+                    <th class="num-align" style="color:#d97706;">Fin Share</th>
+                    <th class="num-align" style="color:#a3f0bb;">Paper Total</th>
+                    <th class="num-align" style="color:#b6c0f3;">Card Total</th>
+                  </tr>
+                </thead>
+                <tbody id="zone-cat-val-body">
+                  <tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:30px;">Select a timeframe to load data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PRICE RANGE TAB -->
+        <div class="tab-page" id="tab-price">
+          <!-- FILTERS BAR -->
+          <div class="category-filters-bar" style="display:flex; gap:15px; padding:15px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Price Range</label>
+              <select id="price-range-filter" class="date-select" style="width:180px; padding:4px 8px; height:32px; font-size:13px;">
+                <option value="ALL">All Prices</option>
+                <option value="Below 10K">Below 10K</option>
+                <option value="10K to 15K">10K to 15K</option>
+                <option value="15K to 20K">15K to 20K</option>
+                <option value="20K to 30K">20K to 30K</option>
+                <option value="30K to 40K">30K to 40K</option>
+                <option value="40K to 50K">40K to 50K</option>
+                <option value="50K to 75K">50K to 75K</option>
+                <option value="75K to 100K">75K to 100K</option>
+                <option value="100K to 150K">100K to 150K</option>
+                <option value="Above 150K">Above 150K</option>
+              </select>
+            </div>
+            <div style="margin-left:auto;">
+              <span class="badge" style="background:rgba(79,172,254,0.15); color:#2563eb;">Category &times; Financier by Price Band</span>
+            </div>
+          </div>
+
+          <!-- VOLUME TABLE -->
+          <div class="data-card" style="margin-bottom:20px;">
+            <div class="card-title">
+              <h2>Price Range &mdash; Volume (Count)</h2>
+              <span class="badge">Category-wise Financier Qty</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-price-qty">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="num-align">aCash</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align" style="font-weight:700; color:#2563eb;">Total</th>
+                    <th class="num-align" style="color:#d97706;">Fin Share</th>
+                    <th class="num-align" style="color:#a3f0bb;">Paper Total</th>
+                    <th class="num-align" style="color:#b6c0f3;">Card Total</th>
+                  </tr>
+                </thead>
+                <tbody id="price-qty-body">
+                  <tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:30px;">Select a price range to load data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- VALUE TABLE -->
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Price Range &mdash; Value (&#8377;)</h2>
+              <span class="badge">Category-wise Financier Value</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-price-val">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="num-align">aCash</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align" style="font-weight:700; color:#2563eb;">Total</th>
+                    <th class="num-align" style="color:#d97706;">Fin Share</th>
+                    <th class="num-align" style="color:#a3f0bb;">Paper Total</th>
+                    <th class="num-align" style="color:#b6c0f3;">Card Total</th>
+                  </tr>
+                </thead>
+                <tbody id="price-val-body">
+                  <tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:30px;">Select a price range to load data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- BRAND PERFORMANCE TAB -->
+        <div class="tab-page" id="tab-brand">
+          <!-- FILTERS BAR -->
+          <div class="category-filters-bar" style="display:flex; gap:15px; padding:15px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Category</label>
+              <select id="brand-category-filter" class="date-select" style="width:170px; padding:4px 8px; height:32px; font-size:13px;">
+                <option value="ALL">All Categories</option>
+                <option value="MOBILE">Mobile</option>
+                <option value="LAPTOP">Laptop</option>
+                <option value="HVA">HVA</option>
+                <option value="SA">SA</option>
+                <option value="CD PRODUCTS">CD Products</option>
+                <option value="OTHERS">Others</option>
+              </select>
+            </div>
+            <div id="brand-product-filter-container" style="display:none; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Product</label>
+              <select id="brand-product-filter" class="date-select" style="width:170px; padding:4px 8px; height:32px; font-size:13px;">
+                <option value="ALL">All Products</option>
+                <option value="AIR CONDITIONER">Air Conditioner</option>
+                <option value="DISH WASHER">Dish Washer</option>
+                <option value="DRYER">Dryer</option>
+                <option value="FREEZER">Freezer</option>
+                <option value="HOME APPLIANCES">Home Appliances</option>
+                <option value="MICROWAVE OVEN">Microwave Oven</option>
+                <option value="REFRIGERATORS">Refrigerators</option>
+                <option value="TV">TV</option>
+                <option value="WASHING MACHINES">Washing Machines</option>
+              </select>
+            </div>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+              <span class="badge" style="background:rgba(163,240,187,0.12); color:#a3f0bb;">Brand &times; Financier</span>
+              <button onclick="exportTableToExcel('brand-perf-body', 'Brand_Performance')" style="padding:6px 14px; border-radius:6px; border:1.5px solid rgba(79,172,254,0.4); background:rgba(79,172,254,0.08); color:#2563eb; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                &#128196; Export Excel
+              </button>
+            </div>
+          </div>
+
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Brand Performance &mdash; Volume (Count)</h2>
+              <span class="badge">Brand-wise Financier Qty</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-brand-perf">
+                <thead>
+                  <tr>
+                    <th>Brand</th>
+                    <th class="num-align">aCash</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align">PAYTM</th>
+                    <th class="num-align">Benow</th>
+                    <th class="num-align" style="font-weight:700; color:#2563eb;">Total</th>
+                    <th class="num-align" style="color:#d97706;">Fin%</th>
+                    <th class="num-align" style="color:#a3f0bb;">Value (&#8377;)</th>
+                    <th class="num-align" style="color:#b6c0f3;">ASP</th>
+                  </tr>
+                </thead>
+                <tbody id="brand-perf-body">
+                  <tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:30px;">Select a timeframe to load data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- STORE PERFORMANCE TAB -->
+        <div class="tab-page" id="tab-store">
+          <!-- FILTERS BAR -->
+          <div class="category-filters-bar" style="display:flex; gap:15px; padding:15px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Zone</label>
+              <select id="store-zone-filter" class="date-select" style="width:160px; padding:4px 8px; height:32px; font-size:13px;">
+                <option value="ALL">All Zones</option>
+              </select>
+            </div>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+              <span class="badge" style="background:rgba(181,160,255,0.12); color:#b5a0ff;">Store-wise Breakdown</span>
+              <button onclick="exportTableToExcel('store-perf-body', 'Store_Performance')" style="padding:6px 14px; border-radius:6px; border:1.5px solid rgba(79,172,254,0.4); background:rgba(79,172,254,0.08); color:#2563eb; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                &#128196; Export Excel
+              </button>
+            </div>
+          </div>
+
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Store Performance &mdash; Volume & Value</h2>
+              <span class="badge">Branch-wise Financier Summary</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-store-perf">
+                <thead>
+                  <tr>
+                    <th>Store / Branch</th>
+                    <th class="num-align">Zone</th>
+                    <th class="num-align">RBM</th>
+                    <th class="num-align">Total Units</th>
+                    <th class="num-align">Fin Units</th>
+                    <th class="num-align" style="color:#d97706;">Fin%</th>
+                    <th class="num-align">aCash</th>
+                    <th class="num-align">BAJAJ</th>
+                    <th class="num-align">HDB</th>
+                    <th class="num-align">IDFC</th>
+                    <th class="num-align">PFL</th>
+                    <th class="num-align">TVS</th>
+                    <th class="num-align">DMI</th>
+                    <th class="num-align">PineLab</th>
+                    <th class="num-align" style="color:#2563eb;">Total Value (&#8377;)</th>
+                    <th class="num-align" style="color:#b6c0f3;">ASP</th>
+                  </tr>
+                </thead>
+                <tbody id="store-perf-body">
+                  <tr><td colspan="16" style="text-align:center; color:var(--text-muted); padding:30px;">Select a timeframe to load data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TEAM PERFORMANCE TAB -->
+        <div class="tab-page" id="tab-team">
+          <div class="data-card">
+            <div class="card-title">
+              <h2>&#128101; Team Performance (Drill-down)</h2>
+              <span class="badge">Hierarchy View</span>
+            </div>
+            
+            <div class="table-responsive">
+              <table class="data-table" id="table-team-perf">
+                <thead>
+                  <tr>
+                    <th>Hierarchy Level (Click to Expand)</th>
+                    <th class="num-align">Total Volume</th>
+                    <th class="num-align">Total Value</th>
+                    <th class="num-align">Finance Volume</th>
+                    <th class="num-align">Finance Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- DATA CLEANER TAB -->
+
+        <div class="tab-page" id="tab-cleaner">
+          <!-- Module 1: Combined Sales Report Clean & Export -->
+          <div class="data-card" style="margin-bottom: 32px; border-left: 4px solid var(--accent-blue);">
+            <div class="card-title">
+              <h2>&#128202; Combined Sales Report Cleaner & Exporter</h2>
+              <span class="badge" style="background: rgba(79, 172, 254, 0.1); color: var(--accent-blue);">Rule-Based Processing</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+              Cleans selling prices below &#8377;3,000, removes general RBM, filters e-commerce financier names, standardizes financiers, maps categories, and region/price-range slabs. Exports formatted sheet exactly like <strong>Workbook1DATA.xlsx</strong>.
+            </p>
+            
+            <div class="upload-zone" id="salesReportDragZone" style="margin-bottom: 24px; border-color: rgba(79, 172, 254, 0.4);">
+              <i data-lucide="file-spreadsheet" style="color: var(--accent-blue); width: 38px; height: 38px; margin-bottom: 12px;"></i>
+              <p>Drag & Drop Raw Combined Sales Report Excel (<strong>CombinedSalesReport.xlsx</strong>)</p>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Supports `.xlsx` formats. Processes in-memory on backend.</p>
+            </div>
+
+            <div id="salesReportResult" style="display:none; padding: 24px; background: rgba(0, 242, 254, 0.05); border-radius: 12px; border: 1px solid var(--accent-cyan); text-align: center; margin-bottom: 24px;">
+              <div style="color: var(--color-success); font-size: 32px; margin-bottom: 8px;"><i data-lucide="check-circle" style="display:inline-block;"></i></div>
+              <h3 style="font-size: 16px; margin-bottom: 8px; color: var(--text-main);">Sales Report Cleaned Successfully!</h3>
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;" id="salesReportResultText">Processed 0 records.</p>
+              <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; align-items: center;">
+                <button class="btn btn-primary" id="btnDownloadCleanedSales"><i data-lucide="download"></i> Download Cleaned Excel Report</button>
+                <button class="btn" id="btnExportFinanceReport" style="background: linear-gradient(135deg, #1a6b3c, #27ae60); color: #fff; border: none; display: flex; align-items: center; gap: 8px;">
+                  <i data-lucide="bar-chart-2"></i> Export Finance Report
+                </button>
+                <button id="btnImportExcelToReview" class="btn btn-primary" style="display:inline-flex; align-items:center; gap:8px;">
+                  <i data-lucide="copy-check"></i> Import Data into Dashboard
+                </button>
+                <button id="btnImportClickhouseToReview" class="btn" style="display:inline-flex; align-items:center; gap:8px; background: linear-gradient(135deg, #1e6eff22, #00e5ff18); border: 1.5px solid var(--cyan2); color: var(--blue); font-weight:600;" title="Pull live financier & category data from ClickHouse for the active review date">
+                  <span style="font-size:14px;">⚡</span> Import from ClickHouse
+                </button>
+              </div>
+              <!-- Finance report status -->
+              <div id="financeReportStatus" style="display:none; margin-top: 16px; padding: 12px 20px; border-radius: 8px; font-size: 13px;"></div>
+              <div id="financeReportDownloadRow" style="display:none; margin-top: 12px; gap: 12px; flex-wrap: wrap;">
+                <a id="btnDownloadFinanceReport" href="/api/download-finance-report" class="btn btn-success" style="display:inline-flex; align-items:center; gap:8px;">
+                  <i data-lucide="file-down"></i> Download Finance Detailed Report
+                </a>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Module 2: Interactive Sourcing Data Cleaner -->
+          <div class="data-card">
+            <div class="card-title">
+              <h2>&#129529; Interactive Sourcing Data Cleaner</h2>
+              <span class="badge">Auto-fill Review Tables</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+              Upload raw lists, map columns interactively, and auto-populate your review tables (Sourcing, pending counts, and branch contest metrics) for the active date.
+            </p>
+            
+            <div class="upload-zone" id="cleanerDragZone" style="margin-bottom: 24px;">
+              <i data-lucide="upload" style="width: 38px; height: 38px; margin-bottom: 12px;"></i>
+              <p>Drag & Drop Raw Sourcing CSV / Excel Export Dump</p>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Supports any transaction dump sheet. Parses headers automatically.</p>
+            </div>
+
+            <div id="cleanerConfigSection" style="display:none; margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px solid var(--panel-border);">
+              <h3 style="margin-bottom: 16px; color: var(--accent-cyan); font-size: 16px;">Column Mapping</h3>
+              <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">We auto-detected these columns. Please verify or adjust them before cleaning.</p>
+              
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;">
+                <div class="form-group">
+                  <label>Financier / Lender Column</label>
+                  <select class="date-select" id="map-col-fin" style="width:100%; height: 40px; padding: 0 10px;"></select>
+                </div>
+                <div class="form-group">
+                  <label>Branch / Store Column</label>
+                  <select class="date-select" id="map-col-branch" style="width:100%; height: 40px; padding: 0 10px;"></select>
+                </div>
+                <div class="form-group">
+                  <label>Product Category Column</label>
+                  <select class="date-select" id="map-col-cat" style="width:100%; height: 40px; padding: 0 10px;"></select>
+                </div>
+                <div class="form-group">
+                  <label>Status / Sourcing Stage Column</label>
+                  <select class="date-select" id="map-col-status" style="width:100%; height: 40px; padding: 0 10px;"></select>
+                </div>
+                <div class="form-group">
+                  <label>Sourcing Value Column</label>
+                  <select class="date-select" id="map-col-val" style="width:100%; height: 40px; padding: 0 10px;"></select>
+                </div>
+                <div class="form-group">
+                  <label>Brand Column (for DMI contest)</label>
+                  <select class="date-select" id="map-col-brand" style="width:100%; height: 40px; padding: 0 10px;"></select>
+                </div>
+              </div>
+              
+              <div style="margin-top: 20px; display: flex; gap: 12px;">
+                <button class="btn btn-primary" id="btnRunCleaner"><i data-lucide="sparkles"></i> Clean & Aggregate Data</button>
+                <button class="btn" id="btnResetCleaner"><i data-lucide="rotate-ccw"></i> Reset</button>
+              </div>
+            </div>
+
+            <div id="cleanerPreviewSection" style="display:none;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="color: var(--text-main); font-size: 16px;">Aggregation Summary Preview</h3>
+                <div style="display: flex; gap: 12px;">
+                  <button class="btn btn-success" id="btnApplyCleanedAll"><i data-lucide="check-check"></i> Apply All to Active Review</button>
+                </div>
+              </div>
+
+              <div class="table-grid-2" style="margin-bottom: 24px;">
+                <div class="data-card" style="padding: 16px;">
+                  <h4 style="margin-bottom: 12px; color: var(--accent-blue); font-size: 14px;">Sourcing & Pending Counts</h4>
+                  <div class="table-responsive">
+                    <table class="data-table" id="table-cleaner-sourcing">
+                      <thead>
+                        <tr>
+                          <th>Financier</th>
+                          <th class="num-align">Sourcing Count</th>
+                          <th class="num-align">Pending Count</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="data-card" style="padding: 16px;">
+                  <h4 style="margin-bottom: 12px; color: var(--accent-blue); font-size: 14px;">DMI Contest Brand Performance</h4>
+                  <div class="table-responsive">
+                    <table class="data-table" id="table-cleaner-dmi">
+                      <thead>
+                        <tr>
+                          <th>Brand</th>
+                          <th class="num-align">Cleaned Count</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETTINGS TAB -->
+        <div class="tab-page" id="tab-settings">
+          <div class="data-card">
+            <div class="card-title">
+              <h2>Global Goal Settings</h2>
+              <span class="badge">Configure baseline targets</span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 20px;">
+              <div>
+                <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">Executive Summary Targets</h3>
+                <div class="form-group">
+                  <label>Value Penetration Target (%)</label>
+                  <input type="number" step="0.01" id="cfg-val-pen" value="67.0">
+                </div>
+                <div class="form-group">
+                  <label>Volume Penetration Target (%)</label>
+                  <input type="number" step="0.01" id="cfg-vol-pen" value="55.0">
+                </div>
+                <div class="form-group">
+                  <label>Cards Penetration Target (%)</label>
+                  <input type="number" step="0.01" id="cfg-cards-pen" value="6.91">
+                </div>
+                <div class="form-group">
+                  <label>Fin. Value Target (Cr)</label>
+                  <input type="number" step="0.01" id="cfg-fin-val" value="460.0">
+                </div>
+                <div class="form-group">
+                  <label>Card Value Target (Cr)</label>
+                  <input type="number" step="0.01" id="cfg-card-val" value="47.41">
+                </div>
+              </div>
+              
+              <div>
+                <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">Financier Volume Targets</h3>
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label>BAJAJ Target</label>
+                    <input type="number" id="cfg-fin-bajaj" value="88779">
+                  </div>
+                  <div>
+                    <label>HDB Target</label>
+                    <input type="number" id="cfg-fin-hdb" value="6341">
+                  </div>
+                </div>
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label>IDFC Target</label>
+                    <input type="number" id="cfg-fin-idfc" value="4488">
+                  </div>
+                  <div>
+                    <label>PFL Target</label>
+                    <input type="number" id="cfg-fin-pfl" value="134">
+                  </div>
+                </div>
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label>TVS Target</label>
+                    <input type="number" id="cfg-fin-tvs" value="1574">
+                  </div>
+                  <div>
+                    <label>DMI Target</label>
+                    <input type="number" id="cfg-fin-dmi" value="1708">
+                  </div>
+                </div>
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label>PineLab (Cr)</label>
+                    <input type="number" step="0.1" id="cfg-fin-pine" value="42.4">
+                  </div>
+                  <div>
+                    <label>PayTm (Cr)</label>
+                    <input type="number" step="0.1" id="cfg-fin-paytm" value="1.7">
+                  </div>
+                  <div>
+                    <label>Benow (Cr)</label>
+                    <input type="number" step="0.1" id="cfg-fin-benow" value="3.3">
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <button class="btn btn-primary" id="btnSaveConfig" style="margin-top: 20px;"><i data-lucide="check"></i> Save Targets Config</button>
+          </div>
+        </div>
+        
+      </div>
+    </main>
+  </div>
+
+  <!-- NEW DATE MODAL -->
+  <div class="modal-overlay" id="newDateModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Create New Review Record</h3>
+      </div>
+      <div class="form-group">
+        <label>Review Date (YYYY-MM-DD)</label>
+        <input type="date" id="newReviewDate" value="">
+      </div>
+      <div class="form-group">
+        <label>Status As Of Date (YYYY-MM-DD)</label>
+        <input type="date" id="newStatusAsOf" value="">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="btnCancelModal">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmModal">Create Record</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toastNotification">
+    <span id="toastIcon"><i data-lucide="info"></i></span>
+    <span id="toastText">Action successful</span>
+  </div>
+
+  <!-- Lucide Icons & Chart.js -->
+  <script src="/static/js/lucide.min.js"></script>
+  <script src="/static/js/chart.min.js"></script>
+  <!-- SheetJS for Excel export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Main JS -->
+  <script src="/static/js/main.js?v=20260915_dark_v4"></script>
+
+  <!-- Data Plexus Network Animation (Light Theme) -->
+  <script>
+  (function () {
+    const canvas = document.getElementById('bg-canvas');
+    if (!canvas || typeof THREE === 'undefined') return;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0);
+
+    const scene = new THREE.Scene();
+    
+    // Very subtle dark fog
+    scene.fog = new THREE.FogExp2(0x0a0e1a, 0.0015);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 250;
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const particleCount = 200;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const velocities = [];
+
+    const r = 500;
+    for (let i = 0; i < particleCount; i++) {
+      positions[i * 3]     = (Math.random() * r - r / 2);
+      positions[i * 3 + 1] = (Math.random() * r - r / 2);
+      positions[i * 3 + 2] = (Math.random() * r - r / 2);
+      velocities.push({
+        x: (Math.random() - 0.5) * 0.4,
+        y: (Math.random() - 0.5) * 0.4,
+        z: (Math.random() - 0.5) * 0.4
+      });
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    
+    // Draw dots
+    const pMaterial = new THREE.PointsMaterial({
+      color: 0x3b82f6,
+      size: 3,
+      transparent: true,
+      opacity: 0.5
+    });
+    const particles = new THREE.Points(geometry, pMaterial);
+    group.add(particles);
+
+    // Draw lines
+    const linesMaterial = new THREE.LineBasicMaterial({
+      color: 0x00e5ff,
+      transparent: true,
+      opacity: 0.08
+    });
+    const linesGeometry = new THREE.BufferGeometry();
+    const lineMesh = new THREE.LineSegments(linesGeometry, linesMaterial);
+    group.add(lineMesh);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    let mouseX = 0, mouseY = 0;
+    document.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX - window.innerWidth / 2) * 0.1;
+      mouseY = (e.clientY - window.innerHeight / 2) * 0.1;
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      const pos = geometry.attributes.position.array;
+      
+      // Move particles
+      for (let i = 0; i < particleCount; i++) {
+        pos[i * 3]     += velocities[i].x;
+        pos[i * 3 + 1] += velocities[i].y;
+        pos[i * 3 + 2] += velocities[i].z;
+
+        // Bounce off bounds
+        if (pos[i * 3] < -r/2 || pos[i * 3] > r/2) velocities[i].x *= -1;
+        if (pos[i * 3 + 1] < -r/2 || pos[i * 3 + 1] > r/2) velocities[i].y *= -1;
+        if (pos[i * 3 + 2] < -r/2 || pos[i * 3 + 2] > r/2) velocities[i].z *= -1;
+      }
+      geometry.attributes.position.needsUpdate = true;
+      
+      // Connect close particles with lines
+      const linePositions = [];
+      for (let i = 0; i < particleCount; i++) {
+        for (let j = i + 1; j < particleCount; j++) {
+          const dx = pos[i * 3] - pos[j * 3];
+          const dy = pos[i * 3 + 1] - pos[j * 3 + 1];
+          const dz = pos[i * 3 + 2] - pos[j * 3 + 2];
+          const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+          
+          if (dist < 70) {
+            linePositions.push(
+              pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+              pos[j * 3], pos[j * 3 + 1], pos[j * 3 + 2]
+            );
+          }
+        }
+      }
+      
+      linesGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+
+      // Global rotation and mouse parallax
+      group.rotation.y += 0.0005;
+      group.rotation.x += 0.0002;
+      
+      camera.position.x += (mouseX - camera.position.x) * 0.02;
+      camera.position.y += (-mouseY - camera.position.y) * 0.02;
+      camera.lookAt(scene.position);
+
+      renderer.render(scene, camera);
+    }
+    
+    animate();
+  })();
+  </script>
+</body>
+</html>
+
