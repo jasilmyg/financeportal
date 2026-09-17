@@ -976,6 +976,28 @@ def api_clickhouse_aggregate_review():
         app.logger.error('ClickHouse aggregate-review failed: %s', exc, exc_info=True)
         return jsonify({'status': 'error', 'message': str(exc)}), 500
 
+# ---------------------------------------------------------------------------
+# Startup: pre-warm ClickHouse cache so first user doesn't wait 40s
+# ---------------------------------------------------------------------------
+def _prewarm_clickhouse_cache():
+    """Run on startup (background thread) to pre-load the most common query."""
+    if not _CLICKHOUSE_AVAILABLE:
+        return
+    try:
+        from datetime import date
+        from clickhouse_aggregator import get_clickhouse_df
+        today = date.today()
+        month_start = today.replace(day=1).isoformat()
+        app.logger.info("Cache pre-warm: querying current month (%s)…", month_start)
+        get_clickhouse_df(month_start, "monthly")
+        app.logger.info("Cache pre-warm complete.")
+    except Exception as e:
+        app.logger.warning("Cache pre-warm failed (non-fatal): %s", e)
+
+# Run pre-warm in background thread when the module loads (works with --preload)
+import threading as _threading
+_threading.Thread(target=_prewarm_clickhouse_cache, daemon=True).start()
+
 
 if __name__ == '__main__':
     # Start the server on localhost port 8005

@@ -3,7 +3,7 @@ services:
     name: myg-finance-portal
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --preload
     envVars:
       - key: CLICKHOUSE_HOST
         value: pdhsuv47ec.ap-south-1.aws.clickhouse.cloud
