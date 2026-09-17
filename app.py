@@ -202,7 +202,8 @@ def api_dashboard_data():
             # Reuse existing aggregation logic, passing the ClickHouse DataFrame
             data = get_dashboard_data(
                 raw_file_path=None, target_date_str=date_str, timeframe=timeframe,
-                rbm=rbm, bdm=bdm, store=store, staff=staff, zone_map=zone_map, df=ch_df
+                rbm=rbm, bdm=bdm, store=store, staff=staff, zone_map=zone_map, df=ch_df,
+                end_date_str=end_date_str  # ← was missing, caused custom range to show 1 day only
             )
             return jsonify(data)
         except Exception as exc:
