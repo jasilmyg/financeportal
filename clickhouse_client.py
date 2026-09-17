@@ -70,7 +70,7 @@ def cache_clear() -> int:
 _HOST = os.environ.get("CLICKHOUSE_HOST", "pdhsuv47ec.ap-south-1.aws.clickhouse.cloud")
 _PORT = int(os.environ.get("CLICKHOUSE_PORT", 8443))
 _USER = os.environ.get("CLICKHOUSE_USER", "default")
-_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
+_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "ZFlujj9SA_Iei")
 _DB = os.environ.get("CLICKHOUSE_DB", "default")
 
 # ---------------------------------------------------------------------------
