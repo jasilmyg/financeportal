@@ -331,6 +331,11 @@ SELECT
         WHEN upper(coalesce(inv.financier_name, '')) LIKE '%POONAWALLA%'
           OR upper(coalesce(inv.financier_name, '')) LIKE '%PFL%'
           OR upper(coalesce(inv.financier_code, ''))  LIKE 'POONA%'   THEN 'PFL'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%PINE LAB%'
+          OR upper(coalesce(inv.financier_name, '')) LIKE '%PINELAB%' THEN 'PineLab'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%PAYTM%'   THEN 'PAYTM'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%BENOW%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'BENOW%'   THEN 'Benow'
         ELSE 'aCASH'
     END AS Financier,
 

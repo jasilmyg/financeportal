@@ -894,7 +894,195 @@ select.date-select option {
   gap: 16px;
 }
 
-/* ─────────────────────────────────────── */
-/*  SPLASH LOADER (inherits from inline)  */
-/* ─────────────────────────────────────── */
 /* #splash-loader already has inline styles in HTML — no override needed */
+
+/* ─────────────────────────────────────── */
+/*  LOADING SKELETON SHIMMER              */
+/* ─────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.09) 37%,
+    rgba(255,255,255,0.04) 63%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 6px;
+  display: inline-block;
+}
+.skeleton-row td {
+  padding: 10px 13px;
+}
+.skeleton-cell {
+  height: 14px;
+  width: 60%;
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.09) 37%,
+    rgba(255,255,255,0.04) 63%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+.skeleton-cell.wide  { width: 80%; }
+.skeleton-cell.short { width: 35%; }
+.skeleton-cell.num   { width: 45%; margin-left: auto; }
+
+/* ─────────────────────────────────────── */
+/*  DATA LOADING OVERLAY                  */
+/* ─────────────────────────────────────── */
+.card-loading-overlay {
+  position: absolute; inset: 0; z-index: 5;
+  background: rgba(10,14,26,0.6);
+  backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 14px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+}
+.card-loading-overlay.active { opacity: 1; pointer-events: all; }
+.spinner-ring {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.08);
+  border-top-color: var(--cyan);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─────────────────────────────────────── */
+/*  EMPTY STATE                           */
+/* ─────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 60px 20px; text-align: center;
+  color: var(--text-muted);
+}
+.empty-state svg {
+  width: 56px; height: 56px; margin-bottom: 16px;
+  opacity: 0.3;
+}
+.empty-state p {
+  font-size: 13px; font-weight: 500;
+  color: var(--text-dim);
+  max-width: 280px; line-height: 1.6;
+}
+.empty-state h4 {
+  font-size: 15px; font-weight: 700;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+
+/* ─────────────────────────────────────── */
+/*  ENHANCED TABLE GRAND TOTAL ROW        */
+/* ─────────────────────────────────────── */
+.data-table tr.grand-total-row {
+  background: linear-gradient(135deg, rgba(59,130,246,0.10), rgba(0,229,255,0.06)) !important;
+  border-top: 2px solid rgba(59,130,246,0.25);
+  border-bottom: 2px solid rgba(59,130,246,0.15);
+}
+.data-table tr.grand-total-row td {
+  font-weight: 800 !important;
+  color: var(--text-primary) !important;
+  font-size: 13px !important;
+}
+.data-table tr.share-row {
+  border-top: none !important;
+}
+.data-table tr.share-row td {
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+  padding-top: 4px !important; padding-bottom: 4px !important;
+}
+
+/* ─────────────────────────────────────── */
+/*  POSITIVE / NEGATIVE VALUE COLORS      */
+/* ─────────────────────────────────────── */
+.val-positive { color: var(--color-success) !important; font-weight: 600; }
+.val-negative { color: var(--color-danger) !important; font-weight: 600; }
+.val-neutral  { color: var(--text-muted) !important; }
+
+/* ─────────────────────────────────────── */
+/*  STICKY TABLE HEADER ENHANCEMENT       */
+/* ─────────────────────────────────────── */
+.data-table thead th {
+  position: sticky; top: 0;
+  background: rgba(13,17,32,0.97) !important;
+  backdrop-filter: blur(12px);
+  border-bottom: 2px solid rgba(59,130,246,0.15) !important;
+  z-index: 3;
+}
+.data-table thead th:first-child { text-align: left; min-width: 130px; }
+
+/* ─────────────────────────────────────── */
+/*  DATA SOURCE INFO BAR                  */
+/* ─────────────────────────────────────── */
+.data-source-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: rgba(16,185,129,0.06);
+  border: 1px solid rgba(16,185,129,0.15);
+  border-radius: 8px;
+  font-size: 11.5px; color: #6ee7b7;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.data-source-bar .ds-icon { font-size: 14px; }
+.data-source-bar span { color: var(--text-muted); font-weight: 400; }
+
+/* ─────────────────────────────────────── */
+/*  ENHANCED KPI CARD NUMBERS             */
+/* ─────────────────────────────────────── */
+.kpi-value .kpi-unit {
+  font-size: 16px; font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+.kpi-trend-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 10.5px; font-weight: 700;
+}
+.kpi-trend-badge.up {
+  background: rgba(16,185,129,0.12);
+  color: #6ee7b7;
+}
+.kpi-trend-badge.down {
+  background: rgba(244,63,94,0.12);
+  color: #fca5a5;
+}
+
+/* ─────────────────────────────────────── */
+/*  FILTER CHIP STYLE                     */
+/* ─────────────────────────────────────── */
+.filter-bar {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px; padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px; margin-bottom: 18px;
+}
+.filter-group {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.filter-group label {
+  font-size: 10.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+/* ─────────────────────────────────────── */
+/*  RESPONSIVE TWEAKS                     */
+/* ─────────────────────────────────────── */
+@media (max-width: 1280px) {
+  .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+  .dashboard-visuals { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .sidebar { width: 56px; }
+  .logo-text, .nav-item span { display: none; }
+  .nav-item { justify-content: center; padding: 10px; }
+  .page-body { padding: 16px; }
+}

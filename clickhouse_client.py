@@ -74,21 +74,21 @@ _PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "ZFlujj9SA_Iei")
 _DB = os.environ.get("CLICKHOUSE_DB", "default")
 
 # ---------------------------------------------------------------------------
-# Singleton client
+# Thread-local client (one connection per thread — avoids concurrent-session errors)
 # ---------------------------------------------------------------------------
-_client = None
+import threading as _threading
+_thread_local = _threading.local()
 
 
 def get_client():
-    """Return (and lazily create) the singleton ClickHouse client."""
-    global _client
-    if _client is not None:
-        return _client
+    """Return (and lazily create) a per-thread ClickHouse client."""
+    if getattr(_thread_local, 'client', None) is not None:
+        return _thread_local.client
 
     try:
         import clickhouse_connect  # type: ignore
 
-        _client = clickhouse_connect.get_client(
+        _thread_local.client = clickhouse_connect.get_client(
             host=_HOST,
             port=_PORT,
             username=_USER,
@@ -99,12 +99,13 @@ def get_client():
             connect_timeout=10,
             send_receive_timeout=120,
         )
-        logger.info("ClickHouse client connected to %s:%s", _HOST, _PORT)
+        logger.info("ClickHouse client connected to %s:%s (thread=%s)", _HOST, _PORT, _threading.current_thread().name)
     except Exception as exc:
         logger.error("Failed to connect to ClickHouse: %s", exc)
         raise
 
-    return _client
+    return _thread_local.client
+
 
 
 def query_df(sql: str, params: dict | None = None, cache: bool = True):

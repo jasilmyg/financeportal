@@ -654,9 +654,16 @@ function initDateSelector() {
     .then(dates => {
       const tf = tfSelect.value;
       if (dates.length === 0) {
-        const todayStr = new Date().toISOString().split('T')[0];
-        dateInput.value = todayStr;
-        activeDate = todayStr;
+        // No saved reviews — default to current month in monthly mode
+        const today = new Date();
+        const monthStart = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+        activeDate = monthStart;
+        dateInput.value = monthStart;
+        // Switch to monthly timeframe for a better initial view
+        if (tfSelect.value === 'daily') {
+          tfSelect.value = 'monthly';
+          applyPickerMode('monthly');
+        }
       } else {
         dateInput.value = dates[0];
         activeDate = dates[0];
@@ -667,11 +674,12 @@ function initDateSelector() {
         activeEndDate = activeDate;
       }
       
+      const activeTf = tfSelect.value;
       syncYearInput();
-      applyPickerMode(tf);
-      highlightPills(tf);
+      applyPickerMode(activeTf);
+      highlightPills(activeTf);
       loadData(activeDate);
-      loadDashboardData(activeDate, tf);
+      loadDashboardData(activeDate, activeTf);
     })
     .catch(err => {
       showToast("Error loading review dates", "error");
