@@ -12,7 +12,7 @@ services:
       - key: CLICKHOUSE_USER
         value: default
       - key: CLICKHOUSE_PASSWORD
-        sync: false
+        value: "ZFlujj9SA_Iei"
       - key: CLICKHOUSE_DB
         value: default
       - key: PYTHON_VERSION
