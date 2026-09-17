@@ -283,15 +283,21 @@ def get_clickhouse_df(
     where_clause = " AND ".join([date_filter] + extra_filters) if extra_filters else date_filter
 
     # Use coarser date granularity in GROUP BY to maximise pre-aggregation:
-    #   daily     → keep exact date   (11K rows)
-    #   monthly   → truncate to month start  (248K → ~5K)
-    #   quarterly → truncate to quarter start (589K → ~5K)
-    # dashboard_aggregator's year/month/quarter filters still match these dates.
-    date_expr = {
-        'daily':     'toDate(s.date)',
-        'monthly':   'toStartOfMonth(s.date)',
-        'quarterly': 'toStartOfQuarter(s.date)',
-    }.get(timeframe, 'toDate(s.date)')
+    #   daily     → keep exact date   (~5K rows/day)
+    #   monthly   → truncate to month start  (~5K rows total)
+    #   quarterly → truncate to quarter start (~5K rows total)
+    #   custom    → use start_date as constant (collapses all days → ~5K rows)
+    #               Without this, a 16-day range returns 16×5K=80K rows → Render timeout.
+    #               dashboard_aggregator's custom mask (date >= start AND date <= end)
+    #               still works because all rows get Date=start_date which is always <= end_date.
+    if timeframe == 'custom':
+        date_expr = f"toDate('{date_str}')"   # constant: all rows → same date = range start
+    else:
+        date_expr = {
+            'daily':     'toDate(s.date)',
+            'monthly':   'toStartOfMonth(s.date)',
+            'quarterly': 'toStartOfQuarter(s.date)',
+        }.get(timeframe, 'toDate(s.date)')
 
     # RBM exclusion list for SQL (mirrors sales_cleaner step 1)
     remove_rbm_sql = ", ".join(f"'{r}'" for r in _REMOVE_RBM)
