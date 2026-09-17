@@ -293,44 +293,85 @@ def get_clickhouse_df(
         'quarterly': 'toStartOfQuarter(s.date)',
     }.get(timeframe, 'toDate(s.date)')
 
-    # Build SQL-level exclusion list for known-junk item_master categories
-    excluded_cats_sql = ", ".join(f"'{c}'" for c in _EXCLUDED_CH_CATEGORIES)
-
     # RBM exclusion list for SQL (mirrors sales_cleaner step 1)
     remove_rbm_sql = ", ".join(f"'{r}'" for r in _REMOVE_RBM)
 
+    # Junk products SQL exclusion (moved from Python to SQL for speed)
+    junk_sql = ", ".join(f"'{p}'" for p in _JUNK_PRODUCTS)
+
+    # Excluded CH categories SQL
+    excluded_cats_sql = ", ".join(f"'{c}'" for c in _EXCLUDED_CH_CATEGORIES)
+
+    # Build SQL with all mapping done in ClickHouse (avoids slow Python apply() loops)
     sql = f"""
 SELECT
-    {date_expr}                             AS Date,
-    s.branch                                AS Branch,
-    coalesce(bm.rbm, inv.rbm, '')           AS RBM,
-    coalesce(bm.bdm, inv.bdm, '')           AS BDM,
-    inv.financier_name                      AS Financier_Raw,
-    inv.financier_code                      AS FC_Raw,
-    i.product                               AS Product,
-    i.brand                                 AS Brand,
-    i.category                              AS Category_Raw,
-    sum(toFloat64(s.qty))                   AS QTY,
-    sum(toFloat64(s.sold_price))            AS `Sold Price`
+    {date_expr}   AS Date,
+    s.branch       AS Branch,
+    upper(trim(coalesce(bm.rbm, inv.rbm, '')))  AS RBM,
+    upper(trim(coalesce(bm.bdm, inv.bdm, '')))  AS BDM,
+
+    -- Financier: map in SQL (mirrors sales_cleaner.py pass A + pass B)
+    CASE
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%BAJAJ%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'BAJAJ%'   THEN 'BAJAJ'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%HDB%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'HDB%'     THEN 'HDB'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%DMI%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'SAMSUNG%' THEN 'DMI'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%IDFC%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'IDFC%'    THEN 'IDFC'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%TVS%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'TVSC%'    THEN 'TVS'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%POONAWALLA%'
+          OR upper(coalesce(inv.financier_name, '')) LIKE '%PFL%'
+          OR upper(coalesce(inv.financier_code, ''))  LIKE 'POONA%'   THEN 'PFL'
+        ELSE 'aCASH'
+    END AS Financier,
+
+    -- Category: product-level mapping takes priority over item_master category
+    CASE
+        WHEN upper(coalesce(i.product,'')) IN ('MOBILE','TABLET')                                  THEN 'MOBILE'
+        WHEN upper(coalesce(i.product,'')) IN ('LAPTOP','DESKTOP')                                 THEN 'LAPTOP'
+        WHEN upper(coalesce(i.product,'')) = 'SMALL APPLIANCES'                                    THEN 'SA'
+        WHEN upper(coalesce(i.product,'')) IN ('AIR CONDITIONER','AC OUTDOOR','DISH WASHER',
+             'DRYER','FREEZER','HOME APPLIANCES','HOUSE HOLD','MICROWAVE OVEN',
+             'REFRIGERATORS','TV','WASHING MACHINES')                                              THEN 'CD PRODUCTS'
+        WHEN upper(coalesce(i.product,'')) IN ('AUDIO','EAR WEARABLES','GAMING',
+             'HOME THEATRE','SMART WATCH')                                                         THEN 'HVA'
+        WHEN upper(coalesce(i.product,'')) IN ('CAMERA','CCTV','DIY','IT ACCESSORIES',
+             'PRINTER','PROJECTOR','STABILIZER','STORAGE DEVICES',
+             'MYG VERSE','MYG DOMO','RIG')                                                         THEN 'OTHERS'
+        WHEN upper(coalesce(i.category,'')) = 'TELECOM'                                            THEN 'MOBILE'
+        WHEN upper(coalesce(i.category,'')) IN ('CONSUMER ELECTRONICS','HOME SOLUTIONS')           THEN 'CD PRODUCTS'
+        WHEN upper(coalesce(i.category,'')) = 'IT'                                                 THEN 'LAPTOP'
+        ELSE 'OTHERS'
+    END AS Category,
+
+    upper(trim(coalesce(i.product, '')))            AS Product,
+    upper(trim(coalesce(nullIf(i.brand,''), 'UNKNOWN'))) AS Brand,
+
+    sum(toFloat64(s.qty))                           AS QTY,
+    sum(toFloat64(s.sold_price))                    AS `Sold Price`
+
 FROM azure_sales_report s
-LEFT JOIN item_master i
-       ON s.item_code = i.item_code
-LEFT JOIN azure_invoice_report inv
-       ON s.invoice_no = inv.invoice_no
-LEFT JOIN branch_master bm
-       ON upper(trim(s.branch)) = upper(trim(bm.code))
+LEFT JOIN item_master i        ON s.item_code  = i.item_code
+LEFT JOIN azure_invoice_report inv ON s.invoice_no = inv.invoice_no
+LEFT JOIN branch_master bm     ON upper(trim(s.branch)) = upper(trim(bm.code))
+
 WHERE {where_clause}
-  AND (i.category IS NULL OR i.category NOT IN ({excluded_cats_sql}))
   AND toFloat64OrZero(toString(s.sold_price)) > {_MIN_PRICE}
   AND upper(trim(coalesce(bm.rbm, inv.rbm, ''))) NOT IN ({remove_rbm_sql})
   AND upper(coalesce(inv.financier_name, '')) NOT LIKE '%ECOMMERCE%'
   AND upper(coalesce(inv.financier_name, '')) NOT LIKE '%E-COMMERCE%'
-GROUP BY Date, Branch, RBM, BDM, Financier_Raw, FC_Raw, Product, Brand, Category_Raw
+  AND (i.category IS NULL OR i.category NOT IN ({excluded_cats_sql}))
+  AND upper(trim(coalesce(i.product, ''))) NOT IN ({junk_sql})
+
+GROUP BY Date, Branch, RBM, BDM, Financier, Category, Product, Brand
 HAVING QTY > 0
 """
 
     logger.info(
-        "ClickHouse query: timeframe=%s date=%s rbm=%s bdm=%s store=%s",
+        "ClickHouse query (SQL-mapped): timeframe=%s date=%s rbm=%s bdm=%s store=%s",
         timeframe, date_str, rbm or "*", bdm or "*", store or "*",
     )
 
@@ -341,81 +382,16 @@ HAVING QTY > 0
         return df
 
     # ------------------------------------------------------------------
-    # Post-process: map raw ClickHouse values to portal standard names
+    # Minimal post-processing — mapping already done in SQL
     # ------------------------------------------------------------------
 
-    # 1. Financier mapping — two-pass, mirrors sales_cleaner.py:
-    #    Pass A: name-based mapping (financier_name → portal name)
-    #    Pass B: financier_code override (ClickHouse equivalent of DO-number override)
-    #    The financier_code is a short code that definitively identifies the lender,
-    #    same way DO patterns work in the Excel pipeline.
-    df["Financier"] = df["Financier_Raw"].apply(_map_financier)
-
-    # Pass B — financier_code overrides (mirrors sales_cleaner DO-number logic)
-    # Mapping of financier_code patterns → portal financier name
-    _FC_MAP = {
-        # Exact code → name
-        "BAJAJ_FIN":    "BAJAJ",
-        "BAJAJCD_FIN":  "BAJAJ",    # CD = Consumer Durable Bajaj
-        "HDB_FIN":      "HDB",
-        "IDFC_FIN":     "IDFC",
-        "TVSC_FIN":     "TVS",
-        "POONA_FIN":    "PFL",
-        "SAMSUNG_FIN":  "DMI",      # Samsung Finance = DMI Finance
-        "BENOW_FIN":    "aCASH",    # Benow = card/cash
-        "ECOMMERCE_FIN": None,      # E-commerce rows already filtered in SQL
-    }
-    fc = df["FC_Raw"].fillna("").astype(str).str.strip().str.upper()
-    for code, fin in _FC_MAP.items():
-        if fin is None:
-            continue
-        mask = fc == code
-        if mask.any():
-            df.loc[mask, "Financier"] = fin
-            logger.info("FC override [%s] → %s: %d rows", code, fin, mask.sum())
-
-    # Also handle prefix-based overrides (mirrors DO prefix patterns):
-    # BAJAJ* → BAJAJ, HDB* → HDB, etc.
-    for prefix, fin in [("BAJAJ", "BAJAJ"), ("HDB", "HDB"), ("IDFC", "IDFC"),
-                        ("TVSC", "TVS"), ("POONA", "PFL"), ("SAMSUNG", "DMI")]:
-        mask = fc.str.startswith(prefix, na=False) & (df["Financier"] == "aCASH")
-        if mask.any():
-            df.loc[mask, "Financier"] = fin
-            logger.info("FC prefix override [%s*] → %s: %d rows", prefix, fin, mask.sum())
-
-    df = df.drop(columns=["Financier_Raw", "FC_Raw"])
-
-    # 2. Category mapping (product-aware, falls back to raw category)
-    df["Category"] = df.apply(
-        lambda r: _map_category(r["Product"], r["Category_Raw"]), axis=1
-    )
-    df = df.drop(columns=["Category_Raw"])
-
-    # 3. Normalise text columns to UPPER STRIP (matches dashboard_aggregator conventions)
-    for col in ["Branch", "RBM", "BDM", "Product", "Brand", "Category"]:
-        if col in df.columns:
-            df[col] = df[col].fillna("").astype(str).str.strip().str.upper()
-
-    # 4. Fix empty brand names
-    df["Brand"] = df["Brand"].replace("", "UNKNOWN")
-    df.loc[df["Brand"].str.strip() == "", "Brand"] = "UNKNOWN"
-
-    # 5. Python-level junk product filter (Layer 2 cleaning)
-    #    Uses a BLACKLIST (same approach as sales_cleaner.py) instead of a whitelist,
-    #    so product name variations in item_master don't silently drop valid rows.
-    before = len(df)
-    df = df[~df["Product"].isin(_JUNK_PRODUCTS)]
-    logger.info(
-        "Junk-product blacklist removed %d rows (%d → %d)",
-        before - len(df), before, len(df),
-    )
-
-    # 6. Ensure Date is datetime
+    # 1. Ensure Date is datetime
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-    # 7. Numeric safety
+    # 2. Numeric safety
     df["QTY"] = pd.to_numeric(df["QTY"], errors="coerce").fillna(0)
     df["Sold Price"] = pd.to_numeric(df["Sold Price"], errors="coerce").fillna(0.0)
 
     logger.info("ClickHouse DataFrame (cleaned): %d rows, columns: %s", len(df), list(df.columns))
     return df
+
