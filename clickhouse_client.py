@@ -141,6 +141,36 @@ def query_df(sql: str, params: dict | None = None, cache: bool = True):
         raise
 
 
+def replace_rows(table: str, rows: list, column_names: list, where: str) -> None:
+    """
+    Replace the rows of `table` that match the SQL condition `where` with `rows`.
+
+    ClickHouse Cloud can silently lose rows inserted right after an ``ALTER ... DELETE``
+    (the mutation may be applied to the new part), so the order is reversed here: the new
+    rows are inserted first, stamped with an increasing ``upload_id``, and only rows from
+    older uploads (smaller ``upload_id``) that match `where` are deleted afterwards.
+    """
+    import time
+
+    client = get_client()
+    client.command(
+        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS upload_id UInt64 DEFAULT 0",
+        settings={"alter_sync": "2"},
+    )
+    uid = time.time_ns() // 1000
+    if rows:
+        client.insert(
+            table,
+            [tuple(r) + (uid,) for r in rows],
+            column_names=list(column_names) + ["upload_id"],
+        )
+    client.command(
+        f"ALTER TABLE {table} DELETE WHERE ({where}) AND upload_id < {uid}",
+        settings={"mutations_sync": "2"},
+    )
+    cache_clear()
+
+
 def is_connected() -> bool:
     """Return True if ClickHouse is reachable, False otherwise."""
     try:

@@ -753,7 +753,7 @@ def generate_finance_report(cleaned_df: pd.DataFrame, output_path: str):
     Sheets 3-7 have dropdown cells that filter the COUNTIFS/SUMIFS tables.
     """
     df = cleaned_df.copy()
-    df['Report_Category'] = df['Category'].map(CAT_MAP).fillna('OTHERS')
+    df['Report_Category'] = df['Category'].map(CAT_MAP).fillna('BANK EMI')
     df['Product_Upper']   = df['Product'].str.upper().str.strip()
     if 'Fin BDM' not in df.columns:
         df['Fin BDM'] = df.get('Fin_BDM_Cleaned', '')

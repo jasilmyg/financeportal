@@ -9,7 +9,7 @@ CARD_FINS = ['PINE LAB EMI', 'PAYTM', 'BENOW'] # Upper case for matching
 _cached_df = None
 _cached_mtime = 0
 
-def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None):
+def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district=''):
     global _cached_df, _cached_mtime
     try:
         # 1. Read data (with caching) — or use a pre-loaded DataFrame (e.g. from ClickHouse)
@@ -66,7 +66,7 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         if 'Category' not in df_filtered.columns and 'Product' in df_filtered.columns:
             # Try to map product to category if missing
             df_filtered['Product_upper'] = df_filtered['Product'].fillna('').astype(str).str.strip().str.upper()
-            df_filtered['Category'] = df_filtered['Product_upper'].map(PRODUCT_CATEGORY_MAP).fillna('OTHERS')
+            df_filtered['Category'] = df_filtered['Product_upper'].map(PRODUCT_CATEGORY_MAP).fillna('BANK EMI')
             
         # Is Finance boolean
         df_filtered['Is_Finance'] = (df_filtered['Financier'] != '') & (df_filtered['Financier'] != 'NAN') & (df_filtered['Financier'].str.lower() != 'acash')
@@ -103,55 +103,110 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         # Apply filters just for category performance
         df_cat = df_filtered.copy()
         
-        for col in ['RBM', 'BDM', 'Branch', 'Staff']:
+        for col in ['RBM', 'BDM', 'Branch', 'Staff', 'State', 'District']:
             if col not in df_cat.columns:
                 df_cat[col] = 'Unknown'
             else:
                 df_cat[col] = df_cat[col].fillna('Unknown').astype(str)
                 
-        if rbm: df_cat = df_cat[df_cat['RBM'] == rbm]
-        if bdm: df_cat = df_cat[df_cat['BDM'] == bdm]
-        if store: df_cat = df_cat[df_cat['Branch'] == store]
-        if staff: df_cat = df_cat[df_cat['Staff'] == staff]
+        if rbm:   df_cat = df_cat[df_cat['RBM'].str.upper().str.strip()   == rbm.upper().strip()]
+        if bdm:   df_cat = df_cat[df_cat['BDM'].str.upper().str.strip()   == bdm.upper().strip()]
+        if store: df_cat = df_cat[df_cat['Branch'].str.upper().str.strip() == store.upper().strip()]
+        if staff: df_cat = df_cat[df_cat['Staff'].str.upper().str.strip()  == staff.upper().strip()]
+        if state: df_cat = df_cat[df_cat['State'].str.upper().str.strip()  == state.upper().strip()]
+        if district: df_cat = df_cat[df_cat['District'].str.upper().str.strip() == district.upper().strip()]
 
         # Map Financier column to standard names
         fin_map = {
             'BAJAJ FINANCE': 'BAJAJ', 'HDB FINANCE': 'HDB', 'IDFC FIRST BANK LTD': 'IDFC', 
             'POONAWALLA FINCORP': 'PFL', 'TVS CREDIT': 'TVS', 'DMI FINANCE': 'DMI', 
-            'PINE LAB EMI': 'PineLab', 'PAYTM': 'PAYTM', 'BENOW': 'Benow', 'ACASH': 'aCASH'
+            'PINE LAB EMI': 'PineLab', 'PINELAB': 'PineLab', 'PAYTM': 'PAYTM', 
+            'BENOW': 'Benow', 'ACASH': 'aCASH'
         }
         # Critical: force plain Python str dtype (not Pandas StringArray) to ensure correct pivot matching
-        df_cat['Category'] = df_cat['Category'].astype(object).fillna('OTHERS').apply(str).str.strip().str.upper()
+        df_cat['Category'] = df_cat['Category'].astype(object).fillna('BANK EMI').apply(str).str.strip().str.upper()
+        df_cat['Category'] = df_cat['Category'].replace({'': 'BANK EMI', 'NAN': 'BANK EMI'})
         df_cat['Financier'] = df_cat['Financier'].astype(object).fillna('').apply(str).str.strip().str.upper()
         df_cat['Fin_Mapped'] = df_cat['Financier'].map(fin_map).fillna(df_cat['Financier'])
         
         standardFins = ["BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI", "PineLab", "PAYTM", "Benow", "aCASH"]
         standardCats = ["CD PRODUCTS", "LAPTOP", "MOBILE", "HVA", "SA", "OTHERS", "BANK EMI"]
         
+        def _empty_perf():
+            return ({cat: {f: 0 for f in standardFins} for cat in standardCats},
+                    {cat: {f: 0.0 for f in standardFins} for cat in standardCats})
+
+        def _fill_perf(qty, val, grouped_rows):
+            # grouped_rows: iterable of (cat, fin, qty_sum, price_sum)
+            for cat, fin, q, p in grouped_rows:
+                if cat in qty and fin in qty[cat]:
+                    qty[cat][fin] = int(q)
+                    val[cat][fin] = float(p) / 10000000.0  # Crores
+
         def build_performance_dict(df_group):
-            qty = {cat: {f: 0 for f in standardFins} for cat in standardCats}
-            val = {cat: {f: 0.0 for f in standardFins} for cat in standardCats}
-            
+            qty, val = _empty_perf()
             if not df_group.empty:
-                qty_pivot = df_group.pivot_table(index='Category', columns='Fin_Mapped', values='QTY', aggfunc='sum', fill_value=0)
-                val_pivot = df_group.pivot_table(index='Category', columns='Fin_Mapped', values='Sold Price', aggfunc='sum', fill_value=0)
-                
-                # Convert index to plain python strings for safe comparison
-                qty_pivot.index = qty_pivot.index.astype(str)
-                val_pivot.index = val_pivot.index.astype(str)
-                qty_pivot.columns = qty_pivot.columns.astype(str)
-                val_pivot.columns = val_pivot.columns.astype(str)
-                
-                for cat in standardCats:
-                    if cat in qty_pivot.index:
-                        for fin in standardFins:
-                            if fin in qty_pivot.columns:
-                                qty[cat][fin] = int(qty_pivot.at[cat, fin])
-                                val[cat][fin] = float(val_pivot.at[cat, fin]) / 10000000.0  # Crores
-                                
+                g = df_group.groupby(['Category', 'Fin_Mapped'], sort=False)[['QTY', 'Sold Price']].sum()
+                _fill_perf(qty, val, ((c, f, q, p) for (c, f), q, p in
+                                      zip(g.index, g['QTY'].tolist(), g['Sold Price'].tolist())))
             return {"qty": qty, "value": val}
             
         cat_perf = build_performance_dict(df_cat)
+
+        _emi_applied = {}   # fin_key -> {CATEGORY: qty from the uploaded file}
+
+        def _apply_emi_override(fin_key, override):
+            # The uploaded file is the source of truth for this financier: categories
+            # that are absent from the file must be 0 (ERP-matched invoices can carry a
+            # different category, e.g. a PAYTM txn matched to a Small Appliances invoice).
+            file_cats = {str(k).strip().upper(): int(v) for k, v in override.items()}
+            _emi_applied[fin_key] = file_cats
+            for std_cat in standardCats:
+                if std_cat in file_cats:
+                    cat_perf['qty'][std_cat][fin_key] = file_cats[std_cat]
+                else:
+                    cat_perf['qty'][std_cat][fin_key] = 0
+                    cat_perf['value'][std_cat][fin_key] = 0.0
+
+        def _patch_products_for_emi(products_qty, products_val):
+            # The front-end rebuilds every category cell as the sum of its product rows, so
+            # the product rows must agree with the file totals set above. ERP-matched product
+            # quantities for this financier are cleared and the file's category total is placed
+            # in one 'UNMAPPED' row (the EMI files carry no ERP product). Values stay as ERP-matched
+            # for categories present in the file, and become 0 for categories absent from it.
+            for fin_key, file_cats in _emi_applied.items():
+                for std_cat in standardCats:
+                    qrows = products_qty.get(std_cat)
+                    vrows = products_val.get(std_cat)
+                    old_val = 0.0
+                    if qrows:
+                        for prod in qrows:
+                            qrows[prod][fin_key] = 0
+                    if vrows:
+                        for prod in vrows:
+                            old_val += vrows[prod].get(fin_key, 0.0)
+                            vrows[prod][fin_key] = 0.0
+                    file_qty = file_cats.get(std_cat, 0)
+                    if file_qty:
+                        qrows = products_qty.setdefault(std_cat, {})
+                        vrows = products_val.setdefault(std_cat, {})
+                        qrows.setdefault('UNMAPPED', {f: 0 for f in standardFins})[fin_key] = file_qty
+                        vrows.setdefault('UNMAPPED', {f: 0.0 for f in standardFins})[fin_key] = old_val
+
+        # ── Pine Lab direct override ──────────────────────────────────────────
+        # Replace the ERP-matched PineLab counts with direct counts from the
+        # Pine Lab file (all transactions, not just matched ones).
+        # pine_lab_override = {erp_category: total_qty}
+        if pine_lab_override:
+            _apply_emi_override('PineLab', pine_lab_override)
+
+        # ── Paytm direct override ──────────────────────────────────────────
+        if paytm_override:
+            _apply_emi_override('PAYTM', paytm_override)
+
+        # ── Benow direct override ──────────────────────────────────────────
+        if benow_override:
+            _apply_emi_override('Benow', benow_override)
         
         # --- PRODUCT-LEVEL BREAKDOWN (within each category) ---
         # Use 'Product' as the sub-product label (per user requirement)
@@ -167,24 +222,23 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         
         if product_col:
             df_cat[product_col] = df_cat[product_col].astype(object).fillna('UNKNOWN').apply(str).str.strip().str.upper()
-            for cat in standardCats:
-                df_prod_cat = df_cat[df_cat['Category'] == cat]
-                if df_prod_cat.empty:
-                    continue
-                products_qty[cat] = {}
-                products_val[cat] = {}
-                for prod, df_prod in df_prod_cat.groupby(product_col):
-                    prod_key = str(prod)
-                    fin_breakdown_qty = {f: 0 for f in standardFins}
-                    fin_breakdown_val = {f: 0.0 for f in standardFins}
-                    for _, prow in df_prod.iterrows():
-                        fin_key = str(prow['Fin_Mapped'])
-                        if fin_key in fin_breakdown_qty:
-                            fin_breakdown_qty[fin_key] += int(prow['QTY'])
-                            fin_breakdown_val[fin_key] += float(prow['Sold Price']) / 10000000.0
-                    products_qty[cat][prod_key] = fin_breakdown_qty
-                    products_val[cat][prod_key] = fin_breakdown_val
+            _pg = (df_cat[df_cat['Category'].isin(standardCats)]
+                   .groupby(['Category', product_col, 'Fin_Mapped'])[['QTY', 'Sold Price']].sum().reset_index())
+            _tmp_q, _tmp_v = {}, {}
+            for cat_, prod_, fin_, q_, p_ in zip(_pg['Category'].astype(str), _pg[product_col].astype(str),
+                                                 _pg['Fin_Mapped'].astype(str),
+                                                 _pg['QTY'].tolist(), _pg['Sold Price'].tolist()):
+                fq = _tmp_q.setdefault(cat_, {}).setdefault(prod_, {f: 0 for f in standardFins})
+                fv = _tmp_v.setdefault(cat_, {}).setdefault(prod_, {f: 0.0 for f in standardFins})
+                if fin_ in fq:
+                    fq[fin_] += int(q_)
+                    fv[fin_] += float(p_) / 10000000.0
+            for cat in standardCats:          # keep the original category order
+                if cat in _tmp_q:
+                    products_qty[cat] = _tmp_q[cat]
+                    products_val[cat] = _tmp_v[cat]
         
+        _patch_products_for_emi(products_qty, products_val)
         cat_perf["products_qty"] = products_qty
         cat_perf["products_val"] = products_val
         
@@ -193,8 +247,17 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             df_cat['Brand'] = df_cat['Brand'].fillna('UNKNOWN').astype(str).str.strip().str.upper()
             df_cat['Brand'] = df_cat['Brand'].replace('', 'UNKNOWN')
             
-            for brand, brand_df in df_cat.groupby('Brand'):
-                brands_performance[str(brand)] = build_performance_dict(brand_df)
+            _bg = df_cat.groupby(['Brand', 'Category', 'Fin_Mapped'])[['QTY', 'Sold Price']].sum().reset_index()
+            _brand_acc = {}
+            for brand_ in sorted(df_cat['Brand'].unique().tolist()):
+                _brand_acc[str(brand_)] = _empty_perf()
+            for b_, c_, f_, q_, p_ in zip(_bg['Brand'].astype(str), _bg['Category'].astype(str),
+                                          _bg['Fin_Mapped'].astype(str),
+                                          _bg['QTY'].tolist(), _bg['Sold Price'].tolist()):
+                bq, bv = _brand_acc[b_]
+                _fill_perf(bq, bv, [(c_, f_, q_, p_)])
+            for b_, (bq, bv) in _brand_acc.items():
+                brands_performance[b_] = {"qty": bq, "value": bv}
         fin_vols = {}
         fin_grouped = fin_df.groupby('Financier')['QTY'].sum().to_dict()
         for fin, qty in fin_grouped.items():
@@ -204,11 +267,14 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         # --- HIERARCHY PERFORMANCE ---
         # Group by RBM -> BDM -> Branch -> Staff
         # If columns don't exist, fill with 'Unknown'
-        for col in ['RBM', 'BDM', 'Branch', 'Staff']:
+        for col in ['RBM', 'BDM', 'Branch', 'Staff', 'Fin BDM']:
             if col not in df_filtered.columns:
                 df_filtered[col] = 'Unknown'
             else:
-                df_filtered[col] = df_filtered[col].fillna('Unknown').astype(str)
+                df_filtered[col] = df_filtered[col].fillna('').astype(str)
+        # Treat 'Unknown' in non-mandatory cols as empty
+        for col in ['RBM', 'BDM', 'Branch', 'Staff']:
+            df_filtered[col] = df_filtered[col].replace('', 'Unknown')
                 
         hierarchy = {}
         
@@ -216,19 +282,26 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             qty=('QTY', 'sum'),
             value=('Sold Price', 'sum'),
             fin_qty=('Fin_QTY', 'sum'),
-            fin_value=('Fin_Value', 'sum')
+            fin_value=('Fin_Value', 'sum'),
+            fin_bdm=('Fin BDM', 'first')
         ).reset_index()
 
         # Build nested dict and roll up metrics in one pass
         for row in grouped_hierarchy.to_dict('records'):
             rbm, bdm, branch, staff = str(row['RBM']), str(row['BDM']), str(row['Branch']), str(row['Staff'])
             
+            fin_bdm_val = str(row.get('fin_bdm', ''))
+
             if rbm not in hierarchy:
                 hierarchy[rbm] = {"metrics": {"qty": 0, "value": 0.0, "fin_qty": 0, "fin_value": 0.0}, "bdms": {}}
             if bdm not in hierarchy[rbm]["bdms"]:
                 hierarchy[rbm]["bdms"][bdm] = {"metrics": {"qty": 0, "value": 0.0, "fin_qty": 0, "fin_value": 0.0}, "branches": {}}
             if branch not in hierarchy[rbm]["bdms"][bdm]["branches"]:
-                hierarchy[rbm]["bdms"][bdm]["branches"][branch] = {"metrics": {"qty": 0, "value": 0.0, "fin_qty": 0, "fin_value": 0.0}, "staffs": {}}
+                hierarchy[rbm]["bdms"][bdm]["branches"][branch] = {
+                    "metrics": {"qty": 0, "value": 0.0, "fin_qty": 0, "fin_value": 0.0},
+                    "staffs": {},
+                    "fin_bdm": fin_bdm_val
+                }
                 
             staff_metrics = {
                 "qty": int(row['qty']), "value": float(row['value']),
@@ -251,29 +324,39 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         zone_performance = {}
         df_zone = df_filtered.copy()
         df_zone['RBM'] = df_zone['RBM'].fillna('Unknown').astype(str)
-        df_zone['Category'] = df_zone['Category'].astype(object).fillna('OTHERS').apply(str).str.strip().str.upper()
+        df_zone['Category'] = df_zone['Category'].astype(object).fillna('BANK EMI').apply(str).str.strip().str.upper()
+        df_zone['Category'] = df_zone['Category'].replace({'': 'BANK EMI', 'NAN': 'BANK EMI'})
         df_zone['Fin_Mapped'] = df_zone['Financier'].map(fin_map).fillna(df_zone['Financier'])
         df_zone['Fin_Mapped'] = df_zone['Fin_Mapped'].replace('ACASH', 'aCASH')
         
         # Exclude rows with blank/empty RBM (warehouses, HEAD OFFICE etc.) before zone grouping
         df_zone = df_zone[df_zone['RBM'].str.strip() != '']
-        for rbm_name, rbm_df in df_zone.groupby('RBM'):
+        # Pre-aggregate once instead of re-filtering the frame per zone x category x financier
+        def _sum_map(frame, keys):
+            g = frame.groupby(keys)[['QTY', 'Sold Price']].sum()
+            return dict(zip(g.index.tolist(), zip(g['QTY'].tolist(), g['Sold Price'].tolist())))
+
+        _z_rbm = df_zone.groupby('RBM')[['QTY', 'Sold Price']].sum()
+        _z_fin = _sum_map(df_zone, ['RBM', 'Fin_Mapped'])
+        _z_cat = _sum_map(df_zone, ['RBM', 'Category', 'Fin_Mapped'])
+
+        for rbm_name in _z_rbm.index:
             # Zone-total financier breakdown
             qty_row = {f: 0 for f in standardFinsForZone}
             val_row = {f: 0.0 for f in standardFinsForZone}
             for fin in standardFinsForZone:
-                sub = rbm_df[rbm_df['Fin_Mapped'] == fin]
-                qty_row[fin] = int(sub['QTY'].sum())
-                val_row[fin] = float(sub['Sold Price'].sum()) / 10000000.0
+                q_, p_ = _z_fin.get((rbm_name, fin), (0, 0.0))
+                qty_row[fin] = int(q_)
+                val_row[fin] = float(p_) / 10000000.0
             
-            total_qty_z = int(rbm_df['QTY'].sum())
+            total_qty_z = int(_z_rbm.at[rbm_name, 'QTY'])
             paper_qty   = sum(qty_row[f] for f in paperFins if f in qty_row)
             card_qty_z  = sum(qty_row[f] for f in cardFins  if f in qty_row)
             acash_qty   = qty_row.get('aCASH', 0)
             fin_qty_z   = total_qty_z - acash_qty
             fin_pen_z   = round(fin_qty_z / total_qty_z * 100, 2) if total_qty_z > 0 else 0
             
-            total_val_z = float(rbm_df['Sold Price'].sum()) / 10000000.0
+            total_val_z = float(_z_rbm.at[rbm_name, 'Sold Price']) / 10000000.0
             paper_val   = sum(val_row[f] for f in paperFins if f in val_row)
             card_val_z  = sum(val_row[f] for f in cardFins  if f in val_row)
             acash_val   = val_row.get('aCASH', 0.0)
@@ -283,13 +366,12 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             # Per-category breakdown within this zone
             categories = {}
             for cat in standardCats:
-                cat_df = rbm_df[rbm_df['Category'] == cat]
                 cqty = {f: 0 for f in standardFinsForZone}
                 cval = {f: 0.0 for f in standardFinsForZone}
                 for fin in standardFinsForZone:
-                    sub = cat_df[cat_df['Fin_Mapped'] == fin]
-                    cqty[fin] = int(sub['QTY'].sum())
-                    cval[fin] = float(sub['Sold Price'].sum()) / 10000000.0
+                    q_, p_ = _z_cat.get((rbm_name, cat, fin), (0, 0.0))
+                    cqty[fin] = int(q_)
+                    cval[fin] = float(p_) / 10000000.0
                 categories[cat] = {"qty": cqty, "val": cval}
             
             zone_performance[str(rbm_name)] = {
@@ -352,7 +434,10 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             "category_performance": cat_perf,
             "brand_performance": brands_performance,
             "hierarchy": hierarchy,
-            "zone_performance": zone_performance
+            "zone_performance": zone_performance,
+            "states": sorted([s for s in df_cat['State'].unique() if str(s).strip().upper() != 'UNKNOWN']) if 'State' in df_cat.columns else [],
+            "districts": sorted([d for d in df_cat['District'].unique() if str(d).strip() and str(d).strip().upper() != 'UNKNOWN']) if 'District' in df_cat.columns else [],
+            "district_states": {str(r['District']): str(r['State']) for r in df_cat[['District', 'State']].drop_duplicates().to_dict('records') if str(r['District']).strip() and str(r['District']).strip().upper() != 'UNKNOWN'} if 'District' in df_cat.columns else {}
         }
         
     except Exception as e:
@@ -444,8 +529,9 @@ def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range=
 
         # Category
         if 'Category' not in df_f.columns and 'Product' in df_f.columns:
-            df_f['Category'] = df_f['Product'].fillna('').astype(str).str.upper().map(PRODUCT_CATEGORY_MAP).fillna('OTHERS')
-        df_f['Category'] = df_f['Category'].fillna('OTHERS').astype(str).str.strip().str.upper()
+            df_f['Category'] = df_f['Product'].fillna('').astype(str).str.upper().map(PRODUCT_CATEGORY_MAP).fillna('BANK EMI')
+        df_f['Category'] = df_f['Category'].fillna('BANK EMI').astype(str).str.strip().str.upper()
+        df_f['Category'] = df_f['Category'].replace({'': 'BANK EMI', 'NAN': 'BANK EMI'})
 
         fins = ["aCASH", "BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI", "PineLab", "PAYTM", "Benow"]
         paperFins = {"BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI"}
@@ -562,8 +648,9 @@ def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_dat
     df_f.loc[df_f['Fin_Mapped'] == 'ACASH', 'Fin_Mapped'] = 'aCASH'
 
     if 'Category' not in df_f.columns and 'Product' in df_f.columns:
-        df_f['Category'] = df_f['Product'].fillna('').astype(str).str.upper().map(PRODUCT_CATEGORY_MAP).fillna('OTHERS')
-    df_f['Category'] = df_f.get('Category', pd.Series(['OTHERS'] * len(df_f))).fillna('OTHERS').astype(str).str.strip().str.upper()
+        df_f['Category'] = df_f['Product'].fillna('').astype(str).str.upper().map(PRODUCT_CATEGORY_MAP).fillna('BANK EMI')
+    df_f['Category'] = df_f.get('Category', pd.Series(['BANK EMI'] * len(df_f))).fillna('BANK EMI').astype(str).str.strip().str.upper()
+    df_f['Category'] = df_f['Category'].replace({'': 'BANK EMI', 'NAN': 'BANK EMI'})
 
     return df_f, None
 
@@ -616,7 +703,11 @@ def get_brand_data(raw_file_path, target_date_str, timeframe, category='ALL', pr
             fin_total = total_qty - acash
             row['total'] = total_qty
             row['fin_pct'] = round(fin_total / total_qty * 100, 1) if total_qty > 0 else 0
-            row['value'] = total_val
+            row['value'] = round(total_val / 10000000, 4)   # in Crores, consistent with all other value fields
+            # Per-financier value breakdown (in Crores) — used by Value mode in the UI
+            for fin in fins:
+                sub = bdf[bdf['Fin_Mapped'] == fin]
+                row[fin + '_val'] = round(float(sub['Sold Price'].sum()) / 10000000, 4)
             row['asp'] = round(total_val / total_qty, 0) if total_qty > 0 else 0
             result.append(row)
 

@@ -11,6 +11,28 @@ from sales_cleaner import clean_sales_report
 from finance_report_generator import generate_finance_report
 import pandas as pd
 from dashboard_aggregator import get_dashboard_data
+import emi_state
+
+# Pine Labs EMI cleaner (optional — only needed when ClickHouse is available)
+try:
+    from pine_lab_cleaner import load_pine_lab_file, clean_pine_lab, upload_to_clickhouse as pine_upload_to_ch
+    _PINELAB_AVAILABLE = True
+except ImportError:
+    _PINELAB_AVAILABLE = False
+
+# Paytm EMI cleaner (same pipeline as Pine Labs, Paytm-specific rules)
+try:
+    from paytm_cleaner import load_paytm_file, clean_paytm, upload_to_clickhouse as paytm_upload_to_ch
+    _PAYTM_AVAILABLE = True
+except ImportError:
+    _PAYTM_AVAILABLE = False
+
+# Benow cleaner
+try:
+    from benow_cleaner import load_benow_file, clean_benow, upload_to_clickhouse as benow_upload_to_ch
+    _BENOW_AVAILABLE = True
+except ImportError:
+    _BENOW_AVAILABLE = False
 
 # --- ClickHouse integration (optional — portal works without it) ---
 try:
@@ -20,7 +42,7 @@ try:
         cache_clear as ch_cache_clear,
         _QUERY_CACHE as _ch_cache,
     )
-    from clickhouse_aggregator import get_clickhouse_df
+    from clickhouse_aggregator import get_clickhouse_df, get_pine_lab_totals
     _CLICKHOUSE_AVAILABLE = True
 except ImportError:
     _CLICKHOUSE_AVAILABLE = False
@@ -34,6 +56,11 @@ logging.basicConfig(level=logging.INFO)
 _latest_cleaned_report_path = None
 # Holds path to the latest finance detailed report (temp file)
 _latest_finance_report_path = None
+# Holds the latest cleaned Pine Lab DataFrame in memory for download
+_latest_pinelab_cleaned_df = None
+# Holds the latest cleaned Paytm DataFrame in memory for download
+_latest_paytm_cleaned_df = None
+_latest_benow_cleaned_df = None
 
 @app.after_request
 def add_header(response):
@@ -76,6 +103,7 @@ def api_clickhouse_status():
             'connected': connected,
             'row_counts': counts,
             'cache_entries': cache_entries,
+            'emi_version': str(hash(str(emi_state.signature()))),
         })
     except Exception as exc:
         app.logger.error('ClickHouse status check failed: %s', exc)
@@ -177,6 +205,9 @@ def api_dashboard_data():
     bdm = request.args.get('bdm', '')
     store = request.args.get('store', '')
     staff = request.args.get('staff', '')
+    fin_bdm = request.args.get('fin_bdm', '')
+    state = request.args.get('state', '')
+    district = request.args.get('district', '')
     source = request.args.get('source', 'excel')  # 'excel' | 'clickhouse'
     
     if not date_str:
@@ -187,7 +218,16 @@ def api_dashboard_data():
         if not _CLICKHOUSE_AVAILABLE:
             return jsonify({'error': 'ClickHouse not available on this server.'}), 503
         try:
-            ch_df = get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str)
+            # Result-level cache: the SQL result was already cached, but the pandas aggregation
+            # (several seconds on a monthly range) was recomputed on every request.
+            from clickhouse_client import _cache_get, _cache_set
+            _tf = os.path.join(DATA_DIR, 'targets.json')
+            _tf_mtime = os.path.getmtime(_tf) if os.path.exists(_tf) else 0
+            _ckey = 'dash|' + repr((date_str, timeframe, end_date_str, rbm, bdm, store, staff, fin_bdm, state, district, _tf_mtime, emi_state.signature()))
+            _hit = _cache_get(_ckey)
+            if _hit is not None:
+                return jsonify(_hit)
+            ch_df = get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district)
             if ch_df.empty:
                 return jsonify({'error': 'No data found in ClickHouse for the selected timeframe.'}), 404
             # Load zone_map for RBM→Zone grouping
@@ -199,12 +239,31 @@ def api_dashboard_data():
                         zone_map = json.load(tf).get('zone_map', {})
                 except Exception:
                     pass
+            # Get direct totals (from all uploaded file rows, not just ERP matches)
+            # Only apply this global override if NO hierarchy filters are active
+            pine_lab_override = {}
+            paytm_override = {}
+            benow_override = {}
+            if not any([rbm, bdm, store, staff, state, district, fin_bdm]):
+                try:
+                    from clickhouse_aggregator import get_pine_lab_totals, get_paytm_totals, get_benow_totals
+                    pine_lab_override = get_pine_lab_totals(date_str, timeframe, end_date_str)
+                    paytm_override = get_paytm_totals(date_str, timeframe, end_date_str)
+                    benow_override = get_benow_totals(date_str, timeframe, end_date_str)
+                except Exception:
+                    pass
             # Reuse existing aggregation logic, passing the ClickHouse DataFrame
             data = get_dashboard_data(
                 raw_file_path=None, target_date_str=date_str, timeframe=timeframe,
                 rbm=rbm, bdm=bdm, store=store, staff=staff, zone_map=zone_map, df=ch_df,
-                end_date_str=end_date_str  # ← was missing, caused custom range to show 1 day only
+                end_date_str=end_date_str,
+                pine_lab_override=pine_lab_override,
+                paytm_override=paytm_override,
+                benow_override=benow_override,
+                state=state, district=district
             )
+            if isinstance(data, dict) and 'error' not in data:
+                _cache_set(_ckey, data)
             return jsonify(data)
         except Exception as exc:
             app.logger.error('ClickHouse dashboard query failed: %s', exc, exc_info=True)
@@ -225,7 +284,7 @@ def api_dashboard_data():
         except Exception:
             pass
     
-    data = get_dashboard_data(raw_file, date_str, timeframe, rbm, bdm, store, staff, zone_map=zone_map, end_date_str=end_date_str)
+    data = get_dashboard_data(raw_file, date_str, timeframe, rbm, bdm, store, staff, zone_map=zone_map, end_date_str=end_date_str, state=state, district=district)
     return jsonify(data)
 
 @app.route('/api/price-range-data', methods=['GET'])
@@ -259,6 +318,29 @@ def api_price_range_data():
     data = get_price_range_data(raw_file, date_str, timeframe, price_range, end_date_str=end_date_str)
     return jsonify(data)
 
+@app.route('/api/branch-districts', methods=['GET'])
+def api_branch_districts():
+    """Map of branch code -> district, used to narrow the Store dropdown by District."""
+    try:
+        import clickhouse_client
+        df = clickhouse_client.query_df("SELECT upper(trim(code)) AS code, upper(trim(district)) AS district FROM branch_master")
+        return jsonify({str(r['code']): str(r['district']).strip()
+                        for r in df.to_dict('records') if str(r['district']).strip()})
+    except Exception:
+        return jsonify({})
+
+@app.route('/api/branch-names', methods=['GET'])
+def api_branch_names():
+    """Map of branch code -> branch name, used to show names in the Store dropdown."""
+    try:
+        import clickhouse_client
+        df = clickhouse_client.query_df("SELECT upper(trim(code)) AS code, trim(branch_name) AS name FROM branch_master")
+        names = {str(r['code']): str(r['name']).strip().upper()
+                 for r in df.to_dict('records') if str(r['name']).strip()}
+        return jsonify(names)
+    except Exception as e:
+        return jsonify({})
+
 @app.route('/api/brand-data', methods=['GET'])
 def api_brand_data():
     from dashboard_aggregator import get_brand_data
@@ -268,6 +350,13 @@ def api_brand_data():
     category  = request.args.get('category', 'ALL')
     product   = request.args.get('product', 'ALL')
     source    = request.args.get('source', 'excel')
+    rbm       = request.args.get('rbm', '')
+    bdm       = request.args.get('bdm', '')
+    store     = request.args.get('store', '')
+    staff     = request.args.get('staff', '')
+    fin_bdm   = request.args.get('fin_bdm', '')
+    state     = request.args.get('state', '')
+    district  = request.args.get('district', '')
     if not date_str:
         return jsonify({"error": "date is required"}), 400
 
@@ -275,7 +364,7 @@ def api_brand_data():
         if not _CLICKHOUSE_AVAILABLE:
             return jsonify({'error': 'ClickHouse not available.'}), 503
         try:
-            ch_df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str)
+            ch_df = get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district)
             if ch_df.empty:
                 return jsonify({'error': 'No ClickHouse data for this timeframe.'}), 404
             return jsonify(get_brand_data(None, date_str, timeframe, category, product, df=ch_df, end_date_str=end_date_str))
@@ -620,6 +709,19 @@ def api_clean_sales_report():
         
         clean_sales_report(input_tmp, output_tmp)
         
+        # Reset PineLab manual uploads so they don't persist automatically
+        if _CLICKHOUSE_AVAILABLE:
+            from clickhouse_client import get_client
+            try:
+                ch_client = get_client()
+                ch_client.command("TRUNCATE TABLE IF EXISTS benow_pine_financier")
+                ch_client.command("TRUNCATE TABLE IF EXISTS pine_lab_transactions")
+                app.logger.info("Truncated PineLab manual upload tables upon new sales upload.")
+                emi_state.clear()      # PineLab / PAYTM hidden until their files are uploaded again
+                ch_cache_clear()
+            except Exception as e:
+                app.logger.warning(f"Failed to truncate PineLab tables: {e}")
+        
         # Delete old temp file if one existed
         if _latest_cleaned_report_path and os.path.exists(_latest_cleaned_report_path):
             try:
@@ -663,6 +765,456 @@ def api_clean_sales_report():
             except Exception:
                 pass
 
+@app.route('/api/upload-pinelab', methods=['POST'])
+def api_upload_pinelab():
+    """Upload Pine Labs EMI transaction CSV/ZIP, clean it, and push to ClickHouse."""
+    global _latest_pinelab_cleaned_df
+    if not _PINELAB_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'Pine Lab cleaner module not available.'}), 500
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ClickHouse not connected. Cannot upload Pine Lab data.'}), 503
+
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file uploaded.'}), 400
+
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No file selected.'}), 400
+
+    fname = file.filename.lower()
+    if not (fname.endswith('.csv') or fname.endswith('.zip')):
+        return jsonify({'status': 'error', 'message': 'Please upload a .csv or .zip file.'}), 400
+
+    try:
+        # Step 1: Load file (handles CSV and ZIP)
+        df_raw = load_pine_lab_file(file)
+
+        # Step 2: Apply Pine Labs cleaning rules
+        df_clean, stats = clean_pine_lab(df_raw)
+
+        if df_clean.empty:
+            return jsonify({
+                'status': 'warning',
+                'message': 'No valid records found after applying cleaning rules.',
+                **stats
+            })
+
+        # Step 3: Match IMEI → invoice_no and insert into ClickHouse
+        _latest_pinelab_cleaned_df = df_clean.copy()   # cache for download
+        stats = pine_upload_to_ch(df_clean, stats)
+        ch_cache_clear()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Pine Lab EMI data uploaded successfully. {stats.get("inserted_records", 0)} invoice records updated.',
+            'raw_rows':          stats.get('raw_rows', 0),
+            'after_filter':      stats.get('after_filter', 0),
+            'after_dedup':       stats.get('after_dedup', 0),
+            'matched_invoices':  stats.get('matched_invoices', 0),
+            'inserted_records':  stats.get('inserted_records', 0),
+            'date_from':         stats.get('date_from', ''),
+            'date_to':           stats.get('date_to', ''),
+            'total_orig_amt':    stats.get('total_orig_amt', 0),
+        })
+
+    except ValueError as ve:
+        app.logger.warning(f'Pine Lab upload validation error: {ve}')
+        return jsonify({'status': 'error', 'message': str(ve)}), 400
+    except Exception as e:
+        app.logger.error(f'Pine Lab upload failed: {e}', exc_info=True)
+        return jsonify({'status': 'error', 'message': f'Upload failed: {str(e)}'}), 500
+
+
+@app.route('/api/download-pinelab-cleaned', methods=['GET'])
+@app.route('/api/files/PineLab_Cleaned.xlsx', methods=['GET'])
+def api_download_pinelab_cleaned():
+    """Serve the most recently cleaned Pine Lab file as an Excel download."""
+    global _latest_pinelab_cleaned_df
+    if _latest_pinelab_cleaned_df is None or _latest_pinelab_cleaned_df.empty:
+        return jsonify({'status': 'error', 'message': 'No cleaned Pine Lab data available. Please upload a file first.'}), 404
+
+    import io as _io
+    export_df = _latest_pinelab_cleaned_df.drop(
+        columns=[c for c in ['_date'] if c in _latest_pinelab_cleaned_df.columns]
+    ).copy()
+
+    # Format Bank Txn Date as clean string date
+    if 'Bank Txn Date' in export_df.columns:
+        export_df['Bank Txn Date'] = pd.to_datetime(
+            export_df['Bank Txn Date'], dayfirst=True, errors='coerce'
+        ).dt.strftime('%Y-%m-%d 00:00:00')
+
+    buf = _io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        export_df.to_excel(writer, index=False, sheet_name='PineLab_Cleaned')
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='PineLab_Cleaned.xlsx'
+    )
+
+@app.route('/api/filter-pinelab-by-date', methods=['POST'])
+def api_filter_pinelab_by_date():
+    """
+    Filter the cached cleaned Pine Lab DataFrame by a date range (Bank Txn Date),
+    then call upload_to_clickhouse() with the filtered subset.
+    Uses invoice_no-based matching to precisely tag only the exact transactions.
+    """
+    global _latest_pinelab_cleaned_df
+    if _latest_pinelab_cleaned_df is None or _latest_pinelab_cleaned_df.empty:
+        return jsonify({'status': 'error', 'message': 'No cleaned Pine Lab data available. Please upload a file first.'}), 404
+
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ClickHouse not connected.'}), 503
+
+    data = request.get_json(force=True) or {}
+    date_from = data.get('date_from', '').strip()   # YYYY-MM-DD
+    date_to   = data.get('date_to',   '').strip()   # YYYY-MM-DD
+
+    if not date_from or not date_to:
+        return jsonify({'status': 'error', 'message': 'Both date_from and date_to are required.'}), 400
+
+    try:
+        from clickhouse_client import get_client
+        from pine_lab_cleaner import upload_to_clickhouse as _upload_to_ch, COL_DATE
+
+        df = _latest_pinelab_cleaned_df.copy()
+
+        # Parse Bank Txn Date and filter by selected range
+        df['_txn_date'] = pd.to_datetime(df[COL_DATE], dayfirst=True, errors='coerce').dt.date
+        date_from_d = pd.to_datetime(date_from).date()
+        date_to_d   = pd.to_datetime(date_to).date()
+
+        df_filtered = df[
+            (df['_txn_date'] >= date_from_d) &
+            (df['_txn_date'] <= date_to_d)
+        ]
+        filtered_rows = len(df_filtered)
+
+        if df_filtered.empty:
+            return jsonify({
+                'status': 'warning',
+                'message': f'No rows found for {date_from} to {date_to}. Dashboard not changed.',
+                'filtered_rows': 0,
+                'imeis_inserted': 0
+            })
+
+        client = get_client()
+
+        # Rows of the same month are replaced inside the upload (insert first, then delete older)
+        emi_state.clear(emi_state.PINE_FIN)
+
+        # Use invoice_no-based upload logic (solves dummy IMEI problem)
+        stats = _upload_to_ch(df_filtered, {})
+        ch_cache_clear()
+
+        matched_invoices = stats.get('phase1_invoice', 0)
+        total_inserted   = stats.get('inserted_records', 0)
+
+        app.logger.info(
+            f'Pine Lab date filter {date_from}->{date_to}: '
+            f'{filtered_rows} rows -> {matched_invoices} invoice-matched + {stats.get("phase2_imei", 0)} IMEI fallback'
+        )
+
+        return jsonify({
+            'status': 'success',
+            'filtered_rows':    filtered_rows,
+            'imeis_inserted':   total_inserted,
+            'date_from': date_from,
+            'date_to':   date_to,
+            'message': f'Dashboard updated for {date_from} - {date_to}. {filtered_rows} transactions, {matched_invoices} invoice-matched, {stats.get("phase2_imei", 0)} IMEI fallback.'
+        })
+
+    except Exception as e:
+        app.logger.error(f'Pine Lab date filter failed: {e}', exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+
+@app.route('/api/upload-paytm', methods=['POST'])
+def api_upload_paytm():
+    """Upload Paytm EMI report (CSV/XLSX/ZIP), clean it, and push to ClickHouse."""
+    global _latest_paytm_cleaned_df
+    if not _PAYTM_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'Paytm cleaner module not available.'}), 500
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ClickHouse not connected. Cannot upload Paytm data.'}), 503
+
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file uploaded.'}), 400
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No file selected.'}), 400
+
+    fname = file.filename.lower()
+    if not (fname.endswith('.csv') or fname.endswith('.xlsx') or fname.endswith('.xls') or fname.endswith('.zip')):
+        return jsonify({'status': 'error', 'message': 'Please upload a .csv, .xlsx or .zip file.'}), 400
+
+    try:
+        df_raw = load_paytm_file(file)
+        df_clean, stats = clean_paytm(df_raw)
+
+        if df_clean.empty:
+            return jsonify({
+                'status': 'warning',
+                'message': 'No valid records found after applying cleaning rules.',
+                **stats
+            })
+
+        _latest_paytm_cleaned_df = df_clean.copy()   # cache for download / date filter
+        stats = paytm_upload_to_ch(df_clean, stats)
+        ch_cache_clear()
+
+        return jsonify({
+            'status': 'success',
+            'message': (f'Paytm EMI data uploaded successfully. '
+                        f'Removed {stats.get("removed_other_mode", 0)} Other Mode and '
+                        f'{stats.get("removed_below_min", 0)} rows below 1000'
+                        + (f', and {stats["removed_excluded_branch"]} non-branch (CAFE YMCA) rows.' if stats.get('removed_excluded_branch') else '.')),
+            'raw_rows':          stats.get('raw_rows', 0),
+            'after_filter':      stats.get('after_filter', 0),
+            'after_dedup':       stats.get('after_dedup', 0),
+            'matched_invoices':  stats.get('matched_invoices', 0),
+            'inserted_records':  stats.get('inserted_records', 0),
+            'date_from':         stats.get('date_from', ''),
+            'date_to':           stats.get('date_to', ''),
+            'total_orig_amt':    stats.get('total_orig_amt', 0),
+        })
+    except ValueError as ve:
+        app.logger.warning(f'Paytm upload validation error: {ve}')
+        return jsonify({'status': 'error', 'message': str(ve)}), 400
+    except Exception as e:
+        app.logger.error(f'Paytm upload failed: {e}', exc_info=True)
+        return jsonify({'status': 'error', 'message': f'Upload failed: {str(e)}'}), 500
+
+
+@app.route('/api/upload-benow', methods=['POST'])
+def api_upload_benow():
+    global _latest_benow_cleaned_df
+    """Upload Benow report (CSV/XLSX/ZIP), clean it, and push to ClickHouse."""
+    if not _BENOW_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'Benow cleaner module not available.'}), 500
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ClickHouse not connected. Cannot upload Benow data.'}), 503
+
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file uploaded.'}), 400
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No file selected.'}), 400
+
+    fname = file.filename.lower()
+    if not (fname.endswith('.csv') or fname.endswith('.xlsx') or fname.endswith('.xls') or fname.endswith('.zip')):
+        return jsonify({'status': 'error', 'message': 'Please upload a .csv, .xlsx or .zip file.'}), 400
+
+    try:
+        df_raw = load_benow_file(file)
+        df_clean, stats = clean_benow(df_raw)
+
+        if df_clean.empty:
+            return jsonify({
+                'status': 'warning',
+                'message': 'No valid records found after applying cleaning rules.',
+                **stats
+            })
+
+        _latest_benow_cleaned_df = df_clean.copy()
+        stats = benow_upload_to_ch(df_clean, stats)
+        ch_cache_clear()
+
+        return jsonify({
+            'status': 'success',
+            'message': (f'Benow data uploaded successfully. {stats.get("inserted_records", 0)} records updated. '
+                        f'Removed {stats.get("removed_below_min", 0)} rows below 1000.'),
+            'raw_rows':          stats.get('raw_rows', 0),
+            'after_filter':      stats.get('after_filter', 0),
+            'inserted_records':  stats.get('inserted_records', 0),
+            'date_from':         stats.get('date_from', ''),
+            'date_to':           stats.get('date_to', ''),
+            'total_orig_amt':    stats.get('total_orig_amt', 0),
+        })
+    except ValueError as ve:
+        app.logger.warning(f'Benow upload validation error: {ve}')
+        return jsonify({'status': 'error', 'message': str(ve)}), 400
+    except Exception as e:
+        app.logger.error(f'Benow upload failed: {e}', exc_info=True)
+        return jsonify({'status': 'error', 'message': f'Upload failed: {str(e)}'}), 500
+
+
+@app.route('/api/download-paytm-cleaned', methods=['GET'])
+@app.route('/api/files/Paytm_Cleaned.xlsx', methods=['GET'])
+def api_download_paytm_cleaned():
+    """Serve the most recently cleaned Paytm file as an Excel download."""
+    global _latest_paytm_cleaned_df
+    if _latest_paytm_cleaned_df is None or _latest_paytm_cleaned_df.empty:
+        return jsonify({'status': 'error', 'message': 'No cleaned Paytm data available. Please upload a file first.'}), 404
+
+    import io as _io
+    export_df = _latest_paytm_cleaned_df.drop(
+        columns=[c for c in ['_date'] if c in _latest_paytm_cleaned_df.columns]
+    ).copy()
+
+    # Keep date only (no time) for txn_date
+    if 'txn_date' in export_df.columns:
+        export_df['txn_date'] = (
+            pd.to_datetime(export_df['txn_date'], errors='coerce').dt.date
+        )
+
+    buf = _io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        export_df.to_excel(writer, index=False, sheet_name='Paytm_Cleaned')
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='Paytm_Cleaned.xlsx'
+    )
+
+
+@app.route('/api/filter-paytm-by-date', methods=['POST'])
+def api_filter_paytm_by_date():
+    """Filter the cached cleaned Paytm DataFrame by Transaction Date range and re-link to the dashboard."""
+    global _latest_paytm_cleaned_df
+    if _latest_paytm_cleaned_df is None or _latest_paytm_cleaned_df.empty:
+        return jsonify({'status': 'error', 'message': 'No cleaned Paytm data available. Please upload a file first.'}), 404
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ClickHouse not connected.'}), 503
+
+    data = request.get_json(force=True) or {}
+    date_from = data.get('date_from', '').strip()
+    date_to   = data.get('date_to',   '').strip()
+    if not date_from or not date_to:
+        return jsonify({'status': 'error', 'message': 'Both date_from and date_to are required.'}), 400
+
+    try:
+        from clickhouse_client import get_client
+        from paytm_cleaner import COL_DATE as _PAYTM_DATE, FINANCIER_NAME as _PAYTM_FIN
+
+        df = _latest_paytm_cleaned_df.copy()
+        df['_txn_date'] = pd.to_datetime(df[_PAYTM_DATE], errors='coerce').dt.date
+        d_from = pd.to_datetime(date_from).date()
+        d_to   = pd.to_datetime(date_to).date()
+        df_filtered = df[(df['_txn_date'] >= d_from) & (df['_txn_date'] <= d_to)]
+        filtered_rows = len(df_filtered)
+
+        if df_filtered.empty:
+            return jsonify({
+                'status': 'warning',
+                'message': f'No rows found for {date_from} to {date_to}. Dashboard not changed.',
+                'filtered_rows': 0, 'imeis_inserted': 0
+            })
+
+        client = get_client()
+        # Rows of the same month are replaced inside the upload (insert first, then delete older)
+        emi_state.clear(emi_state.PAYTM_FIN)
+
+        stats = paytm_upload_to_ch(df_filtered, {})
+        ch_cache_clear()
+        matched = stats.get('phase1_invoice', 0)
+        return jsonify({
+            'status': 'success',
+            'filtered_rows':  filtered_rows,
+            'imeis_inserted': stats.get('inserted_records', 0),
+            'date_from': date_from,
+            'date_to':   date_to,
+            'message': f'Dashboard updated for {date_from} - {date_to}. {filtered_rows} transactions, '
+                       f'{matched} invoice-matched, {stats.get("phase2_imei", 0)} IMEI fallback.'
+        })
+    except Exception as e:
+        app.logger.error(f'Paytm date filter failed: {e}', exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/download-benow-cleaned', methods=['GET'])
+@app.route('/api/files/Benow_Cleaned.xlsx', methods=['GET'])
+def api_download_benow_cleaned():
+    """Serve the most recently cleaned Benow file as an Excel download."""
+    global _latest_benow_cleaned_df
+    if _latest_benow_cleaned_df is None or _latest_benow_cleaned_df.empty:
+        return jsonify({'status': 'error', 'message': 'No cleaned Benow data available. Please upload a file first.'}), 404
+
+    import io as _io
+    export_df = _latest_benow_cleaned_df.drop(
+        columns=[c for c in ['_date'] if c in _latest_benow_cleaned_df.columns]
+    ).copy()
+
+    # Keep date only (no time) for txn_date
+    if 'txn_date' in export_df.columns:
+        export_df['txn_date'] = (
+            pd.to_datetime(export_df['txn_date'], errors='coerce').dt.date
+        )
+
+    buf = _io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        export_df.to_excel(writer, index=False, sheet_name='Benow_Cleaned')
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='Benow_Cleaned.xlsx'
+    )
+
+
+@app.route('/api/filter-benow-by-date', methods=['POST'])
+def api_filter_benow_by_date():
+    """Filter the cached cleaned Benow DataFrame by Transaction Date range and re-link to the dashboard."""
+    global _latest_benow_cleaned_df
+    if _latest_benow_cleaned_df is None or _latest_benow_cleaned_df.empty:
+        return jsonify({'status': 'error', 'message': 'No cleaned Benow data available. Please upload a file first.'}), 404
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ClickHouse not connected.'}), 503
+
+    data = request.get_json(force=True) or {}
+    date_from = data.get('date_from', '').strip()
+    date_to   = data.get('date_to',   '').strip()
+    if not date_from or not date_to:
+        return jsonify({'status': 'error', 'message': 'Both date_from and date_to are required.'}), 400
+
+    try:
+        from clickhouse_client import get_client
+        from benow_cleaner import FINANCIER_NAME as _BENOW_FIN, upload_to_clickhouse as benow_upload_to_ch
+
+        df = _latest_benow_cleaned_df.copy()
+        df['_txn_date'] = pd.to_datetime(df['_date'], errors='coerce').dt.date
+        d_from = pd.to_datetime(date_from).date()
+        d_to   = pd.to_datetime(date_to).date()
+        df_filtered = df[(df['_txn_date'] >= d_from) & (df['_txn_date'] <= d_to)]
+        filtered_rows = len(df_filtered)
+
+        if df_filtered.empty:
+            return jsonify({
+                'status': 'warning',
+                'message': f'No rows found for {date_from} to {date_to}. Dashboard not changed.',
+                'filtered_rows': 0, 'imeis_inserted': 0
+            })
+
+        client = get_client()
+        # Rows of the same month are replaced inside the upload (insert first, then delete older)
+        emi_state.clear(emi_state.BENOW_FIN)
+
+        stats = benow_upload_to_ch(df_filtered, {})
+        ch_cache_clear()
+        matched = stats.get('phase1_invoice', 0)
+        return jsonify({
+            'status': 'success',
+            'filtered_rows':  filtered_rows,
+            'imeis_inserted': stats.get('inserted_records', 0),
+            'date_from': date_from,
+            'date_to':   date_to,
+            'message': f'Dashboard updated for {date_from} - {date_to}. {filtered_rows} transactions, '
+                       f'{matched} invoice-matched, {stats.get("phase2_imei", 0)} IMEI fallback.'
+        })
+    except Exception as e:
+        app.logger.error(f'Benow date filter failed: {e}', exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
 @app.route('/api/download-cleaned', methods=['GET'])
 def api_download_cleaned():
     global _latest_cleaned_report_path
@@ -674,6 +1226,128 @@ def api_download_cleaned():
         download_name='Cleaned_Sales_Report.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
+
+@app.route('/api/export-date-range', methods=['GET'])
+def api_export_date_range():
+    """
+    Export the cleaned DATA sheet filtered to a date range.
+    Priority:
+      1. Uploaded cleaned file (filtered by date) — fastest
+      2. ClickHouse live query               — falls back if no file
+    Query params: start_date=YYYY-MM-DD, end_date=YYYY-MM-DD, source=file|clickhouse
+    """
+    import io as _io
+    start_date = request.args.get('start_date', '').strip()
+    end_date   = request.args.get('end_date',   '').strip()
+    source     = request.args.get('source', 'auto').strip()   # 'file', 'clickhouse', or 'auto'
+
+    if not start_date or not end_date:
+        return jsonify({'error': 'start_date and end_date are required (YYYY-MM-DD)'}), 400
+
+    try:
+        df = None
+
+        # ── Try uploaded / cleaned file first (or if explicitly requested) ──
+        file_path = _latest_cleaned_report_path or os.path.join(DATA_DIR, 'uploaded_sales_report.xlsx')
+        use_file = (source in ('file', 'auto')) and file_path and os.path.exists(file_path)
+
+        if use_file:
+            raw = pd.read_excel(file_path, sheet_name='Sheet1', engine='calamine')
+            raw['Date'] = pd.to_datetime(raw['Date'], errors='coerce', dayfirst=True)
+            s_dt = pd.to_datetime(start_date)
+            e_dt = pd.to_datetime(end_date)
+            df = raw[(raw['Date'] >= s_dt) & (raw['Date'] <= e_dt)].copy()
+            if df.empty and source == 'auto':
+                df = None   # fall through to ClickHouse
+
+        # ── Fall back to ClickHouse ──
+        if df is None and _CLICKHOUSE_AVAILABLE and source != 'file':
+            from clickhouse_aggregator import get_raw_export_df
+            df = get_raw_export_df(start_date, end_date)
+
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            return jsonify({'error': f'No data found for {start_date} → {end_date}. '
+                                      'Upload a cleaned sales report or connect ClickHouse.'}), 404
+
+        # ── Build Excel in memory ──
+        output = _io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Sheet1', index=False, startrow=1, header=False)
+
+            workbook  = writer.book
+            worksheet = writer.sheets['Sheet1']
+
+            # Header style — dark blue background, white bold text
+            hdr_fmt = workbook.add_format({
+                'bold': True, 'font_color': '#FFFFFF', 'bg_color': '#1e3a5f',
+                'border': 1,  'align': 'center', 'valign': 'vcenter',
+                'font_name': 'Calibri', 'font_size': 10,
+            })
+            # Data row style — light alternate rows
+            alt_fmt = workbook.add_format({
+                'font_name': 'Calibri', 'font_size': 9,
+                'bg_color': '#EBF5FB', 'border': 1,
+            })
+            nrm_fmt = workbook.add_format({
+                'font_name': 'Calibri', 'font_size': 9, 'border': 1,
+            })
+            num_fmt = workbook.add_format({
+                'font_name': 'Calibri', 'font_size': 9, 'border': 1,
+                'num_format': '#,##0', 'align': 'right',
+            })
+            price_fmt = workbook.add_format({
+                'font_name': 'Calibri', 'font_size': 9, 'border': 1,
+                'num_format': '#,##0.00', 'align': 'right',
+            })
+
+            # Write header row
+            for col_num, col_name in enumerate(df.columns):
+                worksheet.write(0, col_num, col_name, hdr_fmt)
+
+            # Write data with alternating rows + numeric formatting
+            num_cols    = {'QTY', 'Sold Price', 'Price', 'EMI', 'Slno'}
+            price_cols  = {'Sold Price', 'Price', 'EMI'}
+            for row_num, (_, row) in enumerate(df.iterrows()):
+                row_fmt = alt_fmt if row_num % 2 == 0 else nrm_fmt
+                for col_num, (col_name, val) in enumerate(zip(df.columns, row)):
+                    if col_name in price_cols:
+                        worksheet.write_number(row_num + 1, col_num,
+                                               float(val) if pd.notna(val) else 0, price_fmt)
+                    elif col_name in num_cols:
+                        worksheet.write_number(row_num + 1, col_num,
+                                               int(val) if pd.notna(val) else 0, num_fmt)
+                    else:
+                        worksheet.write(row_num + 1, col_num,
+                                        str(val) if pd.notna(val) else '', row_fmt)
+
+            # Auto-fit column widths
+            for col_num, col_name in enumerate(df.columns):
+                col_vals = df[col_name].astype(str)
+                max_width = max(len(col_name), col_vals.str.len().max() if not col_vals.empty else 0)
+                worksheet.set_column(col_num, col_num, min(int(max_width) + 2, 35))
+
+            # Freeze the header row
+            worksheet.freeze_panes(1, 0)
+            worksheet.autofilter(0, 0, 0, len(df.columns) - 1)
+            worksheet.set_row(0, 18)
+
+        output.seek(0)
+        safe_start = start_date.replace('-', '')
+        safe_end   = end_date.replace('-', '')
+        filename   = f'CleanedData_{safe_start}_to_{safe_end}.xlsx'
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as exc:
+        app.logger.error('export-date-range error: %s', exc, exc_info=True)
+        return jsonify({'error': str(exc)}), 500
+
 
 @app.route('/api/export-finance-report', methods=['POST'])
 def api_export_finance_report():

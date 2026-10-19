@@ -20,6 +20,32 @@ function _endDate() {
   return (tf === 'custom' && activeEndDate) ? activeEndDate : '';
 }
 
+
+// ── Theme toggle (Dark ↔ Light) ────────────────────────────────────────────
+(function initTheme() {
+  const saved = localStorage.getItem('myg-theme') || 'dark';
+  applyTheme(saved);
+})();
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  const icon = document.querySelector('#themeToggleBtn .theme-icon');
+
+  if (theme === 'light') {
+    html.setAttribute('data-theme', 'light');
+    if (icon) icon.textContent = '☀️';
+  } else {
+    html.removeAttribute('data-theme');
+    if (icon) icon.textContent = '🌙';
+  }
+  localStorage.setItem('myg-theme', theme);
+}
+
+window.toggleTheme = function() {
+  const current = localStorage.getItem('myg-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+};
+
 /** Toggle between Excel and ClickHouse data sources */
 window.toggleDataSource = function() {
   _dataSource = (_dataSource === 'excel') ? 'clickhouse' : 'excel';
@@ -39,11 +65,98 @@ window.toggleDataSource = function() {
   if (activeDate) loadDashboardData(activeDate, timeframe);
 };
 
+/**
+ * Refresh only the currently active tab's data — no full page reload.
+ * Clears the API cache for the current date then re-runs the relevant loader.
+ */
+window.refreshCurrentTab = function() {
+  const btn  = document.getElementById('btnRefreshTab');
+  const icon = document.getElementById('refreshTabIcon');
+
+  // Spin animation
+  if (icon) icon.style.animation = 'spin360 0.7s linear infinite';
+  if (btn)  btn.disabled = true;
+
+  const stopSpin = () => {
+    if (icon) icon.style.animation = '';
+    if (btn)  btn.disabled = false;
+  };
+
+  // Detect active tab from sidebar nav
+  const activeNav = document.querySelector('.nav-item.active');
+  const tab = activeNav ? activeNav.getAttribute('data-tab') : 'dashboard';
+
+  // Clear cached data for the current date so we get fresh data
+  if (activeDate) _apiCacheClearDate(activeDate);
+
+  const timeframe = (document.getElementById('timeframeSelect') || {}).value || 'daily';
+
+  const done = () => { stopSpin(); showToast(`Tab refreshed ✓`, 'success'); };
+  const fail = (e) => { stopSpin(); showToast(`Refresh failed: ${e}`, 'error'); };
+
+  try {
+    switch (tab) {
+      case 'dashboard':
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(done, 800);
+        break;
+      case 'exec':
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(() => { renderExecSummary(); done(); }, 900);
+        break;
+      case 'disbursement':
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(() => { renderDisbursement(); done(); }, 900);
+        break;
+      case 'category':
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(() => { renderCategoryPerformance(); done(); }, 900);
+        break;
+      case 'contest':
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(() => { renderContest(); done(); }, 900);
+        break;
+      case 'manpower':
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(() => { renderManpower(); done(); }, 900);
+        break;
+      case 'price':
+        loadPriceRangeData();
+        setTimeout(done, 800);
+        break;
+      case 'brand':
+        loadBrandData();
+        setTimeout(done, 800);
+        break;
+      case 'store':
+        loadStoreData();
+        setTimeout(done, 800);
+        break;
+      default:
+        // Generic fallback — reload all dashboard data
+        loadDashboardData(activeDate, timeframe);
+        setTimeout(done, 900);
+    }
+  } catch(e) {
+    fail(e);
+  }
+};
+
+
+let _emiVersion = null;
 /** Poll /api/clickhouse/status and update the badge */
 function _pollClickHouseStatus() {
   fetch('/api/clickhouse/status')
     .then(r => r.json())
     .then(data => {
+      if (data.emi_version !== undefined) {
+        if (_emiVersion !== null && _emiVersion !== data.emi_version) {
+          // Pine/Paytm/Benow upload state changed on the server — drop stale cached responses
+          _apiCache.clear();
+          if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+        }
+        _emiVersion = data.emi_version;
+      }
       const badge = document.getElementById('chStatusBadge');
       const dot   = document.getElementById('chStatusDot');
       const text  = document.getElementById('chStatusText');
@@ -769,6 +882,14 @@ function initDateSelector() {
   });
 }
 
+/** Called after a Pine Labs / Paytm upload or "Apply to Dashboard": drop every cached API
+ *  response and reload the dashboard so the new EMI numbers show immediately. */
+window.refreshDashboardAfterEmi = function () {
+  _apiCache.clear();
+  const tf = (document.getElementById('timeframeSelect') || {}).value || 'daily';
+  if (activeDate) loadDashboardData(activeDate, tf);
+};
+
 function loadDashboardData(date, timeframe) {
   if (!date) return;
   const endDate = (timeframe === 'custom' && activeEndDate) ? activeEndDate : '';
@@ -788,7 +909,7 @@ function loadDashboardData(date, timeframe) {
       
       // Always populate hierarchy filters regardless of category data
       if (data.hierarchy) {
-        initCategoryFilters(data.hierarchy);
+        initCategoryFilters(data.hierarchy, data.states, data.districts, data.district_states);
       }
       
       // Auto-populate exec_summary achievement from live KPIs
@@ -1083,80 +1204,185 @@ function renderTeamPerformance(hierarchy) {
 
 let _catHierarchy = null;
 let _catFiltersAttached = false;
+let _districtList = [];
+let _districtStateMap = {};
 
-function initCategoryFilters(hierarchy) {
+// Branch code -> branch name (for the Store dropdown: shows names, filters by code)
+let _branchNames = {};
+function _branchLabel(code) {
+  return _branchNames[String(code).trim().toUpperCase()] || code;
+}
+// Branch code -> district (used to narrow the Store dropdown by District / State)
+let _branchDistricts = {};
+Promise.all([
+  fetch("/api/branch-names").then(r => r.json()).catch(() => ({})),
+  fetch("/api/branch-districts").then(r => r.json()).catch(() => ({}))
+]).then(([names, dists]) => {
+  _branchNames = names || {};
+  _branchDistricts = dists || {};
+  if (_catHierarchy) initCategoryFilters(_catHierarchy);
+});
+
+function initCategoryFilters(hierarchy, states = [], districts = [], districtStates = null) {
   if (!hierarchy) return;
   _catHierarchy = hierarchy;
   
-  const rbmSelect = document.getElementById("cat-filter-rbm");
-  const bdmSelect = document.getElementById("cat-filter-bdm");
-  const storeSelect = document.getElementById("cat-filter-store");
-  const staffSelect = document.getElementById("cat-filter-staff");
+  const stateSelect  = document.getElementById("cat-filter-state");
+  const districtSelect = document.getElementById("cat-filter-district");
+  const rbmSelect    = document.getElementById("cat-filter-rbm");
+  const finBdmSelect = document.getElementById("cat-filter-fin-bdm");
+  const bdmSelect    = document.getElementById("cat-filter-bdm");
+  const storeSelect  = document.getElementById("cat-filter-store");
+  const staffSelect  = document.getElementById("cat-filter-staff");
   if (!rbmSelect) return;
   
-  // Helper to populate a select
-  function fillSelect(sel, options, allLabel) {
+  // Helper to populate a select (skip blank/Unknown entries)
+  function fillSelect(sel, options, allLabel, labelFn) {
     const prev = sel.value;
+    const lbl = labelFn || (v => v);
     sel.innerHTML = `<option value="">${allLabel}</option>`;
-    options.sort().forEach(val => {
-      const opt = document.createElement("option");
-      opt.value = val; opt.innerText = val;
-      sel.appendChild(opt);
-    });
+    options
+      .filter(v => v && v.trim() && v.trim().toUpperCase() !== 'UNKNOWN')
+      .sort((a, b) => lbl(a).localeCompare(lbl(b)))
+      .forEach(val => {
+        const opt = document.createElement("option");
+        opt.value = val; opt.innerText = lbl(val);
+        sel.appendChild(opt);
+      });
     if (options.includes(prev)) sel.value = prev;
+  }
+  
+  // Helper to dynamically collect options across the hierarchy
+  function getOptions(level, rFilter, bFilter, sFilter) {
+    const opts = new Set();
+    const currentHierarchy = _catHierarchy || hierarchy; // Use globally updated hierarchy if available
+    
+    const match = (val, filter) => !filter || val.trim().toLowerCase() === filter.trim().toLowerCase();
+
+    for (const [r, rData] of Object.entries(currentHierarchy)) {
+      if (match(r, rFilter)) {
+        if (level === 'bdm') {
+          Object.keys(rData.bdms || {}).forEach(b => opts.add(b));
+        } else {
+          for (const [b, bData] of Object.entries(rData.bdms || {})) {
+            if (match(b, bFilter)) {
+              if (level === 'store') {
+                const selDist  = districtSelect ? districtSelect.value : '';
+                const selState = stateSelect ? stateSelect.value : '';
+                Object.keys(bData.branches || {}).forEach(s => {
+                  if (selDist || selState) {
+                    const d = _branchDistricts[String(s).trim().toUpperCase()] || '';
+                    if (selDist && d.toUpperCase() !== selDist.toUpperCase()) return;
+                    if (selState && (_districtStateMap[d] || '').toUpperCase() !== selState.toUpperCase()) return;
+                  }
+                  opts.add(s);
+                });
+              } else if (level === 'staff') {
+                for (const [s, sData] of Object.entries(bData.branches || {})) {
+                  if (match(s, sFilter)) {
+                    Object.keys(sData.staffs || {}).forEach(st => opts.add(st));
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return Array.from(opts).sort();
   }
   
   // Always refresh RBM list from new hierarchy
   fillSelect(rbmSelect, Object.keys(hierarchy), "All RBMs");
-  
-  // Restore cascading dropdowns if a value was previously selected
-  const selRbm = rbmSelect.value;
-  if (selRbm && hierarchy[selRbm]) {
-    fillSelect(bdmSelect, Object.keys(hierarchy[selRbm].bdms || {}), "All BDMs");
-    const selBdm = bdmSelect.value;
-    if (selBdm && hierarchy[selRbm].bdms[selBdm]) {
-      fillSelect(storeSelect, Object.keys(hierarchy[selRbm].bdms[selBdm].branches || {}), "All Stores");
-      const selStore = storeSelect.value;
-      if (selStore && hierarchy[selRbm].bdms[selBdm].branches[selStore]) {
-        fillSelect(staffSelect, Object.keys(hierarchy[selRbm].bdms[selBdm].branches[selStore].staffs || {}), "All Staff");
+
+  // Populate Fin BDM from the unique Fin BDM values in the hierarchy
+  function getFinBdmOptions() {
+    const opts = new Set();
+    for (const rData of Object.values(_catHierarchy || hierarchy)) {
+      if (rData.fin_bdm) opts.add(rData.fin_bdm);
+      for (const bData of Object.values(rData.bdms || {})) {
+        for (const sData of Object.values(bData.branches || {})) {
+          if (sData.fin_bdm) opts.add(sData.fin_bdm);
+        }
       }
     }
+    return Array.from(opts).sort();
+  }
+  fillSelect(finBdmSelect, getFinBdmOptions(), "All Fin BDMs");
+  if (stateSelect && states && states.length > 0) {
+    fillSelect(stateSelect, states, "All States");
+  }
+  // District options (narrowed to the selected State, when one is chosen)
+  if (districts && districts.length > 0) _districtList = districts;
+  if (districtStates) _districtStateMap = districtStates;
+  function refreshDistricts() {
+    if (!districtSelect) return;
+    const st = stateSelect ? stateSelect.value : '';
+    const opts = _districtList.filter(d => !st || (_districtStateMap[d] || '').toUpperCase() === st.toUpperCase());
+    fillSelect(districtSelect, opts, "All Districts");
+  }
+  refreshDistricts();
+  // Re-fill Store (and reset Staff) after State / District changes
+  function refreshStores() {
+    fillSelect(storeSelect, getOptions('store', rbmSelect.value, bdmSelect.value), "All Stores", _branchLabel);
+    fillSelect(staffSelect, [], "All Staff");
+  }
+
+  // Restore cascading dropdowns if a value was previously selected, but flexibly
+  const selRbm = rbmSelect.value;
+  fillSelect(bdmSelect, getOptions('bdm', selRbm), "All BDMs");
+  const selBdm = bdmSelect.value;
+  fillSelect(storeSelect, getOptions('store', selRbm, selBdm), "All Stores", _branchLabel);
+  const selStore = storeSelect.value;
+  // Staff logic unchanged conceptually: must have store selected (though we find it flexibly)
+  if (selStore) {
+    fillSelect(staffSelect, getOptions('staff', selRbm, selBdm, selStore), "All Staff");
   } else {
-    fillSelect(bdmSelect, [], "All BDMs");
-    fillSelect(storeSelect, [], "All Stores");
     fillSelect(staffSelect, [], "All Staff");
   }
   
   // Attach events only once
   if (!_catFiltersAttached) {
     _catFiltersAttached = true;
-    
+
+    if (stateSelect) {
+      stateSelect.addEventListener("change", () => {
+        refreshDistricts();
+        refreshStores();
+        triggerCategoryFilterLoad();
+      });
+    }
+
+    if (districtSelect) districtSelect.addEventListener("change", () => {
+      refreshStores();
+      triggerCategoryFilterLoad();
+    });
+
     rbmSelect.addEventListener("change", () => {
-      const rbm = rbmSelect.value;
-      const bdms = (rbm && _catHierarchy[rbm]) ? Object.keys(_catHierarchy[rbm].bdms || {}) : [];
-      fillSelect(bdmSelect, bdms, "All BDMs");
-      fillSelect(storeSelect, [], "All Stores");
+      fillSelect(bdmSelect, getOptions('bdm', rbmSelect.value), "All BDMs");
+      fillSelect(storeSelect, getOptions('store', rbmSelect.value, bdmSelect.value), "All Stores", _branchLabel);
       fillSelect(staffSelect, [], "All Staff");
       triggerCategoryFilterLoad();
     });
-    
+
+    finBdmSelect.addEventListener("change", () => {
+      // Fin BDM is independent — just reload
+      triggerCategoryFilterLoad();
+    });
+
     bdmSelect.addEventListener("change", () => {
-      const rbm = rbmSelect.value;
-      const bdm = bdmSelect.value;
-      const branches = (rbm && bdm && _catHierarchy[rbm] && _catHierarchy[rbm].bdms[bdm])
-        ? Object.keys(_catHierarchy[rbm].bdms[bdm].branches || {}) : [];
-      fillSelect(storeSelect, branches, "All Stores");
+      fillSelect(storeSelect, getOptions('store', rbmSelect.value, bdmSelect.value), "All Stores", _branchLabel);
       fillSelect(staffSelect, [], "All Staff");
       triggerCategoryFilterLoad();
     });
     
     storeSelect.addEventListener("change", () => {
-      const rbm = rbmSelect.value;
-      const bdm = bdmSelect.value;
-      const store = storeSelect.value;
-      const staffs = (rbm && bdm && store && _catHierarchy[rbm] && _catHierarchy[rbm].bdms[bdm] && _catHierarchy[rbm].bdms[bdm].branches[store])
-        ? Object.keys(_catHierarchy[rbm].bdms[bdm].branches[store].staffs || {}) : [];
-      fillSelect(staffSelect, staffs, "All Staff");
+      const sVal = storeSelect.value;
+      if (sVal) {
+        fillSelect(staffSelect, getOptions('staff', rbmSelect.value, bdmSelect.value, sVal), "All Staff");
+      } else {
+        fillSelect(staffSelect, [], "All Staff");
+      }
       triggerCategoryFilterLoad();
     });
     
@@ -1166,12 +1392,17 @@ function initCategoryFilters(hierarchy) {
 
 function triggerCategoryFilterLoad() {
     const timeframe = document.getElementById("timeframeSelect") ? document.getElementById("timeframeSelect").value : "daily";
-    const rbm = encodeURIComponent(document.getElementById("cat-filter-rbm").value);
-    const bdm = encodeURIComponent(document.getElementById("cat-filter-bdm").value);
-    const store = encodeURIComponent(document.getElementById("cat-filter-store").value);
-    const staff = encodeURIComponent(document.getElementById("cat-filter-staff").value);
+    const rbm     = encodeURIComponent(document.getElementById("cat-filter-rbm").value);
+    const finBdm  = encodeURIComponent((document.getElementById("cat-filter-fin-bdm") || {}).value || '');
+    const bdm     = encodeURIComponent(document.getElementById("cat-filter-bdm").value);
+    const store   = encodeURIComponent(document.getElementById("cat-filter-store").value);
+    const staff   = encodeURIComponent(document.getElementById("cat-filter-staff").value);
+    const stateElement = document.getElementById("cat-filter-state");
+    const state   = stateElement ? encodeURIComponent(stateElement.value) : '';
+    const districtElement = document.getElementById("cat-filter-district");
+    const district = districtElement ? encodeURIComponent(districtElement.value) : '';
     
-    const url = `/api/dashboard-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&rbm=${rbm}&bdm=${bdm}&store=${store}&staff=${staff}${_src()}`;
+    const url = `/api/dashboard-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&state=${state}&district=${district}&rbm=${rbm}&fin_bdm=${finBdm}&bdm=${bdm}&store=${store}&staff=${staff}${_src()}`;
     
     _cachedFetch(url)
       .then(data => {
@@ -1834,6 +2065,10 @@ function populateBrandFilter() {
 }
 
 function renderCategoryPerformance() {
+  // Delegate to drill-down module (drill_down.js) when loaded
+  if (typeof window._renderCategoryPerfDrillDown === 'function') {
+    return window._renderCategoryPerfDrillDown();
+  }
   const cats = ["CD PRODUCTS", "LAPTOP", "MOBILE", "HVA", "SA", "OTHERS", "BANK EMI"];
   const cols = ["aCASH", "BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI", "PineLab", "PAYTM", "Benow"];
   
@@ -1895,8 +2130,7 @@ function renderCategoryPerformance() {
         
     if (prodQtySource) {
       Object.keys(prodQtySource).sort().forEach(prod => {
-        // Skip if the sub-product name is identical to the parent category (redundant duplicate)
-        if (prod.trim().toUpperCase() === cat.trim().toUpperCase()) return;
+        // (removed: no longer skip products that share a name with their category)
         
         const pTr = document.createElement("tr");
         pTr.setAttribute("data-parent-category", cat);
@@ -2051,8 +2285,7 @@ function renderCategoryPerformance() {
     
     if (prodValSource) {
       Object.keys(prodValSource).sort().forEach(prod => {
-        // Skip if sub-product name is identical to parent category (redundant duplicate)
-        if (prod.trim().toUpperCase() === cat.trim().toUpperCase()) return;
+        // (removed: no longer skip products that share a name with their category)
         
         const pTr = document.createElement("tr");
         pTr.setAttribute("data-parent-category", cat);
@@ -2191,6 +2424,8 @@ function renderCategoryPerformance() {
 }
 
 function applyCategoryFilter() {
+  // Replaced by drill-down navigation when drill_down.js is loaded
+  if (window._useDrillDown) return;
   const filterVal = document.getElementById("filter-category") ? document.getElementById("filter-category").value : "ALL";
   
   const qtyCatRows = document.querySelectorAll("#table-cat-qty tbody tr[data-category]");
@@ -3028,7 +3263,566 @@ function initCleanerPage() {
   }
 
   // Combined Sales Report cleaner pipeline
-  const salesZone = document.getElementById("salesReportDragZone");
+  // ── Pine Labs EMI Upload ──────────────────────────────────────────────────
+  (function initPineLab() {
+    const zone      = document.getElementById('pinelabDragZone');
+    const fileInput = document.getElementById('pinelabFileInput');
+    if (!zone || !fileInput) return;
+
+    // Helper: show progress bar with animated stages
+    function showProgress(text) {
+      document.getElementById('pinelabProgress').style.display = 'block';
+      document.getElementById('pinelabResult').style.display   = 'none';
+      document.getElementById('pinelabError').style.display    = 'none';
+      zone.style.display = 'none';
+      const pb = document.getElementById('pinelabProgressBar');
+      const pt = document.getElementById('pinelabProgressText');
+      pt.textContent = text || 'Processing Pine Labs data…';
+      pb.style.width = '15%';
+      // Staged animation
+      const stages = [
+        {w: '30%', t: 'Applying cleaning rules (Status = Success, Type = Sale)…'},
+        {w: '55%', t: 'Deduplicating on Transaction ID…'},
+        {w: '75%', t: 'Matching IMEIs to invoices in ClickHouse…'},
+        {w: '90%', t: 'Updating dashboard data…'},
+      ];
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < stages.length) {
+          pb.style.width  = stages[i].w;
+          pt.textContent  = stages[i].t;
+          i++;
+        } else {
+          clearInterval(interval);
+        }
+      }, 900);
+      return interval;
+    }
+
+    function finishProgress(interval) {
+      clearInterval(interval);
+      document.getElementById('pinelabProgressBar').style.width = '100%';
+      document.getElementById('pinelabProgressText').textContent = 'Done!';
+      setTimeout(() => {
+        document.getElementById('pinelabProgress').style.display = 'none';
+      }, 400);
+    }
+
+    // Helper: show results panel
+    function showResult(data) {
+      const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
+      document.getElementById('pinelabResult').style.display = 'block';
+      document.getElementById('pinelabResultMsg').textContent = data.message || '';
+      document.getElementById('statRawRows').textContent     = fmt(data.raw_rows);
+      document.getElementById('statAfterFilter').textContent = fmt(data.after_filter);
+      document.getElementById('statAfterDedup').textContent  = fmt(data.after_dedup);
+      document.getElementById('statMatchedInv').textContent  = fmt(data.matched_invoices);
+      document.getElementById('statInserted').textContent    = fmt(data.inserted_records);
+      // Period badge
+      if (data.date_from && data.date_to) {
+        document.getElementById('pinelabPeriodBadge').textContent =
+          data.date_from + ' → ' + data.date_to;
+      }
+      lucide.createIcons();
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('pinelabError');
+      el.style.display = 'block';
+      el.innerHTML = '⚠️ ' + msg;
+      document.getElementById('pinelabProgress').style.display = 'none';
+      zone.style.display = 'block';
+    }
+
+    // Core upload function
+    function uploadPineLab(file) {
+      const fname = file.name.toLowerCase();
+      if (!fname.endsWith('.csv') && !fname.endsWith('.zip')) {
+        showToast('Please upload a .csv or .zip file', 'error');
+        return;
+      }
+      const interval = showProgress('Uploading ' + file.name + '…');
+      const fd = new FormData();
+      fd.append('file', file);
+      fetch('/api/upload-pinelab', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          finishProgress(interval);
+          if (data.status === 'success' || data.status === 'warning') {
+            showResult(data); if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            // Step 2 (trim by date) is no longer shown: the dashboard date picker filters by transaction date.
+            showToast(data.status === 'success'
+              ? '✅ Pine Lab EMI data uploaded to dashboard'
+              : '⚠️ ' + data.message, data.status === 'success' ? 'success' : 'warning');
+          } else {
+            showError(data.message || 'Upload failed.');
+            showToast('Pine Lab upload failed: ' + (data.message || ''), 'error');
+          }
+        })
+        .catch(err => {
+          finishProgress(interval);
+          showError('Network error: ' + err.message);
+          showToast('Upload error: ' + err.message, 'error');
+        });
+    }
+
+    // Drag & drop
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.style.borderColor = '#f59e0b';
+      zone.style.background  = 'rgba(245,158,11,0.07)';
+    });
+    zone.addEventListener('dragleave', () => {
+      zone.style.borderColor = 'rgba(245,158,11,0.4)';
+      zone.style.background  = 'rgba(255,255,255,0.01)';
+    });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.style.borderColor = 'rgba(245,158,11,0.4)';
+      zone.style.background  = 'rgba(255,255,255,0.01)';
+      const file = e.dataTransfer.files[0];
+      if (file) uploadPineLab(file);
+    });
+
+    // File picker
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) uploadPineLab(fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    // "Upload Another" resets the UI
+    const btnAnother = document.getElementById('btnPinelabUploadAnother');
+    if (btnAnother) {
+      btnAnother.addEventListener('click', () => {
+        document.getElementById('pinelabResult').style.display = 'none';
+        document.getElementById('pinelabError').style.display  = 'none';
+        const step2 = document.getElementById('pinelabStep2');
+        if (step2) step2.style.display = 'none';
+        zone.style.display = 'block';
+      });
+    }
+    // ── Step 2: Date filter ───────────────────────────────────────────────
+    (function initPineLabDateFilter() {
+      const btn      = document.getElementById('btnPinelabApplyDate');
+      if (!btn) return;
+
+      btn.addEventListener('click', () => {
+        const dateFrom = document.getElementById('pinelabDateFrom').value;
+        const dateTo   = document.getElementById('pinelabDateTo').value;
+
+        if (!dateFrom || !dateTo) {
+          showToast('Please select both From and To dates', 'error'); return;
+        }
+        if (dateFrom > dateTo) {
+          showToast('From Date must be before To Date', 'error'); return;
+        }
+
+        const progress = document.getElementById('pinelabDateProgress');
+        const bar      = document.getElementById('pinelabDateBar');
+        const result   = document.getElementById('pinelabDateResult');
+        const errEl    = document.getElementById('pinelabDateError');
+        result.style.display = 'none';
+        errEl.style.display  = 'none';
+        progress.style.display = 'block';
+        btn.disabled = true;
+
+        let pct = 0;
+        const ticker = setInterval(() => { pct = Math.min(pct + 3, 85); bar.style.width = pct + '%'; }, 150);
+
+        fetch('/api/filter-pinelab-by-date', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date_from: dateFrom, date_to: dateTo })
+        })
+          .then(r => r.json())
+          .then(data => {
+            clearInterval(ticker);
+            bar.style.width = '100%';
+            setTimeout(() => { progress.style.display = 'none'; bar.style.width = '0%'; btn.disabled = false; }, 600);
+            if (data.status === 'success') {
+              result.style.display = 'block';
+              result.innerHTML = '✅ ' + data.message +
+                '<br><span style="opacity:0.7;">Transactions: ' + data.filtered_rows +
+                ' &nbsp;|&nbsp; IMEIs updated: ' + data.imeis_inserted + '</span>';
+              showToast('✅ Dashboard updated for ' + dateFrom + ' → ' + dateTo, 'success'); if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            } else {
+              errEl.style.display = 'block';
+              errEl.textContent = '⚠️ ' + (data.message || 'Filter failed.');
+              showToast('Error: ' + (data.message || ''), 'error');
+            }
+          })
+          .catch(err => {
+            clearInterval(ticker);
+            progress.style.display = 'none';
+            btn.disabled = false;
+            errEl.style.display = 'block';
+            errEl.textContent = '⚠️ Network error: ' + err.message;
+          });
+      });
+    })();
+
+  })();
+
+  // ── Paytm EMI Upload ──────────────────────────────────────────────────────
+  (function initPaytm() {
+    const zone      = document.getElementById('paytmDragZone');
+    const fileInput = document.getElementById('paytmFileInput');
+    if (!zone || !fileInput) return;
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
+
+    function showProgress(text) {
+      $('paytmProgress').style.display = 'block';
+      $('paytmResult').style.display   = 'none';
+      $('paytmError').style.display    = 'none';
+      zone.style.display = 'none';
+      const pb = $('paytmProgressBar');
+      const pt = $('paytmProgressText');
+      pt.textContent = text || 'Processing Paytm data…';
+      pb.style.width = '15%';
+      const stages = [
+        {w: '30%', t: 'Removing Other Mode & amounts below 1000…'},
+        {w: '55%', t: 'Deduplicating on Transaction ID…'},
+        {w: '75%', t: 'Matching to invoices in ClickHouse…'},
+        {w: '90%', t: 'Updating dashboard data…'},
+      ];
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < stages.length) { pb.style.width = stages[i].w; pt.textContent = stages[i].t; i++; }
+        else clearInterval(interval);
+      }, 900);
+      return interval;
+    }
+
+    function finishProgress(interval) {
+      clearInterval(interval);
+      $('paytmProgressBar').style.width = '100%';
+      $('paytmProgressText').textContent = 'Done!';
+      setTimeout(() => { $('paytmProgress').style.display = 'none'; }, 400);
+    }
+
+    function showResult(data) {
+      $('paytmResult').style.display = 'block';
+      $('paytmResultMsg').textContent = data.message || '';
+      $('paytmStatRaw').textContent      = fmt(data.raw_rows);
+      $('paytmStatFilter').textContent   = fmt(data.after_filter);
+      $('paytmStatDedup').textContent    = fmt(data.after_dedup);
+      $('paytmStatMatched').textContent  = fmt(data.matched_invoices);
+      $('paytmStatInserted').textContent = fmt(data.inserted_records);
+      if (data.date_from && data.date_to) {
+        $('paytmPeriodBadge').textContent = data.date_from + ' → ' + data.date_to;
+        $('paytmDateFrom').value = data.date_from;
+        $('paytmDateTo').value   = data.date_to;
+      }
+      lucide.createIcons();
+    }
+
+    function showError(msg) {
+      const el = $('paytmError');
+      el.style.display = 'block';
+      el.textContent = '⚠️ ' + msg;
+      $('paytmProgress').style.display = 'none';
+      zone.style.display = 'block';
+    }
+
+    function uploadPaytm(file) {
+      const fname = file.name.toLowerCase();
+      if (!/\.(csv|xlsx|xls|zip)$/.test(fname)) {
+        showToast('Please upload a .csv, .xlsx or .zip file', 'error');
+        return;
+      }
+      const interval = showProgress('Uploading ' + file.name + '…');
+      const fd = new FormData();
+      fd.append('file', file);
+      fetch('/api/upload-paytm', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          finishProgress(interval);
+          if (data.status === 'success' || data.status === 'warning') {
+            showResult(data); if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            // Step 2 (trim by date) is no longer shown: the dashboard date picker filters by transaction date.
+            showToast(data.status === 'success'
+              ? '✅ Paytm EMI data uploaded to dashboard'
+              : '⚠️ ' + data.message, data.status === 'success' ? 'success' : 'warning');
+          } else {
+            showError(data.message || 'Upload failed.');
+            showToast('Paytm upload failed: ' + (data.message || ''), 'error');
+          }
+        })
+        .catch(err => {
+          finishProgress(interval);
+          showError('Network error: ' + err.message);
+          showToast('Upload error: ' + err.message, 'error');
+        });
+    }
+
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.style.borderColor = '#00baf2';
+      zone.style.background  = 'rgba(0,186,242,0.07)';
+    });
+    zone.addEventListener('dragleave', () => {
+      zone.style.borderColor = 'rgba(0,186,242,0.4)';
+      zone.style.background  = 'rgba(255,255,255,0.01)';
+    });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.style.borderColor = 'rgba(0,186,242,0.4)';
+      zone.style.background  = 'rgba(255,255,255,0.01)';
+      const file = e.dataTransfer.files[0];
+      if (file) uploadPaytm(file);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) uploadPaytm(fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    const btnAnother = $('btnPaytmUploadAnother');
+    if (btnAnother) {
+      btnAnother.addEventListener('click', () => {
+        $('paytmResult').style.display = 'none';
+        $('paytmError').style.display  = 'none';
+        const step2 = $('paytmStep2');
+        if (step2) step2.style.display = 'none';
+        zone.style.display = 'block';
+      });
+    }
+
+    // ── Step 2: Date filter ───────────────────────────────────────────────
+    const btn = $('btnPaytmApplyDate');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const dateFrom = $('paytmDateFrom').value;
+        const dateTo   = $('paytmDateTo').value;
+        if (!dateFrom || !dateTo) { showToast('Please select both From and To dates', 'error'); return; }
+        if (dateFrom > dateTo)    { showToast('From Date must be before To Date', 'error'); return; }
+
+        const progress = $('paytmDateProgress');
+        const bar      = $('paytmDateBar');
+        const result   = $('paytmDateResult');
+        const errEl    = $('paytmDateError');
+        result.style.display = 'none';
+        errEl.style.display  = 'none';
+        progress.style.display = 'block';
+        btn.disabled = true;
+
+        let pct = 0;
+        const ticker = setInterval(() => { pct = Math.min(pct + 3, 85); bar.style.width = pct + '%'; }, 150);
+
+        fetch('/api/filter-paytm-by-date', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date_from: dateFrom, date_to: dateTo })
+        })
+          .then(r => r.json())
+          .then(data => {
+            clearInterval(ticker);
+            bar.style.width = '100%';
+            setTimeout(() => { progress.style.display = 'none'; bar.style.width = '0%'; btn.disabled = false; }, 600);
+            if (data.status === 'success') {
+              result.style.display = 'block';
+              result.innerHTML = '✅ ' + data.message +
+                '<br><span style="opacity:0.7;">Transactions: ' + data.filtered_rows +
+                ' &nbsp;|&nbsp; Records updated: ' + data.imeis_inserted + '</span>';
+              showToast('✅ Dashboard updated for ' + dateFrom + ' → ' + dateTo, 'success'); if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            } else {
+              errEl.style.display = 'block';
+              errEl.textContent = '⚠️ ' + (data.message || 'Filter failed.');
+              showToast('Error: ' + (data.message || ''), 'error');
+            }
+          })
+          .catch(err => {
+            clearInterval(ticker);
+            progress.style.display = 'none';
+            btn.disabled = false;
+            errEl.style.display = 'block';
+            errEl.textContent = '⚠️ Network error: ' + err.message;
+          });
+      });
+    }
+  })();
+
+// ── Benow EMI Upload ──────────────────────────────────────────────────────
+  (function initBenow() {
+    const zone      = document.getElementById('benowDragZone');
+    const fileInput = document.getElementById('benowFileInput');
+    if (!zone || !fileInput) return;
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
+
+    function showProgress(text) {
+      $('benowProgress').style.display = 'block';
+      $('benowResult').style.display   = 'none';
+      $('benowError').style.display    = 'none';
+      zone.style.display = 'none';
+      const pb = $('benowProgressBar');
+      const pt = $('benowProgressText');
+      pt.textContent = text || 'Processing Benow data…';
+      pb.style.width = '15%';
+      const stages = [
+        {w: '30%', t: 'Removing Other Mode & amounts below 1000…'},
+        {w: '55%', t: 'Deduplicating on Transaction ID…'},
+        {w: '75%', t: 'Matching to invoices in ClickHouse…'},
+        {w: '90%', t: 'Updating dashboard data…'},
+      ];
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < stages.length) { pb.style.width = stages[i].w; pt.textContent = stages[i].t; i++; }
+        else clearInterval(interval);
+      }, 900);
+      return interval;
+    }
+
+    function finishProgress(interval) {
+      clearInterval(interval);
+      $('benowProgressBar').style.width = '100%';
+      $('benowProgressText').textContent = 'Done!';
+      setTimeout(() => { $('benowProgress').style.display = 'none'; }, 400);
+    }
+
+    function showResult(data) {
+      $('benowResult').style.display = 'block';
+      $('benowResultMsg').textContent = data.message || '';
+      $('benowStatRaw').textContent      = fmt(data.raw_rows);
+      $('benowStatFilter').textContent   = fmt(data.after_filter);
+      $('benowStatDedup').textContent    = fmt(data.after_dedup);
+      $('benowStatMatched').textContent  = fmt(data.matched_invoices);
+      $('benowStatInserted').textContent = fmt(data.inserted_records);
+      if (data.date_from && data.date_to) {
+        $('benowPeriodBadge').textContent = data.date_from + ' → ' + data.date_to;
+        $('benowDateFrom').value = data.date_from;
+        $('benowDateTo').value   = data.date_to;
+      }
+      lucide.createIcons();
+    }
+
+    function showError(msg) {
+      const el = $('benowError');
+      el.style.display = 'block';
+      el.textContent = '⚠️ ' + msg;
+      $('benowProgress').style.display = 'none';
+      zone.style.display = 'block';
+    }
+
+    function uploadBenow(file) {
+      const fname = file.name.toLowerCase();
+      if (!/\.(csv|xlsx|xls|zip)$/.test(fname)) {
+        showToast('Please upload a .csv, .xlsx or .zip file', 'error');
+        return;
+      }
+      const interval = showProgress('Uploading ' + file.name + '…');
+      const fd = new FormData();
+      fd.append('file', file);
+      fetch('/api/upload-benow', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          finishProgress(interval);
+          if (data.status === 'success' || data.status === 'warning') {
+            showResult(data); if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            // Step 2 (trim by date) is no longer shown: the dashboard date picker filters by transaction date.
+            showToast(data.status === 'success'
+              ? '✅ Benow EMI data uploaded to dashboard'
+              : '⚠️ ' + data.message, data.status === 'success' ? 'success' : 'warning');
+          } else {
+            showError(data.message || 'Upload failed.');
+            showToast('Benow upload failed: ' + (data.message || ''), 'error');
+          }
+        })
+        .catch(err => {
+          finishProgress(interval);
+          showError('Network error: ' + err.message);
+          showToast('Upload error: ' + err.message, 'error');
+        });
+    }
+
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.style.borderColor = '#f2a900';
+      zone.style.background  = 'rgba(0,186,242,0.07)';
+    });
+    zone.addEventListener('dragleave', () => {
+      zone.style.borderColor = 'rgba(0,186,242,0.4)';
+      zone.style.background  = 'rgba(255,255,255,0.01)';
+    });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.style.borderColor = 'rgba(0,186,242,0.4)';
+      zone.style.background  = 'rgba(255,255,255,0.01)';
+      const file = e.dataTransfer.files[0];
+      if (file) uploadBenow(file);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) uploadBenow(fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    const btnAnother = $('btnBenowUploadAnother');
+    if (btnAnother) {
+      btnAnother.addEventListener('click', () => {
+        $('benowResult').style.display = 'none';
+        $('benowError').style.display  = 'none';
+        const step2 = $('benowStep2');
+        if (step2) step2.style.display = 'none';
+        zone.style.display = 'block';
+      });
+    }
+
+    // ── Step 2: Date filter ───────────────────────────────────────────────
+    const btn = $('btnBenowApplyDate');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const dateFrom = $('benowDateFrom').value;
+        const dateTo   = $('benowDateTo').value;
+        if (!dateFrom || !dateTo) { showToast('Please select both From and To dates', 'error'); return; }
+        if (dateFrom > dateTo)    { showToast('From Date must be before To Date', 'error'); return; }
+
+        const progress = $('benowDateProgress');
+        const bar      = $('benowDateBar');
+        const result   = $('benowDateResult');
+        const errEl    = $('benowDateError');
+        result.style.display = 'none';
+        errEl.style.display  = 'none';
+        progress.style.display = 'block';
+        btn.disabled = true;
+
+        let pct = 0;
+        const ticker = setInterval(() => { pct = Math.min(pct + 3, 85); bar.style.width = pct + '%'; }, 150);
+
+        fetch('/api/filter-benow-by-date', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date_from: dateFrom, date_to: dateTo })
+        })
+          .then(r => r.json())
+          .then(data => {
+            clearInterval(ticker);
+            bar.style.width = '100%';
+            setTimeout(() => { progress.style.display = 'none'; bar.style.width = '0%'; btn.disabled = false; }, 600);
+            if (data.status === 'success') {
+              result.style.display = 'block';
+              result.innerHTML = '✅ ' + data.message +
+                '<br><span style="opacity:0.7;">Transactions: ' + data.filtered_rows +
+                ' &nbsp;|&nbsp; Records updated: ' + data.imeis_inserted + '</span>';
+              showToast('✅ Dashboard updated for ' + dateFrom + ' → ' + dateTo, 'success'); if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            } else {
+              errEl.style.display = 'block';
+              errEl.textContent = '⚠️ ' + (data.message || 'Filter failed.');
+              showToast('Error: ' + (data.message || ''), 'error');
+            }
+          })
+          .catch(err => {
+            clearInterval(ticker);
+            progress.style.display = 'none';
+            btn.disabled = false;
+            errEl.style.display = 'block';
+            errEl.textContent = '⚠️ Network error: ' + err.message;
+          });
+      });
+    }
+  })();
+
+
+    const salesZone = document.getElementById("salesReportDragZone");
   if (salesZone) {
     salesZone.addEventListener("dragover", (e) => {
       e.preventDefault();
@@ -3698,3 +4492,102 @@ function resetCleanerState() {
   showToast("Cleaner reset. Upload a new file.", "info");
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Export Cleaned Data by Date Range
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  const btn    = document.getElementById('btnExportDateRange');
+  const status = document.getElementById('exportDateRangeStatus');
+  if (!btn) return;
+
+  function setStatus(msg, type) {
+    // type: 'info' | 'success' | 'error'
+    const colors = {
+      info:    { bg: 'rgba(37,99,235,0.12)',  border: 'rgba(59,130,246,0.35)',  color: '#93c5fd' },
+      success: { bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.35)', color: '#6ee7b7' },
+      error:   { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.35)',  color: '#fca5a5' },
+    };
+    const s = colors[type] || colors.info;
+    status.style.display      = 'block';
+    status.style.background   = s.bg;
+    status.style.border       = '1px solid ' + s.border;
+    status.style.color        = s.color;
+    status.innerHTML          = msg;
+  }
+
+  btn.addEventListener('click', function () {
+    const startVal  = document.getElementById('exportStartDate').value;
+    const endVal    = document.getElementById('exportEndDate').value;
+    const sourceVal = document.getElementById('exportSource').value;
+
+    if (!startVal || !endVal) {
+      setStatus('⚠️ Please select both <strong>Start Date</strong> and <strong>End Date</strong>.', 'error');
+      return;
+    }
+    if (startVal > endVal) {
+      setStatus('⚠️ Start date must be <strong>before or equal</strong> to end date.', 'error');
+      return;
+    }
+
+    // Show loading state
+    btn.disabled   = true;
+    btn.innerHTML  = '<i data-lucide="loader-circle" style="width:16px;height:16px;animation:spin 1s linear infinite;"></i> Generating…';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    setStatus('⏳ Preparing your Excel export… this may take a moment for large date ranges.', 'info');
+
+    const url = '/api/export-date-range?start_date=' + encodeURIComponent(startVal)
+                + '&end_date='  + encodeURIComponent(endVal)
+                + '&source='   + encodeURIComponent(sourceVal);
+
+    // Use XHR to detect errors before triggering download
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+
+    xhr.onload = function () {
+      btn.disabled  = false;
+      btn.innerHTML = '<i data-lucide="file-down" style="width:16px;height:16px;"></i> Export Excel';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      if (xhr.status === 200) {
+        // Trigger download
+        const blob     = new Blob([xhr.response], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+        const dlUrl    = URL.createObjectURL(blob);
+        const a        = document.createElement('a');
+        const filename = 'CleanedData_' + startVal.replace(/-/g, '')
+                         + '_to_' + endVal.replace(/-/g, '') + '.xlsx';
+        a.href         = dlUrl;
+        a.download     = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(dlUrl);
+
+        setStatus('✅ <strong>' + filename + '</strong> downloaded successfully!', 'success');
+      } else {
+        // Parse error JSON from blob
+        const reader = new FileReader();
+        reader.onload = function () {
+          try {
+            const err = JSON.parse(reader.result);
+            setStatus('❌ Export failed: ' + (err.error || 'Unknown error'), 'error');
+          } catch (e) {
+            setStatus('❌ Export failed (HTTP ' + xhr.status + ')', 'error');
+          }
+        };
+        reader.readAsText(xhr.response);
+      }
+    };
+
+    xhr.onerror = function () {
+      btn.disabled  = false;
+      btn.innerHTML = '<i data-lucide="file-down" style="width:16px;height:16px;"></i> Export Excel';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      setStatus('❌ Network error — could not reach the server.', 'error');
+    };
+
+    xhr.send();
+  });
+})();

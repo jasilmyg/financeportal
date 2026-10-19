@@ -16,7 +16,7 @@
   </script>
 
   <!-- CSS -->
-  <link rel="stylesheet" href="/static/css/style.css?v=20260917_pro_v5">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260917_toggle_v1">
   <!-- Three.js for 3D background -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -474,6 +474,12 @@
         </div>
         
         <div class="action-buttons">
+          <button id="themeToggleBtn" onclick="window.toggleTheme()" title="Toggle dark / light theme" aria-label="Toggle theme">
+            <span class="theme-icon">🌙</span>
+          </button>
+          <button class="btn btn-refresh" id="btnRefreshTab" onclick="window.refreshCurrentTab()" title="Refresh current tab data without full page reload">
+            <i data-lucide="refresh-cw" id="refreshTabIcon"></i> Refresh
+          </button>
           <button class="btn btn-success" id="btnSaveData"><i data-lucide="save"></i> Save Changes</button>
           <button class="btn btn-primary" id="btnExportExcel"><i data-lucide="file-spreadsheet"></i> Export Excel</button>
           <button class="btn btn-primary" id="btnExportPptx"><i data-lucide="file-output"></i> Export Slide Deck</button>
@@ -625,11 +631,29 @@
 
         <!-- CATEGORY TAB -->
         <div class="tab-page" id="tab-category">
-          <div class="category-filters-bar" style="display: flex; gap: 15px; padding: 15px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; margin-bottom: 20px;">
+          <div class="category-filters-bar" style="display: flex; gap: 15px; padding: 15px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by State</label>
+              <select id="cat-filter-state" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All States</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by District</label>
+              <select id="cat-filter-district" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All Districts</option>
+              </select>
+            </div>
             <div style="display: flex; flex-direction: column; gap: 5px;">
               <label style="font-size: 12px; color: var(--text-muted);">Filter by RBM</label>
               <select id="cat-filter-rbm" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
                 <option value="">All RBMs</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by Fin BDM</label>
+              <select id="cat-filter-fin-bdm" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
+                <option value="">All Fin BDMs</option>
               </select>
             </div>
             <div style="display: flex; flex-direction: column; gap: 5px;">
@@ -652,69 +676,41 @@
             </div>
           </div>
           <div class="data-card">
-            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <!-- Left: Title + badge -->
               <div>
-                <h2>Product Category Performance - Volume (Qty)</h2>
-                <span class="badge">Quantity Sourcing Grid</span>
+                <h2 id="cat-perf-title">Product Category Performance &mdash; Volume (Qty)</h2>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+                  <span class="badge" id="cat-perf-badge">Quantity Sourcing Grid</span>
+                  <button id="cat-perf-back-btn" class="btn" style="display:none; padding: 2px 8px; font-size: 11px; height: 22px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); cursor: pointer;" onclick="catDrillBack()" title="Go back one level">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align: middle;"><path d="m15 18-6-6 6-6"/></svg><span style="vertical-align: middle;">Back</span>
+                  </button>
+                </div>
               </div>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <label style="font-size: 13px; color: var(--text-muted);">Filter Brand:</label>
-                <select id="filter-brand" class="date-select" style="width: 150px; padding: 4px 8px; height: 32px; font-size: 13px; margin-right: 15px;">
-                  <option value="ALL">All Brands</option>
-                </select>
-                <label style="font-size: 13px; color: var(--text-muted);">Filter Category:</label>
-                <select id="filter-category" class="date-select" style="width: 150px; padding: 4px 8px; height: 32px; font-size: 13px;">
-                  <option value="ALL">All Categories</option>
-                  <option value="CD PRODUCTS">CD PRODUCTS</option>
-                  <option value="LAPTOP">LAPTOP</option>
-                  <option value="MOBILE">MOBILE</option>
-                  <option value="HVA">HVA</option>
-                  <option value="SA">SA</option>
-                  <option value="OTHERS">OTHERS</option>
-                  <option value="BANK EMI">BANK EMI</option>
-                </select>
+              <!-- Centre: Drill-down breadcrumb -->
+              <nav id="cat-drill-breadcrumb" class="drill-breadcrumb" aria-label="Category drill-down navigation">
+                <button class="crumb crumb-active" onclick="catDrillTo(0)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  All Categories
+                </button>
+              </nav>
+              <!-- Right: Volume / Value toggle -->
+              <div class="view-mode-toggle" id="cat-view-toggle" role="group" aria-label="View mode">
+                <button class="view-pill active" id="cat-toggle-qty" onclick="setCatViewMode('qty')" title="Show quantity sourcing">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="8" width="6" height="13" rx="1"/><rect x="16" y="13" width="6" height="8" rx="1"/></svg>
+                  Volume
+                </button>
+                <button class="view-pill" id="cat-toggle-val" onclick="setCatViewMode('value')" title="Show value in Crores">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  Value (Cr)
+                </button>
               </div>
             </div>
             <div class="table-responsive">
               <table class="data-table" id="table-cat-qty">
                 <thead>
                   <tr>
-                    <th>Category</th>
-                    <th class="num-align">aCASH</th>
-                    <th class="num-align">BAJAJ</th>
-                    <th class="num-align">HDB</th>
-                    <th class="num-align">IDFC</th>
-                    <th class="num-align">PFL</th>
-                    <th class="num-align">TVS</th>
-                    <th class="num-align">DMI</th>
-                    <th class="num-align">PineLab</th>
-                    <th class="num-align">PAYTM</th>
-                    <th class="num-align">Benow</th>
-                    <th class="num-align">Total</th>
-                    <th class="num-align">Fin Share</th>
-                    <th class="num-align">Paper Total</th>
-                    <th class="num-align">Card Total</th>
-                    <th class="num-align">Last Week</th>
-                    <th class="num-align">Apr Close</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <!-- Filled by JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="data-card">
-            <div class="card-title">
-              <h2>Product Category Performance - Value (in Cr)</h2>
-              <span class="badge">Value Sourcing Grid</span>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table" id="table-cat-value">
-                <thead>
-                  <tr>
-                    <th>Category</th>
+                    <th id="cat-qty-col0">Category</th>
                     <th class="num-align">aCASH</th>
                     <th class="num-align">BAJAJ</th>
                     <th class="num-align">HDB</th>
@@ -1075,6 +1071,511 @@
         <!-- DATA CLEANER TAB -->
 
         <div class="tab-page" id="tab-cleaner">
+
+          <!-- ═══════════════════════════════════════════════════════════
+               MODULE 0 : Export Cleaned Data by Date Range
+               ═══════════════════════════════════════════════════════════ -->
+          <div class="data-card" style="margin-bottom:32px; border-left:4px solid var(--accent-cyan);">
+            <div class="card-title">
+              <h2>📤 Export Cleaned Data by Date Range</h2>
+              <span class="badge" style="background:rgba(0,229,255,0.12);color:var(--cyan);">DATA Sheet Export</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:24px;">
+              Select a date range to download a formatted Excel file — exactly like the <strong>DATA sheet</strong> in Workbook1DATA.xlsx —
+              with cleaned financiers, categories, price ranges, and BDM mapping applied.
+              Uses the uploaded cleaned file when available, or queries ClickHouse live.
+            </p>
+
+            <!-- Date Range Row -->
+            <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:20px;">
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:160px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);letter-spacing:.03em;">START DATE</label>
+                <input type="date" id="exportStartDate"
+                  style="padding:8px 12px;border-radius:8px;border:1px solid var(--panel-border);
+                         background:rgba(255,255,255,0.04);color:var(--text-main);font-size:13px;font-family:inherit;outline:none;">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:160px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);letter-spacing:.03em;">END DATE</label>
+                <input type="date" id="exportEndDate"
+                  style="padding:8px 12px;border-radius:8px;border:1px solid var(--panel-border);
+                         background:rgba(255,255,255,0.04);color:var(--text-main);font-size:13px;font-family:inherit;outline:none;">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:180px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);letter-spacing:.03em;">DATA SOURCE</label>
+                <select id="exportSource"
+                  style="padding:8px 12px;border-radius:8px;border:1px solid var(--panel-border);
+                         background:rgba(255,255,255,0.04);color:var(--text-main);font-size:13px;font-family:inherit;outline:none;">
+                  <option value="auto">Auto (File → ClickHouse)</option>
+                  <option value="file">Uploaded Cleaned File Only</option>
+                  <option value="clickhouse">ClickHouse Only</option>
+                </select>
+              </div>
+              <button id="btnExportDateRange" class="btn btn-primary"
+                style="display:inline-flex;align-items:center;gap:8px;padding:9px 22px;flex-shrink:0;
+                       background:linear-gradient(135deg,#1e3a8a,#2563eb);border:none;border-radius:8px;">
+                <i data-lucide="file-down" style="width:16px;height:16px;"></i>
+                Export Excel
+              </button>
+            </div>
+
+            <!-- Status feedback -->
+            <div id="exportDateRangeStatus" style="display:none;padding:12px 18px;border-radius:8px;font-size:13px;"></div>
+
+            <!-- Info chips -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+              <span style="font-size:11px;color:var(--text-dim);background:rgba(255,255,255,0.04);
+                           padding:4px 10px;border-radius:12px;border:1px solid var(--panel-border);">
+                ✓ Cleaned financiers (BAJAJ FINANCE, HDB, IDFC…)
+              </span>
+              <span style="font-size:11px;color:var(--text-dim);background:rgba(255,255,255,0.04);
+                           padding:4px 10px;border-radius:12px;border:1px solid var(--panel-border);">
+                ✓ Category mapped (CD PRODUCTS, MOBILE, LAPTOP…)
+              </span>
+              <span style="font-size:11px;color:var(--text-dim);background:rgba(255,255,255,0.04);
+                           padding:4px 10px;border-radius:12px;border:1px solid var(--panel-border);">
+                ✓ Price Range slabs • Zone • Fin BDM
+              </span>
+              <span style="font-size:11px;color:var(--text-dim);background:rgba(255,255,255,0.04);
+                           padding:4px 10px;border-radius:12px;border:1px solid var(--panel-border);">
+                ✓ Freeze pane + auto-filter on header row
+              </span>
+            </div>
+          </div>
+
+          <!-- ═══════════════════════════════════════════════════════════
+               MODULE 0.5 : Pine Labs EMI Upload
+               ═══════════════════════════════════════════════════════════ -->
+          <div class="data-card" id="pinelabUploadCard" style="margin-bottom:32px; border-left:4px solid #f59e0b;">
+            <div class="card-title">
+              <h2>🏦 Pine Labs EMI Data Upload</h2>
+              <span class="badge" style="background:rgba(245,158,11,0.13);color:#f59e0b;">IMEI Matching · Auto-Linked to Dashboard</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">
+              Upload the raw <strong>Pine Labs EMI Transaction report</strong> (CSV or ZIP). The portal will automatically:
+              filter by <em>Txn Status = Success</em> &amp; <em>Txn Type = Sale</em>, deduplicate on Transaction&nbsp;ID,
+              match each IMEI to its invoice, and link it to the dashboard as <strong>Pine Lab EMI</strong>.
+            </p>
+
+            <!-- Rules chips -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;">✓ Txn Status = Success only</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;">✓ Txn Type = Sale only</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;">✓ Deduplicate on Transaction ID</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;">✓ Original Txn Amt used (not Auth Txn Amt)</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;">✓ IMEI → Invoice linking</span>
+            </div>
+
+            <!-- Drop zone -->
+            <div id="pinelabDragZone" class="upload-zone" style="margin-bottom:20px;border-color:rgba(245,158,11,0.4);cursor:pointer;"
+                 onclick="document.getElementById('pinelabFileInput').click()">
+              <i data-lucide="hard-drive-upload" style="color:#f59e0b;width:38px;height:38px;margin-bottom:12px;"></i>
+              <p>Drag &amp; Drop <strong>Pine Labs EMI Report</strong> here</p>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Accepts <code>.csv</code> or <code>.zip</code> (the exported file from Pine Labs portal)</p>
+            </div>
+            <input type="file" id="pinelabFileInput" accept=".csv,.zip" style="display:none;">
+
+            <!-- Progress bar (hidden initially) -->
+            <div id="pinelabProgress" style="display:none;margin-bottom:20px;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+                <div style="width:20px;height:20px;border:2px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                <span id="pinelabProgressText" style="font-size:13px;color:var(--text-muted);">Processing Pine Labs data…</span>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+                <div id="pinelabProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#f59e0b,#fbbf24);border-radius:3px;transition:width 0.4s ease;"></div>
+              </div>
+            </div>
+
+            <!-- Result panel (hidden initially) -->
+            <div id="pinelabResult" style="display:none;padding:20px 24px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-radius:12px;">
+              <!-- Success header -->
+              <div id="pinelabResultHeader" style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+                <span id="pinelabResultIcon" style="font-size:26px;">✅</span>
+                <div>
+                  <div id="pinelabResultTitle" style="font-size:15px;font-weight:700;color:var(--text-main);">Pine Labs EMI Uploaded</div>
+                  <div id="pinelabResultMsg" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
+                </div>
+                <div id="pinelabPeriodBadge" style="margin-left:auto;padding:4px 12px;border-radius:20px;background:rgba(245,158,11,0.15);color:#f59e0b;font-size:11px;font-weight:600;"></div>
+              </div>
+
+              <!-- Cleaning pipeline stats -->
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;">
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="statRawRows" style="font-size:22px;font-weight:800;color:var(--text-main);">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Raw Rows</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="statAfterFilter" style="font-size:22px;font-weight:800;color:#f59e0b;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">After Filter</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="statAfterDedup" style="font-size:22px;font-weight:800;color:#34d399;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">After Dedup</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="statMatchedInv" style="font-size:22px;font-weight:800;color:#818cf8;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Invoices Matched</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="statInserted" style="font-size:22px;font-weight:800;color:#22d3ee;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Records Updated</div>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <a id="btnPinelabDownload"
+                   href="/api/download-pinelab-cleaned"
+                   download="PineLab_Cleaned.xlsx"
+                   target="_blank"
+                   style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 18px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.45);color:#34d399;border-radius:8px;cursor:pointer;text-decoration:none;font-weight:600;">
+                  <i data-lucide="download" style="width:14px;height:14px;"></i> Download Cleaned Excel
+                </a>
+
+                <button id="btnPinelabUploadAnother" class="btn" style="font-size:12px;padding:6px 16px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);color:#f59e0b;border-radius:8px;cursor:pointer;">
+                  ↑ Upload Another File
+                </button>
+              </div>
+            </div>
+
+            <!-- ── Step 2: Filter by Date ──────────────────────────────────── -->
+            <div id="pinelabStep2" style="display:none;margin-top:20px;padding:18px 20px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.35);border-radius:12px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <span style="font-size:18px;">📅</span>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text-main);">Step 2 — Filter by Date</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                    Select the date range to keep in the dashboard. Only rows with <strong>Bank Txn Date</strong> within this range will be counted.
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);">From Date</label>
+                  <input type="date" id="pinelabDateFrom"
+                    style="background:rgba(255,255,255,0.05);border:1px solid rgba(99,102,241,0.4);border-radius:8px;padding:7px 12px;color:var(--text-main);font-size:13px;outline:none;cursor:pointer;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);">To Date</label>
+                  <input type="date" id="pinelabDateTo"
+                    style="background:rgba(255,255,255,0.05);border:1px solid rgba(99,102,241,0.4);border-radius:8px;padding:7px 12px;color:var(--text-main);font-size:13px;outline:none;cursor:pointer;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:transparent;">.</label>
+                  <button id="btnPinelabApplyDate"
+                    style="padding:7px 22px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="zap" style="width:14px;height:14px;"></i> Apply to Dashboard
+                  </button>
+                </div>
+              </div>
+
+              <!-- Progress bar -->
+              <div id="pinelabDateProgress" style="display:none;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                  <div style="width:16px;height:16px;border:2px solid #818cf8;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                  <span style="font-size:12px;color:var(--text-muted);">Applying date filter to dashboard…</span>
+                </div>
+                <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
+                  <div id="pinelabDateBar" style="height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#a5b4fc);border-radius:2px;transition:width 0.4s ease;"></div>
+                </div>
+              </div>
+
+              <!-- Result / Error -->
+              <div id="pinelabDateResult" style="display:none;font-size:12px;padding:10px 14px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.3);border-radius:8px;color:#34d399;"></div>
+              <div id="pinelabDateError"  style="display:none;font-size:12px;padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#f87171;"></div>
+            </div>
+
+            <!-- Error panel (hidden initially) -->
+            <div id="pinelabError" style="display:none;padding:14px 18px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:10px;font-size:13px;color:#f87171;"></div>
+          </div>
+
+          <!-- ═══════════════════════════════════════════════════════════
+               MODULE 0.6 : Paytm EMI Upload
+               ═══════════════════════════════════════════════════════════ -->
+          <div class="data-card" id="paytmUploadCard" style="margin-bottom:32px; border-left:4px solid #00baf2;">
+            <div class="card-title">
+              <h2>💳 Paytm EMI Data Upload</h2>
+              <span class="badge" style="background:rgba(0,186,242,0.13);color:#00baf2;">Invoice Matching · Auto-Linked to Dashboard</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">
+              Upload the raw <strong>Paytm Total Transaction report</strong> (CSV, XLSX or ZIP). The portal will automatically
+              remove <em>Other Mode</em> transactions and amounts below 1000, deduplicate on Transaction&nbsp;ID,
+              map products, keep only the brand name, and link matched invoices to the dashboard as <strong>PAYTM</strong>.
+            </p>
+
+            <!-- Rules chips -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.3);color:#00baf2;">✓ Txn_type: Other Mode removed</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.3);color:#00baf2;">✓ original_amount (org amount) used for calculation</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.3);color:#00baf2;">✓ Amount below 1000 removed</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.3);color:#00baf2;">✓ Deduplicate on Transaction ID</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.3);color:#00baf2;">✓ Product mapping (same as Pine Labs)</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.3);color:#00baf2;">✓ Brand name only</span>
+            </div>
+
+            <!-- Drop zone -->
+            <div id="paytmDragZone" class="upload-zone" style="margin-bottom:20px;border-color:rgba(0,186,242,0.4);cursor:pointer;"
+                 onclick="document.getElementById('paytmFileInput').click()">
+              <i data-lucide="hard-drive-upload" style="color:#00baf2;width:38px;height:38px;margin-bottom:12px;"></i>
+              <p>Drag &amp; Drop <strong>Paytm EMI Report</strong> here</p>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Accepts <code>.csv</code>, <code>.xlsx</code> or <code>.zip</code> (the Total Transaction report exported from Paytm)</p>
+            </div>
+            <input type="file" id="paytmFileInput" accept=".csv,.xlsx,.xls,.zip" style="display:none;">
+
+            <!-- Progress bar (hidden initially) -->
+            <div id="paytmProgress" style="display:none;margin-bottom:20px;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+                <div style="width:20px;height:20px;border:2px solid #00baf2;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                <span id="paytmProgressText" style="font-size:13px;color:var(--text-muted);">Processing Paytm data…</span>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+                <div id="paytmProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#00baf2,#4dd8ff);border-radius:3px;transition:width 0.4s ease;"></div>
+              </div>
+            </div>
+
+            <!-- Result panel (hidden initially) -->
+            <div id="paytmResult" style="display:none;padding:20px 24px;background:rgba(0,186,242,0.05);border:1px solid rgba(0,186,242,0.25);border-radius:12px;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+                <span style="font-size:26px;">✅</span>
+                <div>
+                  <div style="font-size:15px;font-weight:700;color:var(--text-main);">Paytm EMI Uploaded</div>
+                  <div id="paytmResultMsg" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
+                </div>
+                <div id="paytmPeriodBadge" style="margin-left:auto;padding:4px 12px;border-radius:20px;background:rgba(0,186,242,0.15);color:#00baf2;font-size:11px;font-weight:600;"></div>
+              </div>
+
+              <!-- Cleaning pipeline stats -->
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;">
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="paytmStatRaw" style="font-size:22px;font-weight:800;color:var(--text-main);">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Raw Rows</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="paytmStatFilter" style="font-size:22px;font-weight:800;color:#00baf2;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">After Filter</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="paytmStatDedup" style="font-size:22px;font-weight:800;color:#34d399;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">After Dedup</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="paytmStatMatched" style="font-size:22px;font-weight:800;color:#818cf8;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Invoices Matched</div>
+                </div>
+                <div style="display:none;text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="paytmStatInserted" style="font-size:22px;font-weight:800;color:#22d3ee;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Records Updated</div>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <a id="btnPaytmDownload"
+                   href="/api/download-paytm-cleaned"
+                   download="Paytm_Cleaned.xlsx"
+                   target="_blank"
+                   style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 18px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.45);color:#34d399;border-radius:8px;cursor:pointer;text-decoration:none;font-weight:600;">
+                  <i data-lucide="download" style="width:14px;height:14px;"></i> Download Cleaned Excel
+                </a>
+
+                <button id="btnPaytmUploadAnother" class="btn" style="font-size:12px;padding:6px 16px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.4);color:#00baf2;border-radius:8px;cursor:pointer;">
+                  ↑ Upload Another File
+                </button>
+              </div>
+            </div>
+
+            <!-- ── Step 2: Filter by Date ──────────────────────────────────── -->
+            <div id="paytmStep2" style="display:none;margin-top:20px;padding:18px 20px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.35);border-radius:12px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <span style="font-size:18px;">📅</span>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text-main);">Step 2 — Filter by Date</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                    Select the date range to keep in the dashboard. Only rows with <strong>txn_date</strong> within this range will be counted.
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);">From Date</label>
+                  <input type="date" id="paytmDateFrom"
+                    style="background:rgba(255,255,255,0.05);border:1px solid rgba(99,102,241,0.4);border-radius:8px;padding:7px 12px;color:var(--text-main);font-size:13px;outline:none;cursor:pointer;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);">To Date</label>
+                  <input type="date" id="paytmDateTo"
+                    style="background:rgba(255,255,255,0.05);border:1px solid rgba(99,102,241,0.4);border-radius:8px;padding:7px 12px;color:var(--text-main);font-size:13px;outline:none;cursor:pointer;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:transparent;">.</label>
+                  <button id="btnPaytmApplyDate"
+                    style="padding:7px 22px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="zap" style="width:14px;height:14px;"></i> Apply to Dashboard
+                  </button>
+                </div>
+              </div>
+
+              <div id="paytmDateProgress" style="display:none;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                  <div style="width:16px;height:16px;border:2px solid #818cf8;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                  <span style="font-size:12px;color:var(--text-muted);">Applying date filter to dashboard…</span>
+                </div>
+                <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
+                  <div id="paytmDateBar" style="height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#a5b4fc);border-radius:2px;transition:width 0.4s ease;"></div>
+                </div>
+              </div>
+
+              <div id="paytmDateResult" style="display:none;font-size:12px;padding:10px 14px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.3);border-radius:8px;color:#34d399;"></div>
+              <div id="paytmDateError"  style="display:none;font-size:12px;padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#f87171;"></div>
+            </div>
+
+            <!-- Error panel (hidden initially) -->
+            <div id="paytmError" style="display:none;padding:14px 18px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:10px;font-size:13px;color:#f87171;"></div>
+          </div>
+
+          <!-- ═══════════════════════════════════════════════════════════
+               MODULE 0.7 : Benow EMI Upload
+               ═══════════════════════════════════════════════════════════ -->
+          <div class="data-card" id="benowUploadCard" style="margin-bottom:32px; border-left:4px solid #f2a900;">
+            <div class="card-title">
+              <h2>💳 Benow EMI Data Upload</h2>
+              <span class="badge" style="background:rgba(242,169,0,0.13);color:#f2a900;">Invoice Matching · Auto-Linked to Dashboard</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">
+              Upload the raw <strong>Benow Total Transaction report</strong> (CSV, XLSX or ZIP). The portal will automatically
+              map products, keep only the brand name, and link matched invoices to the dashboard as <strong>BENOW</strong>.
+            </p>
+
+            <!-- Rules chips -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(242,169,0,0.1);border:1px solid rgba(242,169,0,0.3);color:#f2a900;">✓ sale amt (sale amount) used for calculation</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(242,169,0,0.1);border:1px solid rgba(242,169,0,0.3);color:#f2a900;">✓ Product mapping (same as Pine Labs)</span>
+              <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(242,169,0,0.1);border:1px solid rgba(242,169,0,0.3);color:#f2a900;">✓ Brand name only</span>
+            </div>
+
+            <!-- Drop zone -->
+            <div id="benowDragZone" class="upload-zone" style="margin-bottom:20px;border-color:rgba(242,169,0,0.4);cursor:pointer;"
+                 onclick="document.getElementById('benowFileInput').click()">
+              <i data-lucide="hard-drive-upload" style="color:#f2a900;width:38px;height:38px;margin-bottom:12px;"></i>
+              <p>Drag &amp; Drop <strong>Benow EMI Report</strong> here</p>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Accepts <code>.csv</code>, <code>.xlsx</code> or <code>.zip</code> (the Total Transaction report exported from Benow)</p>
+            </div>
+            <input type="file" id="benowFileInput" accept=".csv,.xlsx,.xls,.zip" style="display:none;">
+
+            <!-- Progress bar (hidden initially) -->
+            <div id="benowProgress" style="display:none;margin-bottom:20px;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+                <div style="width:20px;height:20px;border:2px solid #f2a900;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                <span id="benowProgressText" style="font-size:13px;color:var(--text-muted);">Processing Benow data…</span>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+                <div id="benowProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#f2a900,#4dd8ff);border-radius:3px;transition:width 0.4s ease;"></div>
+              </div>
+            </div>
+
+            <!-- Result panel (hidden initially) -->
+            <div id="benowResult" style="display:none;padding:20px 24px;background:rgba(242,169,0,0.05);border:1px solid rgba(242,169,0,0.25);border-radius:12px;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+                <span style="font-size:26px;">✅</span>
+                <div>
+                  <div style="font-size:15px;font-weight:700;color:var(--text-main);">Benow EMI Uploaded</div>
+                  <div id="benowResultMsg" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
+                </div>
+                <div id="benowPeriodBadge" style="margin-left:auto;padding:4px 12px;border-radius:20px;background:rgba(242,169,0,0.15);color:#f2a900;font-size:11px;font-weight:600;"></div>
+              </div>
+
+              <!-- Cleaning pipeline stats -->
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;">
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="benowStatRaw" style="font-size:22px;font-weight:800;color:var(--text-main);">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Raw Rows</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="benowStatFilter" style="font-size:22px;font-weight:800;color:#f2a900;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">After Filter</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="benowStatDedup" style="font-size:22px;font-weight:800;color:#34d399;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">After Dedup</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="benowStatMatched" style="font-size:22px;font-weight:800;color:#818cf8;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Invoices Matched</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--panel-border);">
+                  <div id="benowStatInserted" style="font-size:22px;font-weight:800;color:#22d3ee;">—</div>
+                  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Records Updated</div>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <a id="btnBenowDownload"
+                   href="/api/download-benow-cleaned"
+                   download="Benow_Cleaned.xlsx"
+                   target="_blank"
+                   style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 18px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.45);color:#34d399;border-radius:8px;cursor:pointer;text-decoration:none;font-weight:600;">
+                  <i data-lucide="download" style="width:14px;height:14px;"></i> Download Cleaned Excel
+                </a>
+
+                <button id="btnBenowUploadAnother" class="btn" style="font-size:12px;padding:6px 16px;background:rgba(242,169,0,0.1);border:1px solid rgba(242,169,0,0.4);color:#f2a900;border-radius:8px;cursor:pointer;">
+                  ↑ Upload Another File
+                </button>
+              </div>
+            </div>
+
+            <!-- ── Step 2: Filter by Date ──────────────────────────────────── -->
+            <div id="benowStep2" style="display:none;margin-top:20px;padding:18px 20px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.35);border-radius:12px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <span style="font-size:18px;">📅</span>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text-main);">Step 2 — Filter by Date</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                    Select the date range to keep in the dashboard. Only rows with <strong>txn_date</strong> within this range will be counted.
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);">From Date</label>
+                  <input type="date" id="benowDateFrom"
+                    style="background:rgba(255,255,255,0.05);border:1px solid rgba(99,102,241,0.4);border-radius:8px;padding:7px 12px;color:var(--text-main);font-size:13px;outline:none;cursor:pointer;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);">To Date</label>
+                  <input type="date" id="benowDateTo"
+                    style="background:rgba(255,255,255,0.05);border:1px solid rgba(99,102,241,0.4);border-radius:8px;padding:7px 12px;color:var(--text-main);font-size:13px;outline:none;cursor:pointer;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:transparent;">.</label>
+                  <button id="btnBenowApplyDate"
+                    style="padding:7px 22px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="zap" style="width:14px;height:14px;"></i> Apply to Dashboard
+                  </button>
+                </div>
+              </div>
+
+              <div id="benowDateProgress" style="display:none;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                  <div style="width:16px;height:16px;border:2px solid #818cf8;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                  <span style="font-size:12px;color:var(--text-muted);">Applying date filter to dashboard…</span>
+                </div>
+                <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
+                  <div id="benowDateBar" style="height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#a5b4fc);border-radius:2px;transition:width 0.4s ease;"></div>
+                </div>
+              </div>
+
+              <div id="benowDateResult" style="display:none;font-size:12px;padding:10px 14px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.3);border-radius:8px;color:#34d399;"></div>
+              <div id="benowDateError"  style="display:none;font-size:12px;padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#f87171;"></div>
+            </div>
+
+            <!-- Error panel (hidden initially) -->
+            <div id="benowError" style="display:none;padding:14px 18px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:10px;font-size:13px;color:#f87171;"></div>
+          </div>
+
+          
           <!-- Module 1: Combined Sales Report Clean & Export -->
           <div class="data-card" style="margin-bottom: 32px; border-left: 4px solid var(--accent-blue);">
             <div class="card-title">
@@ -1338,7 +1839,8 @@
   <!-- SheetJS for Excel export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Main JS -->
-  <script src="/static/js/main.js?v=20260915_dark_v4"></script>
+  <script src="/static/js/main.js?v=20261013_emi_sync"></script>
+  <script src="/static/js/drill_down.js?v=20260921_prod_fix"></script>
 
   <!-- Data Plexus Network Animation (Light Theme) -->
   <script>

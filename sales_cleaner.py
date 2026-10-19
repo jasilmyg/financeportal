@@ -2,52 +2,55 @@ import os
 import pandas as pd
 import numpy as np
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Store → Fin BDM mapping (sourced from reference june 1-4 corrected report)
+# ─────────────────────────────────────────────────────# ─────────────────────────────────────────────────────────────────────────────
+# Store → Fin BDM / RBM / BDM / Zone mapping
+# Source: DATA.xlsx (authoritative cleaned reference)
 # ─────────────────────────────────────────────────────────────────────────────
 STORE_FIN_BDM_MAP = {
     'AAKKULAM FUTURE':       'Ashik',
     'ADIMALI':               'Febin',
-    'ADOOR':                 'Arun',
-    'ADOOR FUTURE':          'Arun',
-    'ALAPPUZHA':             'Arun',
-    'ALAPPUZHA FUTURE':      'Arun',
-    'ALUVA':                 'Febin',
+    'ADOOR':                 'Jackson',
+    'ADOOR FUTURE':          'Jackson',
+    'ALAPPUZHA':             'Jackson',
+    'ALAPPUZHA FUTURE':      'Jackson',
+    'ALUVA':                 'Arun',
+    'ALUVA FUTURE':          'Arun',
     'ANGAMALY':              'Febin',
     'ANGAMALY FUTURE':       'Febin',
     'AREEKODE FUTURE':       'Siraj',
     'ATTINGAL':              'Ashik',
     'ATTINGAL FUTURE':       'Ashik',
-    'BALUSSERY':             'Aswin',
-    'BALUSSERY FUTURE':      'Aswin',
+    'BALUSSERY':             'Nikhil',
+    'BALUSSERY FUTURE':      'Nikhil',
     'BANK ROAD':             'Sreeju',
-    'BATHERY FUTURE':        'Aswin',
+    'BATHERY FUTURE':        'Nikhil',
     'BYPASS ROAD':           'Siraj',
-    'CAMWORLD':              'Junais',
+    'CAMWORLD':              'Aswin',
     'CHALAKKUDI':            'Febin',
     'CHALAKKUDY FUTURE':     'Febin',
-    'CHANGANASSERY':         'Arun',
+    'CHANGANASSERY':         'Jackson',
     'CHAVAKKAD FUTURE':      'Febin',
     'CHEMMAD FUTURE':        'Siraj',
-    'CHERTHALA':             'Arun',
-    'CHERTHALA FUTURE':      'Arun',
+    'CHERTHALA':             'Jackson',
+    'CHERTHALA FUTURE':      'Jackson',
     'EAST FORT':             'Febin',
     'EDAKKARA':              'Siraj',
     'EDAPPAL':               'Siraj',
     'EDAPPAL FUTURE':        'Siraj',
     'EDAPPALLY FUTURE':      'Arun',
-    'ERATTUPETTA FUTURE':    'Arun',
-    'FEROKE FUTURE':         'Junais',
+    'ERATTUPETTA FUTURE':    'Jackson',
+    'FEROKE FUTURE':         'Aswin',
     'FORUM MALL':            'Arun',
-    'HARIPAD FUTURE':        'Arun',
-    'HI LITE MALL':          'Junais',
+    'HARIPAD FUTURE':        'Jackson',
+    'HI LITE MALL':          'Aswin',
     'IRINJALAKUDA FUTURE':   'Febin',
     'IRITTY':                'Sreeju',
     'KADAVANTHRA':           'Arun',
-    'KALPETTA':              'Aswin',
+    'KALPETTA':              'Nikhil',
+    'KALPETTA FUTURE':       'Nikhil',
     'KANHANGAD':             'Sreeju',
     'KANHANGAD FUTURE':      'Sreeju',
-    'KANJIRAPPALLY FUTURE':  'Arun',
+    'KANJIRAPPALLY FUTURE':  'Jackson',
     'KANNUR FUTURE':         'Sreeju',
     'KARAMANA':              'Ashik',
     'KARUNAGAPPALLY':        'Ashik',
@@ -55,9 +58,9 @@ STORE_FIN_BDM_MAP = {
     'KASARGOD':              'Sreeju',
     'KASARGOD FUTURE':       'Sreeju',
     'KATTAPPANA FUTURE':     'Febin',
-    'KAYAMKULAM':            'Arun',
+    'KAYAMKULAM':            'Jackson',
     'KILIMANOOR':            'Ashik',
-    'KINGSWAY':              'Junais',
+    'KINGSWAY':              'Aswin',
     'KOLLAM':                'Ashik',
     'KOLLAM FUTURE':         'Ashik',
     'KONDOTTY':              'Siraj',
@@ -66,38 +69,42 @@ STORE_FIN_BDM_MAP = {
     'KOTTAKKAL':             'Siraj',
     'KOTTAKKAL FUTURE':      'Siraj',
     'KOTTARAKKARA':          'Ashik',
-    'KOTTAYAM FUTURE':       'Arun',
+    'KOTTAYAM FUTURE':       'Jackson',
     'KOYILANDY':             'Aswin',
     'KOYILANDY 2':           'Aswin',
-    'KUNNAMANGALAM FUTURE':  'Junais',
+    'KUNNAMANGALAM FUTURE':  'Nikhil',
     'KUNNAMKULAM':           'Febin',
     'KURUPPAM ROAD':         'Febin',
     'KUTTIYADI':             'Aswin',
     'KUTTIYADI FUTURE':      'Aswin',
-    'LANDSHIP MALL':         'Junais',
+    'LANDSHIP MALL':         'Aswin',
     'MAHE':                  'Sreeju',
     'MALAPPURAM':            'Siraj',
-    'MANANTHAVADY':          'Aswin',
-    'MANANTHAVADY FUTURE':   'Aswin',
+    'MANANTHAVADY':          'Nikhil',
+    'MANANTHAVADY FUTURE':   'Nikhil',
     'MANJERY':               'Siraj',
     'MANNARKAD FUTURE':      'Siraj',
-    'MAVELIKARA FUTURE':     'Arun',
-    'MENAKA':                'Febin',
-    'MUKKOM':                'Junais',
-    'MUVATTUPUZHA':          'Febin',
-    'MUVATTUPUZHA FUTURE':   'Febin',
-    'NADAKKAVU FUTURE':      'Junais',
-    'NAGAMPADAM':            'Arun',
-    'NARIKKUNI':             'Aswin',
+    'MARINE DRIVE FUTURE':   'Arun',
+    'MAVELIKARA FUTURE':     'Jackson',
+    'MENAKA':                'Arun',
+    'MUKKAM FUTURE':         'Nikhil',
+    'MUKKOM':                'Nikhil',
+    'MUVATTUPUZHA':          'Arun',
+    'MUVATTUPUZHA FUTURE':   'Arun',
+    'MYG CARE BATHERY':      'Nikhil',
+    'MYG CARE PERUMANNA':    'Nikhil',
+    'NADAKKAVU FUTURE':      'Aswin',
+    'NAGAMPADAM':            'Jackson',
+    'NARIKKUNI':             'Nikhil',
     'NILAMBUR FUTURE':       'Siraj',
     'OTTAPALAM':             'Siraj',
     'OTTUPARA FUTURE':       'Febin',
-    'P TOWER':               'Junais',
+    'P TOWER':               'Aswin',
     'PALAKKAD FUTURE':       'Siraj',
     'PALARIVATTOM':          'Arun',
     'PANAVILA FUTURE':       'Ashik',
-    'PARAVOOR':              'Febin',
-    'PATHANAMTHITTA FUTURE': 'Arun',
+    'PARAVOOR':              'Arun',
+    'PATHANAMTHITTA FUTURE': 'Jackson',
     'PATTAMBI FUTURE':       'Siraj',
     'PATTOM':                'Ashik',
     'PAYYANNUR':             'Sreeju',
@@ -107,32 +114,32 @@ STORE_FIN_BDM_MAP = {
     'PERAMBRA FUTURE':       'Aswin',
     'PERINTHALMANNA FUTURE': 'Siraj',
     'PERUMBAVOOR FUTURE':    'Febin',
-    'PIRAVOM FUTURE':        'Febin',
+    'PIRAVOM FUTURE':        'Arun',
     'POOTHOLE FUTURE':       'Febin',
-    'POTTAMMAL FUTURE':      'Junais',
+    'POTTAMMAL FUTURE':      'Aswin',
     'PUNALUR FUTURE':        'Ashik',
-    'PUTHIYARA':             'Junais',
-    'RAMANATTUKARA':         'Junais',
-    'RANNI FUTURE':          'Arun',
-    'SABA':                  'Junais',
-    'SABA MAHARANI':         'Junais',
+    'PUTHIYARA':             'Aswin',
+    'RAMANATTUKARA':         'Nikhil',
+    'RANNI FUTURE':          'Jackson',
+    'SABA':                  'Aswin',
+    'SABA MAHARANI':         'Aswin',
     'SNPARK':                'Sreeju',
     'TALIPARAMBA':           'Sreeju',
+    'TALIPARAMBA FUTURE':    'Sreeju',
     'TB ROAD':               'Siraj',
     'THALASSERY':            'Sreeju',
     'THALASSERY FUTURE':     'Sreeju',
-    'THAMARASSERY FUTURE':   'Aswin',
+    'THAMARASSERY FUTURE':   'Nikhil',
     'THANA':                 'Sreeju',
-    'THIRUNAKKARA':          'Arun',
-    'THIRUNAKKARA FUTURE':   'Arun',
-    'THIRUVALLA':            'Arun',
-    'THIRUVALLA FUTURE':     'Arun',
+    'THIRUNAKKARA':          'Jackson',
+    'THIRUVALLA':            'Jackson',
+    'THIRUVALLA FUTURE':     'Jackson',
     'THODUPUZHA':            'Febin',
     'THODUPUZHA FUTURE':     'Febin',
-    'THONDAYAD FUTURE':      'Junais',
+    'THONDAYAD FUTURE':      'Nikhil',
     'THOPPUMPADY FUTURE':    'Arun',
-    'THRIPUNITHURA':         'Febin',
-    'THRIPUNITHURA FUTURE':  'Febin',
+    'THRIPUNITHURA':         'Arun',
+    'THRIPUNITHURA FUTURE':  'Arun',
     'TIRUR':                 'Siraj',
     'UPPALA':                'Sreeju',
     'VADAKARA':              'Aswin',
@@ -141,28 +148,327 @@ STORE_FIN_BDM_MAP = {
     'VALANCHERY FUTURE':     'Siraj',
     'VENGARA':               'Siraj',
     'VENJARAMOODU FUTURE':   'Ashik',
-    'VYPIN FUTURE':          'Febin',
+    'VYPIN FUTURE':          'Arun',
     'WANDOOR':               'Siraj',
-    'myG CARE BATHERY':      'Aswin',
-    'myG CARE PERUMANNA':    'Junais',
+}
+
+# Store → RBM mapping (from DATA.xlsx)
+STORE_RBM_MAP = {
+    'AAKKULAM FUTURE':       'Vaisakh',
+    'ADIMALI':               'Renjith',
+    'ADOOR':                 'Mahesh',
+    'ADOOR FUTURE':          'Mahesh',
+    'ALAPPUZHA':             'Mahesh',
+    'ALAPPUZHA FUTURE':      'Mahesh',
+    'ALUVA':                 'Renjith',
+    'ALUVA FUTURE':          'Renjith',
+    'ANGAMALY':              'Renjith',
+    'ANGAMALY FUTURE':       'Renjith',
+    'AREEKODE FUTURE':       'Sameer',
+    'ATTINGAL':              'Vaisakh',
+    'ATTINGAL FUTURE':       'Vaisakh',
+    'BALUSSERY':             'Alfas',
+    'BALUSSERY FUTURE':      'Alfas',
+    'BANK ROAD':             'Sameem',
+    'BATHERY FUTURE':        'Alfas',
+    'BYPASS ROAD':           'Sameer',
+    'CAMWORLD':              'Alfas',
+    'CHALAKKUDI':            'Renjith',
+    'CHALAKKUDY FUTURE':     'Renjith',
+    'CHANGANASSERY':         'Mahesh',
+    'CHAVAKKAD FUTURE':      'Renjith',
+    'CHEMMAD FUTURE':        'Sameer',
+    'CHERTHALA':             'Mahesh',
+    'CHERTHALA FUTURE':      'Mahesh',
+    'EAST FORT':             'Renjith',
+    'EDAKKARA':              'Sameer',
+    'EDAPPAL':               'Sameer',
+    'EDAPPAL FUTURE':        'Sameer',
+    'EDAPPALLY FUTURE':      'Renjith',
+    'ERATTUPETTA FUTURE':    'Mahesh',
+    'FEROKE FUTURE':         'Alfas',
+    'FORUM MALL':            'Renjith',
+    'HARIPAD FUTURE':        'Mahesh',
+    'HI LITE MALL':          'Alfas',
+    'IRINJALAKUDA FUTURE':   'Renjith',
+    'IRITTY':                'Sameem',
+    'KADAVANTHRA':           'Renjith',
+    'KALPETTA':              'Alfas',
+    'KALPETTA FUTURE':       'Alfas',
+    'KANHANGAD':             'Sameem',
+    'KANHANGAD FUTURE':      'Sameem',
+    'KANJIRAPPALLY FUTURE':  'Mahesh',
+    'KANNUR FUTURE':         'Sameem',
+    'KARAMANA':              'Vaisakh',
+    'KARUNAGAPPALLY':        'Vaisakh',
+    'KARUNAGAPPALLY FUTURE': 'Vaisakh',
+    'KASARGOD':              'Sameem',
+    'KASARGOD FUTURE':       'Sameem',
+    'KATTAPPANA FUTURE':     'Renjith',
+    'KAYAMKULAM':            'Mahesh',
+    'KILIMANOOR':            'Vaisakh',
+    'KINGSWAY':              'Alfas',
+    'KOLLAM':                'Vaisakh',
+    'KOLLAM FUTURE':         'Vaisakh',
+    'KONDOTTY':              'Sameer',
+    'KONDOTTY FUTURE':       'Sameer',
+    'KOTHAMANGALAM FUTURE':  'Renjith',
+    'KOTTAKKAL':             'Sameer',
+    'KOTTAKKAL FUTURE':      'Sameer',
+    'KOTTARAKKARA':          'Vaisakh',
+    'KOTTAYAM FUTURE':       'Mahesh',
+    'KOYILANDY':             'Alfas',
+    'KOYILANDY 2':           'Alfas',
+    'KUNNAMANGALAM FUTURE':  'Alfas',
+    'KUNNAMKULAM':           'Renjith',
+    'KURUPPAM ROAD':         'Renjith',
+    'KUTTIYADI':             'Alfas',
+    'KUTTIYADI FUTURE':      'Alfas',
+    'LANDSHIP MALL':         'Alfas',
+    'MAHE':                  'Sameem',
+    'MALAPPURAM':            'Sameer',
+    'MANANTHAVADY':          'Alfas',
+    'MANANTHAVADY FUTURE':   'Alfas',
+    'MANJERY':               'Sameer',
+    'MANNARKAD FUTURE':      'Sameer',
+    'MARINE DRIVE FUTURE':   'Renjith',
+    'MAVELIKARA FUTURE':     'Mahesh',
+    'MENAKA':                'Renjith',
+    'MUKKAM FUTURE':         'Alfas',
+    'MUKKOM':                'Alfas',
+    'MUVATTUPUZHA':          'Renjith',
+    'MUVATTUPUZHA FUTURE':   'Renjith',
+    'MYG CARE BATHERY':      'Alfas',
+    'MYG CARE PERUMANNA':    'Alfas',
+    'NADAKKAVU FUTURE':      'Alfas',
+    'NAGAMPADAM':            'Mahesh',
+    'NARIKKUNI':             'Alfas',
+    'NILAMBUR FUTURE':       'Sameer',
+    'OTTAPALAM':             'Sameer',
+    'OTTUPARA FUTURE':       'Renjith',
+    'P TOWER':               'Alfas',
+    'PALAKKAD FUTURE':       'Sameer',
+    'PALARIVATTOM':          'Renjith',
+    'PANAVILA FUTURE':       'Vaisakh',
+    'PARAVOOR':              'Renjith',
+    'PATHANAMTHITTA FUTURE': 'Mahesh',
+    'PATTAMBI FUTURE':       'Sameer',
+    'PATTOM':                'Vaisakh',
+    'PAYYANNUR':             'Sameem',
+    'PAYYANNUR FUTURE':      'Sameem',
+    'PAZHAVANGADI':          'Vaisakh',
+    'PERAMBRA':              'Alfas',
+    'PERAMBRA FUTURE':       'Alfas',
+    'PERINTHALMANNA FUTURE': 'Sameer',
+    'PERUMBAVOOR FUTURE':    'Renjith',
+    'PIRAVOM FUTURE':        'Renjith',
+    'POOTHOLE FUTURE':       'Renjith',
+    'POTTAMMAL FUTURE':      'Alfas',
+    'PUNALUR FUTURE':        'Vaisakh',
+    'PUTHIYARA':             'Alfas',
+    'RAMANATTUKARA':         'Alfas',
+    'RANNI FUTURE':          'Mahesh',
+    'SABA':                  'Alfas',
+    'SABA MAHARANI':         'Alfas',
+    'SNPARK':                'Sameem',
+    'TALIPARAMBA':           'Sameem',
+    'TALIPARAMBA FUTURE':    'Sameem',
+    'TB ROAD':               'Sameer',
+    'THALASSERY':            'Sameem',
+    'THALASSERY FUTURE':     'Sameem',
+    'THAMARASSERY FUTURE':   'Alfas',
+    'THANA':                 'Sameem',
+    'THIRUNAKKARA':          'Mahesh',
+    'THIRUVALLA':            'Mahesh',
+    'THIRUVALLA FUTURE':     'Mahesh',
+    'THODUPUZHA':            'Renjith',
+    'THODUPUZHA FUTURE':     'Renjith',
+    'THONDAYAD FUTURE':      'Alfas',
+    'THOPPUMPADY FUTURE':    'Renjith',
+    'THRIPUNITHURA':         'Renjith',
+    'THRIPUNITHURA FUTURE':  'Renjith',
+    'TIRUR':                 'Sameer',
+    'UPPALA':                'Sameem',
+    'VADAKARA':              'Alfas',
+    'VADAKARA FUTURE':       'Alfas',
+    'VADAKKENCHERRY FUTURE': 'Sameer',
+    'VALANCHERY FUTURE':     'Sameer',
+    'VENGARA':               'Sameer',
+    'VENJARAMOODU FUTURE':   'Vaisakh',
+    'VYPIN FUTURE':          'Renjith',
+    'WANDOOR':               'Sameer',
+}
+
+# Store → BDM mapping (from DATA.xlsx)
+STORE_BDM_MAP = {
+    'AAKKULAM FUTURE':       'Amal',
+    'ADIMALI':               'Sreerag',
+    'ADOOR':                 'Siju',
+    'ADOOR FUTURE':          'Siju',
+    'ALAPPUZHA':             'Renjithmon',
+    'ALAPPUZHA FUTURE':      'Renjithmon',
+    'ALUVA':                 'Salaj',
+    'ALUVA FUTURE':          'Salaj',
+    'ANGAMALY':              'Jaleel',
+    'ANGAMALY FUTURE':       'Jaleel',
+    'AREEKODE FUTURE':       'Pranav',
+    'ATTINGAL':              'Abhiraj',
+    'ATTINGAL FUTURE':       'Abhiraj',
+    'BALUSSERY':             'Nideesh',
+    'BALUSSERY FUTURE':      'Nideesh',
+    'BANK ROAD':             'Faisal',
+    'BATHERY FUTURE':        'Jobin',
+    'BYPASS ROAD':           'Ashif',
+    'CAMWORLD':              'Sarath',
+    'CHALAKKUDI':            'Gopakumar',
+    'CHALAKKUDY FUTURE':     'Gopakumar',
+    'CHANGANASSERY':         'Shameer',
+    'CHAVAKKAD FUTURE':      'Gopakumar',
+    'CHEMMAD FUTURE':        'Pranav',
+    'CHERTHALA':             'Renjithmon',
+    'CHERTHALA FUTURE':      'Renjithmon',
+    'EAST FORT':             'Praseed',
+    'EDAKKARA':              'Pranav',
+    'EDAPPAL':               'Manu',
+    'EDAPPAL FUTURE':        'Manu',
+    'EDAPPALLY FUTURE':      'Salaj',
+    'ERATTUPETTA FUTURE':    'Shameer',
+    'FEROKE FUTURE':         'Sarath',
+    'FORUM MALL':            'Mobish',
+    'HARIPAD FUTURE':        'Renjithmon',
+    'HI LITE MALL':          'Sarath',
+    'IRINJALAKUDA FUTURE':   'Gopakumar',
+    'IRITTY':                'Abhilash',
+    'KADAVANTHRA':           'Salaj',
+    'KALPETTA':              'Jobin',
+    'KALPETTA FUTURE':       'Jobin',
+    'KANHANGAD':             'Anoop',
+    'KANHANGAD FUTURE':      'Anoop',
+    'KANJIRAPPALLY FUTURE':  'Shameer',
+    'KANNUR FUTURE':         'Abhilash',
+    'KARAMANA':              'Amal',
+    'KARUNAGAPPALLY':        'Niyad',
+    'KARUNAGAPPALLY FUTURE': 'Niyad',
+    'KASARGOD':              'Anoop',
+    'KASARGOD FUTURE':       'Anoop',
+    'KATTAPPANA FUTURE':     'Sreerag',
+    'KAYAMKULAM':            'Renjithmon',
+    'KILIMANOOR':            'Abhiraj',
+    'KINGSWAY':              'Sarath',
+    'KOLLAM':                'Niyad',
+    'KOLLAM FUTURE':         'Niyad',
+    'KONDOTTY':              'Pranav',
+    'KONDOTTY FUTURE':       'Pranav',
+    'KOTHAMANGALAM FUTURE':  'Jaleel',
+    'KOTTAKKAL':             'Manu',
+    'KOTTAKKAL FUTURE':      'Manu',
+    'KOTTARAKKARA':          'Niyad',
+    'KOTTAYAM FUTURE':       'Shameer',
+    'KOYILANDY':             'Shafeek',
+    'KOYILANDY 2':           'Shafeek',
+    'KUNNAMANGALAM FUTURE':  'Nideesh',
+    'KUNNAMKULAM':           'Praseed',
+    'KURUPPAM ROAD':         'Praseed',
+    'KUTTIYADI':             'Shafeek',
+    'KUTTIYADI FUTURE':      'Shafeek',
+    'LANDSHIP MALL':         'Sarath',
+    'MAHE':                  'Abhilash',
+    'MALAPPURAM':            'Manu',
+    'MANANTHAVADY':          'Jobin',
+    'MANANTHAVADY FUTURE':   'Jobin',
+    'MANJERY':               'Pranav',
+    'MANNARKAD FUTURE':      'Ashif',
+    'MARINE DRIVE FUTURE':   'Mobish',
+    'MAVELIKARA FUTURE':     'Renjithmon',
+    'MENAKA':                'Mobish',
+    'MUKKAM FUTURE':         'Nideesh',
+    'MUKKOM':                'Nideesh',
+    'MUVATTUPUZHA':          'Jaleel',
+    'MUVATTUPUZHA FUTURE':   'Jaleel',
+    'MYG CARE BATHERY':      'Jobin',
+    'MYG CARE PERUMANNA':    'Nideesh',
+    'NADAKKAVU FUTURE':      'Sarath',
+    'NAGAMPADAM':            'Shameer',
+    'NARIKKUNI':             'Nideesh',
+    'NILAMBUR FUTURE':       'Pranav',
+    'OTTAPALAM':             'Ashif',
+    'OTTUPARA FUTURE':       'Praseed',
+    'P TOWER':               'Sarath',
+    'PALAKKAD FUTURE':       'Ashif',
+    'PALARIVATTOM':          'Salaj',
+    'PANAVILA FUTURE':       'Amal',
+    'PARAVOOR':              'Salaj',
+    'PATHANAMTHITTA FUTURE': 'Siju',
+    'PATTAMBI FUTURE':       'Ashif',
+    'PATTOM':                'Amal',
+    'PAYYANNUR':             'Faisal',
+    'PAYYANNUR FUTURE':      'Faisal',
+    'PAZHAVANGADI':          'Amal',
+    'PERAMBRA':              'Shafeek',
+    'PERAMBRA FUTURE':       'Shafeek',
+    'PERINTHALMANNA FUTURE': 'Manu',
+    'PERUMBAVOOR FUTURE':    'Jaleel',
+    'PIRAVOM FUTURE':        'Jaleel',
+    'POOTHOLE FUTURE':       'Praseed',
+    'POTTAMMAL FUTURE':      'Sarath',
+    'PUNALUR FUTURE':        'Niyad',
+    'PUTHIYARA':             'Sarath',
+    'RAMANATTUKARA':         'Nideesh',
+    'RANNI FUTURE':          'Siju',
+    'SABA':                  'Sarath',
+    'SABA MAHARANI':         'Sarath',
+    'SNPARK':                'Faisal',
+    'TALIPARAMBA':           'Faisal',
+    'TALIPARAMBA FUTURE':    'Faisal',
+    'TB ROAD':               'Ashif',
+    'THALASSERY':            'Abhilash',
+    'THALASSERY FUTURE':     'Abhilash',
+    'THAMARASSERY FUTURE':   'Nideesh',
+    'THANA':                 'Abhilash',
+    'THIRUNAKKARA':          'Shameer',
+    'THIRUVALLA':            'Siju',
+    'THIRUVALLA FUTURE':     'Siju',
+    'THODUPUZHA':            'Sreerag',
+    'THODUPUZHA FUTURE':     'Sreerag',
+    'THONDAYAD FUTURE':      'Nideesh',
+    'THOPPUMPADY FUTURE':    'Mobish',
+    'THRIPUNITHURA':         'Mobish',
+    'THRIPUNITHURA FUTURE':  'Mobish',
+    'TIRUR':                 'Manu',
+    'UPPALA':                'Anoop',
+    'VADAKARA':              'Shafeek',
+    'VADAKARA FUTURE':       'Shafeek',
+    'VADAKKENCHERRY FUTURE': 'Ashif',
+    'VALANCHERY FUTURE':     'Manu',
+    'VENGARA':               'Pranav',
+    'VENJARAMOODU FUTURE':   'Abhiraj',
+    'VYPIN FUTURE':          'Salaj',
+    'WANDOOR':               'Pranav',
+}
+
+# Store → Zone mapping (from DATA.xlsx)
+STORE_ZONE_MAP = {
+    store: 'SOUTH' if rbm in ('Renjith','Mahesh','Vaisakh') else 'NORTH'
+    for store, rbm in STORE_RBM_MAP.items()
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Product → Category mapping  (casing matches reference exactly)
 # ─────────────────────────────────────────────────────────────────────────────
 PRODUCT_CATEGORY_MAP = {
-    # CD Products
-    'AIR CONDITIONER':  'CD PRODUCTS',
-    'DISH WASHER':      'CD PRODUCTS',
-    'DRYER':            'CD PRODUCTS',
-    'FREEZER':          'CD PRODUCTS',
-    'HOME APPLIANCES':  'CD PRODUCTS',
-    'MICROWAVE OVEN':   'CD PRODUCTS',
-    'REFRIGERATORS':    'CD PRODUCTS',
-    'TV':               'CD PRODUCTS',
-    'WASHING MACHINES': 'CD PRODUCTS',
+    # CD Products (casing from DATA.xlsx)
+    'AIR CONDITIONER':  'CD Products',
+    'DISH WASHER':      'CD Products',
+    'DRYER':            'CD Products',
+    'FREEZER':          'CD Products',
+    'HOME APPLIANCES':  'CD Products',
+    'MICROWAVE OVEN':   'CD Products',
+    'REFRIGERATORS':    'CD Products',
+    'TV':               'CD Products',
+    'WASHING MACHINES': 'CD Products',
     # HVA
     'AUDIO':        'HVA',
+    'CEGI':         'HVA',
     'EAR WEARABLES':'HVA',
     'GAMING':       'HVA',
     'HOME THEATRE': 'HVA',
@@ -173,30 +479,31 @@ PRODUCT_CATEGORY_MAP = {
     # Mobile
     'MOBILE':  'MOBILE',
     'TABLET':  'MOBILE',
-    # SA
+    'TAB':     'MOBILE',
+    # SA  (any product containing 'SMALL APPLIANCE' handled separately below)
     'SMALL APPLIANCES': 'SA',
     # Others
-    'CAMERA':        'OTHERS',
-    'DIY':           'OTHERS',
-    'IT ACCESSORIES':'OTHERS',
-    'PRINTER':       'OTHERS',
-    'STABILIZER':    'OTHERS',
-    'MYG VERSE':     'OTHERS',
-    'RIG':           'OTHERS',
+    'CAMERA':        'Others',
+    'DIY':           'Others',
+    'IT ACCESSORIES':'Others',
+    'PRINTER':       'Others',
+    'RIG':           'Others',
+    'STABILIZER':    'Others',
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Blacklisted products → removed from output
 # ─────────────────────────────────────────────────────────────────────────────
 BLACKLIST_PRODUCTS = {
+    # From user spec
     'ACCESSORIES',
     'CARE PLUS',
-    'CEGI',
     'CROCKERY',
     'D SPARE',
+    'GLAM SHIELD',
     'GLAMSHIELD',
     'HOUSE HOLD',
-    'LAPTOP BAG',
+    'HOUSEHOLD',
     'LG AMC',
     'OSG WARRANTY',
     'PERSONAL CARE',
@@ -204,6 +511,24 @@ BLACKLIST_PRODUCTS = {
     'SERVICE',
     'SMART CHOICE',
     'STORAGE DEVICES',
+    # Additional — found by comparing with DATA.xlsx reference
+    'GDOT CARE',
+    'DEMO',
+    'DEMO ACCESSORIES',
+    'DEMO LAPTOP',
+    'SCHEME',
+    'MYG VERSE',
+    'MYG DOMO',
+    'GIFT ITEMS',
+    'LAPTOP BAG',
+    'FOC',
+    'SERVICE CHARGES',
+    'FRAGRANCE',
+    'IT PRODUCT',
+    'MONITOR',
+    'CCTV',
+    'SPARE',
+    'AC OUTDOOR',
 }
 
 
@@ -337,6 +662,14 @@ def clean_sales_report(input_path, output_path):
     # ── 4. Standardise Financier ──────────────────────────────────────────────
     financier = df['Financier'].astype(str).str.strip().str.upper()
     res_fin = pd.Series('aCash', index=financier.index)
+
+    # Keep manual upload overrides from ClickHouse (they output exact strings)
+    # This prevents them from being wiped to aCash, while raw ERP data (which says "Pine Lab EMI" etc.) 
+    # will fall through to aCash because it doesn't match the exact 'PINELAB' string.
+    res_fin = np.where(financier == 'PINELAB', 'Pine Lab EMI', res_fin)
+    res_fin = np.where(financier == 'PAYTM', 'PAYTM', res_fin)
+    res_fin = np.where(financier == 'BENOW', 'Benow', res_fin)
+
     res_fin = np.where(financier.str.contains('BAJAJ', na=False), 'BAJAJ FINANCE', res_fin)
     res_fin = np.where(financier.str.contains('HDB', na=False), 'HDB FINANCE', res_fin)
     res_fin = np.where(financier.str.contains('DMI', na=False), 'DMI FINANCE', res_fin)
@@ -344,7 +677,8 @@ def clean_sales_report(input_path, output_path):
     res_fin = np.where(financier.str.contains('TVS', na=False), 'TVS Credit', res_fin)
     res_fin = np.where(financier.str.contains('POONAWALLA|PFL', na=False), 'Poonawalla Fincorp', res_fin)
     
-    cash_pattern = 'BENOW|PINELAB|PAYTM|DELHIVERY|OFFICIUM|COCHIN|CASH|ACASH|CO-OP|COOP|SOCIETY|THAYANOOR'
+    # Remaining cash-equivalent financiers → aCash
+    cash_pattern = 'DELHIVERY|OFFICIUM|COCHIN|CASH|ACASH|CO-OP|COOP|SOCIETY|THAYANOOR'
     res_fin = np.where(financier.str.contains(cash_pattern, na=False), 'aCash', res_fin)
     res_fin = np.where(financier.isin(['', 'NAN', 'NONE']), 'aCash', res_fin)
     df['Financier_Cleaned'] = res_fin
@@ -356,7 +690,8 @@ def clean_sales_report(input_path, output_path):
     prod = df['Product'].astype(str).str.strip().str.upper()
     prod_clean = prod.str.replace(' ', '', regex=False)
     
-    res_cat = pd.Series('OTHERS', index=prod.index)
+    res_cat = pd.Series('BANK EMI', index=prod.index)
+    res_cat = np.where(prod.isin(['', 'NAN', 'UNKNOWN']) & res_fin.isin(['Pine Lab EMI', 'PAYTM', 'Benow']), 'BANK EMI', res_cat)
     res_cat = np.where(prod.str.contains('SMALL APPLIANCE', na=False, regex=False), 'SA', res_cat)
     res_cat = np.where(prod.str.contains('TABLET|TAB', na=False), 'MOBILE', res_cat)
     
@@ -368,21 +703,61 @@ def clean_sales_report(input_path, output_path):
     res_cat = np.where(mapped_cat.notna(), mapped_cat, res_cat)
     
     df['Category_Cleaned'] = res_cat
+    
+    # User requirement: no product will be listed for BANK EMI, leave it as blank
+    df['Product_Cleaned'] = np.where(res_cat == 'BANK EMI', '', prod)
+
     df = df[df['Category_Cleaned'] != 'REMOVE']
     print(f"Shape after category removal: {df.shape}")
 
-    # ── 7. Zone classification ─────────────────────────────────────────────────
-    rbm_clean = df['RBM'].astype(str).str.strip().str.upper()
-    res_zone = pd.Series('UNKNOWN', index=rbm_clean.index)
-    res_zone = np.where(rbm_clean.isin(['ALFAS', 'SAMEER', 'SAMEEM']), 'NORTH', res_zone)
-    res_zone = np.where(rbm_clean.isin(['RENJITH', 'MAHESH', 'VAISAKH']), 'SOUTH', res_zone)
-    res_zone = np.where(rbm_clean.str.contains('KARNATAKA', na=False), 'KARNATAKA', res_zone)
-    df['Zone_Cleaned'] = res_zone
+    # ── 7. Store → Fin BDM / RBM / BDM / Zone lookup (authoritative from DATA.xlsx) ─
+    store_upper = df['Branch'].astype(str).str.strip().str.upper()
 
-    # ── 8. Price Range classification ─────────────────────────────────────────
+    def _store_lookup(mapping, s):
+        v = mapping.get(s)
+        if v: return v
+        for k, val in mapping.items():
+            if s in k or k in s: return val
+        return ''
+
+    # Fin BDM
+    res_fin_bdm = store_upper.map(STORE_FIN_BDM_MAP)
+    missing = res_fin_bdm.isna()
+    if missing.any():
+        res_fin_bdm[missing] = store_upper[missing].apply(lambda s: _store_lookup(STORE_FIN_BDM_MAP, s) or '')
+    df['Fin_BDM_Cleaned'] = res_fin_bdm.fillna('')
+
+    # RBM override (use DATA.xlsx authoritative mapping)
+    res_rbm = store_upper.map(STORE_RBM_MAP)
+    missing = res_rbm.isna()
+    if missing.any():
+        res_rbm[missing] = store_upper[missing].apply(lambda s: _store_lookup(STORE_RBM_MAP, s) or '')
+    rbm_override = res_rbm.fillna('')
+    df['RBM'] = np.where(rbm_override != '', rbm_override, df['RBM'])
+
+    # BDM override (use DATA.xlsx authoritative mapping)
+    res_bdm = store_upper.map(STORE_BDM_MAP)
+    missing = res_bdm.isna()
+    if missing.any():
+        res_bdm[missing] = store_upper[missing].apply(lambda s: _store_lookup(STORE_BDM_MAP, s) or '')
+    bdm_override = res_bdm.fillna('')
+    df['BDM'] = np.where(bdm_override != '', bdm_override, df['BDM'])
+
+    # Zone: store-level first, then RBM fallback
+    zone_mapped = store_upper.map(STORE_ZONE_MAP)
+    rbm_upper = df['RBM'].astype(str).str.strip().str.upper()
+    zone_rbm = np.where(rbm_upper.isin(['ALFAS','SAMEER','SAMEEM']), 'NORTH',
+               np.where(rbm_upper.isin(['RENJITH','MAHESH','VAISAKH']), 'SOUTH', ''))
+    df['Zone_Cleaned'] = zone_mapped.fillna(pd.Series(zone_rbm, index=zone_mapped.index))
+
+    # ── 8. Price Range classification (11 slabs per spec) ────────────────────
     price = pd.to_numeric(df['Sold Price'], errors='coerce').fillna(0.0)
-    bins = [-np.inf, 0, 10000, 15000, 20000, 30000, 40000, 50000, 75000, 100000, 150000, 200000, np.inf]
-    labels = ['Return', 'Below 10K', '10K to 15K', '15K to 20K', '20K to 30K', '30K to 40K', '40K to 50K', '50K to 75K', '75K to 100K', '100K to 150K', '150K to 200K', 'Above 200K']
+    bins   = [0, 10000, 15000, 20000, 30000, 40000, 50000, 75000, 100000, 150000, 200000, np.inf]
+    labels = [
+        'Below 10K', '10K to 15K', '15K to 20K', '20K to 30K',
+        '30K to 40K', '40K to 50K', '50K to 75K', '75K to 100K',
+        '100K to 150K', '150K to 200K', 'Above 200K'
+    ]
     df['Price_Range_Cleaned'] = pd.cut(price, bins=bins, labels=labels, right=False).astype(str)
 
     # ── 9. Store → Fin BDM lookup ─────────────────────────────────────────────
@@ -479,7 +854,7 @@ def clean_sales_report(input_path, output_path):
     out_df['Customer Mobile']   = df['Customer Mobile']
     out_df['Pincode']           = df['Pincode']
     out_df['Staff']             = df['Staff']
-    out_df['Product']           = df['Product']
+    out_df['Product']           = df['Product_Cleaned']
     out_df['Category']          = df['Category_Cleaned']
     out_df['Brand']             = df['Brand']
     out_df['Item Group']        = df['Item Group']
@@ -487,7 +862,11 @@ def clean_sales_report(input_path, output_path):
     out_df['Item Code']         = df['Item Code']
     out_df['Item Name']         = df['Item Name']
     out_df['IMEI']              = df['IMEI']
-    out_df['QTY']               = df['QTY']
+    # If Sold Price is negative (return), QTY must also be negative
+    qty_raw   = pd.to_numeric(df['QTY'],       errors='coerce').fillna(0)
+    price_raw = pd.to_numeric(df['Sold Price'], errors='coerce').fillna(0)
+    out_df['QTY'] = np.where(price_raw < 0, -qty_raw.abs(), qty_raw.abs())
+
     out_df['Financier']         = df['Financier_Cleaned']
     out_df['Finance']           = df['Finance_Cleaned']
     out_df['Delivery Order No'] = df['DO_Cleaned']

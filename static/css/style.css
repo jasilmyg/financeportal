@@ -94,6 +94,161 @@
   --ease-out:     cubic-bezier(0, 0, 0.2, 1);
 }
 
+/* ═══════════════════════════════════════════
+   LIGHT THEME OVERRIDES
+   Applied when <html data-theme="light">
+═══════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg-void:       #f0f4f8;
+  --bg-deep:       #e8edf3;
+  --bg-surface:    #ffffff;
+  --bg-card:       #ffffff;
+  --bg-glass:      rgba(255, 255, 255, 0.92);
+  --bg-sidebar:    #1e293b;
+  --bg-overlay:    rgba(0, 0, 0, 0.40);
+
+  --border-dim:    rgba(0, 0, 0, 0.05);
+  --border-soft:   rgba(0, 0, 0, 0.10);
+  --border-mid:    rgba(0, 0, 0, 0.14);
+  --border-bright: rgba(0, 0, 0, 0.20);
+  --border-glow:   rgba(59, 130, 246, 0.25);
+  --border-blue:   rgba(59, 130, 246, 0.30);
+
+  --card-bg:       #ffffff;
+  --card-border:   rgba(0, 0, 0, 0.08);
+  --panel-border:  rgba(0, 0, 0, 0.08);
+
+  --text-primary:  #0f172a;
+  --text-main:     #1e293b;
+  --text-muted:    #64748b;
+  --text-dim:      #94a3b8;
+  --text-white:    #ffffff;
+  --text-dark:     #0a0e1a;
+
+  --table-border:     rgba(0, 0, 0, 0.07);
+  --table-row-hover:  rgba(59, 130, 246, 0.06);
+  --table-header-bg:  rgba(0, 0, 0, 0.03);
+  --table-row-alt:    rgba(0, 0, 0, 0.02);
+
+  --glow-card:         0 2px 16px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.07);
+  --glow-card-hover:   0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(59, 130, 246, 0.10);
+
+  --grad-dark:     linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%);
+  --grad-sidebar:  linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+
+/* Light theme — body & html background */
+[data-theme="light"] html,
+[data-theme="light"] body {
+  background: var(--bg-void);
+  color: var(--text-main);
+}
+
+/* Light theme — scroll bars */
+[data-theme="light"] ::-webkit-scrollbar-track { background: #e8edf3; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #94a3b8; }
+
+/* Light theme — inputs */
+[data-theme="light"] input,
+[data-theme="light"] select {
+  background: #f8fafc;
+  color: var(--text-main);
+  border-color: var(--border-mid);
+}
+
+/* Light theme — table cells */
+[data-theme="light"] td,
+[data-theme="light"] th {
+  border-color: var(--table-border);
+  color: var(--text-main);
+}
+
+/* Light theme — sidebar stays dark (premium contrast) */
+[data-theme="light"] .sidebar {
+  background: var(--grad-sidebar) !important;
+}
+[data-theme="light"] .sidebar .nav-label,
+[data-theme="light"] .sidebar .nav-item span,
+[data-theme="light"] .sidebar .brand-name,
+[data-theme="light"] .sidebar .brand-sub {
+  color: #cbd5e1 !important;
+}
+[data-theme="light"] .sidebar .nav-item.active,
+[data-theme="light"] .sidebar .nav-item:hover {
+  background: rgba(255,255,255,0.10) !important;
+}
+
+/* Light theme — canvas / 3D BG hidden (doesn't suit light) */
+[data-theme="light"] #bg-canvas { opacity: 0.15; }
+
+/* Light theme — hero glow background areas */
+[data-theme="light"] .page-body { background: var(--bg-void); }
+
+/* Light theme — header */
+[data-theme="light"] header,
+[data-theme="light"] .top-bar {
+  background: rgba(255,255,255,0.95) !important;
+  border-bottom-color: var(--border-soft) !important;
+  backdrop-filter: blur(12px);
+}
+
+/* Light theme — cards / panels */
+[data-theme="light"] .kpi-card,
+[data-theme="light"] .card,
+[data-theme="light"] .performance-section,
+[data-theme="light"] .content-card,
+[data-theme="light"] .data-panel,
+[data-theme="light"] .upload-card {
+  background: #ffffff !important;
+  border-color: rgba(0,0,0,0.08) !important;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08) !important;
+}
+
+/* Light theme — date picker input */
+[data-theme="light"] .date-input-display,
+[data-theme="light"] .flatpickr-input {
+  background: #f1f5f9 !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-mid) !important;
+}
+
+/* ─────────────────────────────────────── */
+/*  THEME TOGGLE BUTTON                   */
+/* ─────────────────────────────────────── */
+#themeToggleBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-soft);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  transition: all 0.25s var(--ease-smooth);
+  flex-shrink: 0;
+}
+#themeToggleBtn:hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 12px rgba(59,130,246,0.25);
+  transform: rotate(15deg) scale(1.1);
+}
+#themeToggleBtn .theme-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: block;
+}
+#themeToggleBtn .theme-label { display: none; }
+[data-theme="light"] #themeToggleBtn {
+  background: #f1f5f9;
+  border-color: rgba(0,0,0,0.12);
+}
+
 /* ─────────────────────────────────────── */
 /*  RESET & BASE                          */
 /* ─────────────────────────────────────── */
@@ -295,7 +450,7 @@ h1, h2, h3, h4 {
   position: relative; z-index: 10;
   box-shadow: 0 1px 0 var(--border-dim), 0 4px 24px rgba(0,0,0,0.5);
 }
-.date-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.date-controls { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; overflow: visible; }
 
 /* Inputs & Selects */
 input[type="date"].date-select,
@@ -409,7 +564,37 @@ select.date-select option {
   box-shadow: 0 6px 24px rgba(16,185,129,0.4);
   color: #fff;
 }
-.action-buttons { display: flex; gap: 10px; }
+
+/* Refresh Tab button */
+.btn-refresh {
+  background: linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(14,165,233,0.18) 100%);
+  color: var(--cyan, #00e5ff);
+  border: 1.5px solid rgba(0,229,255,0.35);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+.btn-refresh:hover {
+  background: linear-gradient(135deg, rgba(6,182,212,0.32) 0%, rgba(14,165,233,0.35) 100%);
+  border-color: rgba(0,229,255,0.7);
+  box-shadow: 0 4px 18px rgba(0,229,255,0.22);
+  transform: translateY(-1px);
+}
+.btn-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@keyframes spin360 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.action-buttons { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
 
 /* ─────────────────────────────────────── */
 /*  PAGE BODY                             */
@@ -1009,12 +1194,23 @@ select.date-select option {
 /* ─────────────────────────────────────── */
 .data-table thead th {
   position: sticky; top: 0;
-  background: rgba(13,17,32,0.97) !important;
+  background: linear-gradient(180deg, #16213e 0%, #0f172a 100%) !important;
+  color: #f1f5f9 !important;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase;
+  padding: 13px 14px !important;
   backdrop-filter: blur(12px);
-  border-bottom: 2px solid rgba(59,130,246,0.15) !important;
+  border-bottom: 3px solid #3b82f6 !important;
+  border-right: 1px solid rgba(255,255,255,0.06) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
   z-index: 3;
 }
-.data-table thead th:first-child { text-align: left; min-width: 130px; }
+.data-table thead th:last-child { border-right: none !important; }
+.data-table thead th:first-child { text-align: left; min-width: 130px; color: #ffffff !important; }
+.data-table thead th:hover { background: linear-gradient(180deg, #1e2d52 0%, #14203a 100%) !important; }
 
 /* ─────────────────────────────────────── */
 /*  DATA SOURCE INFO BAR                  */
@@ -1086,3 +1282,155 @@ select.date-select option {
   .nav-item { justify-content: center; padding: 10px; }
   .page-body { padding: 16px; }
 }
+
+/* ─────────────────────────────────────── */
+/*  DRILL-DOWN BREADCRUMB NAV             */
+/* ─────────────────────────────────────── */
+.drill-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border-soft);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-muted);
+  font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: all 0.18s var(--ease-smooth);
+  white-space: nowrap;
+}
+.crumb:hover {
+  border-color: rgba(59,130,246,0.45);
+  color: var(--text-primary);
+  background: rgba(59,130,246,0.08);
+}
+.crumb.crumb-active {
+  background: rgba(59,130,246,0.12);
+  border-color: rgba(59,130,246,0.35);
+  color: #93c5fd;
+  cursor: default;
+  pointer-events: none;
+}
+.crumb-sep {
+  color: var(--text-dim);
+  font-size: 18px; font-weight: 300;
+  line-height: 1; user-select: none;
+}
+.crumb-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(0,229,255,0.6);
+  margin-right: 4px;
+  animation: ch-pulse 2s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────── */
+/*  DRILLABLE TABLE ROWS                  */
+/* ─────────────────────────────────────── */
+.drillable-row {
+  cursor: pointer;
+  transition: background 0.14s, transform 0.08s;
+  position: relative;
+}
+.drillable-row:hover {
+  background: rgba(59,130,246,0.07) !important;
+}
+.drill-cell {
+  font-weight: 600;
+  position: relative;
+}
+.drillable-row .drill-cell::before {
+  content: '';
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(0,229,255,0.45);
+  margin-right: 8px;
+  vertical-align: middle;
+  transition: background 0.15s, transform 0.15s;
+}
+.drillable-row:hover .drill-cell::before {
+  background: var(--cyan);
+  transform: scale(1.3);
+}
+/* Drill-into chevron arrow on hover */
+.drillable-row .drill-cell::after {
+  content: ' ›';
+  color: var(--cyan);
+  font-weight: 800;
+  font-size: 15px;
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  transform: translateX(-4px);
+}
+.drillable-row:hover .drill-cell::after {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* ─────────────────────────────────────── */
+/*  LEAF (non-drillable) ROWS at Level 2  */
+/* ─────────────────────────────────────── */
+.drill-leaf-row .drill-leaf::before {
+  content: '↳ ';
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-right: 4px;
+}
+.drill-leaf-row td { color: var(--text-main); }
+.drill-leaf-row:nth-child(even) { background: var(--table-row-alt); }
+
+/* ─────────────────────────────────────── */
+/*  VOLUME / VALUE VIEW-MODE TOGGLE       */
+/* ─────────────────────────────────────── */
+.view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 24px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.view-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  letter-spacing: 0.01em;
+}
+.view-pill svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.view-pill:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
+}
+.view-pill:hover svg { opacity: 1; }
+.view-pill.active {
+  background: linear-gradient(135deg, rgba(37,99,235,0.85), rgba(59,130,246,0.75));
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.view-pill.active svg { opacity: 1; }
