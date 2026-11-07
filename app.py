@@ -58,6 +58,9 @@ _latest_cleaned_report_path = None
 _latest_finance_report_path = None
 # Holds the latest cleaned Pine Lab DataFrame in memory for download
 _latest_pinelab_cleaned_df = None
+_latest_pinelab_main_df = None
+_latest_pinelab_angamaly_df = None
+_latest_pinelab_slots = {'main': None, 'angamaly': None, 'combined': None}
 # Holds the latest cleaned Paytm DataFrame in memory for download
 _latest_paytm_cleaned_df = None
 _latest_benow_cleaned_df = None
@@ -72,6 +75,68 @@ def add_header(response):
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
+
+_PINELAB_MAIN_PKL   = os.path.join(DATA_DIR, '_pinelab_main_cleaned.pkl')
+_PINELAB_ANG_PKL    = os.path.join(DATA_DIR, '_pinelab_angamaly_cleaned.pkl')
+_PINELAB_SLOTS_JSON = os.path.join(DATA_DIR, '_pinelab_slots_meta.json')
+
+def _save_pinelab_slots():
+    try:
+        with open(_PINELAB_SLOTS_JSON, 'w', encoding='utf-8') as f:
+            json.dump(_latest_pinelab_slots, f)
+    except Exception:
+        pass
+
+def _load_pinelab_cache_if_needed():
+    global _latest_pinelab_main_df, _latest_pinelab_angamaly_df, _latest_pinelab_cleaned_df, _latest_pinelab_slots
+    if not emi_state.is_uploaded(emi_state.PINE_FIN):
+        return
+    if _latest_pinelab_slots.get('main') is None and _latest_pinelab_slots.get('angamaly') is None:
+        if os.path.exists(_PINELAB_SLOTS_JSON):
+            try:
+                with open(_PINELAB_SLOTS_JSON, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        _latest_pinelab_slots.update(loaded)
+            except Exception:
+                pass
+    if _latest_pinelab_main_df is None and os.path.exists(_PINELAB_MAIN_PKL):
+        try:
+            _latest_pinelab_main_df = pd.read_pickle(_PINELAB_MAIN_PKL)
+        except Exception:
+            pass
+    if _latest_pinelab_main_df is None and isinstance(_latest_pinelab_slots.get('main'), dict):
+        src_p = _latest_pinelab_slots['main'].get('source_path')
+        if src_p and os.path.exists(src_p) and _PINELAB_AVAILABLE:
+            try:
+                _df_m, _st_m = clean_pine_lab(pd.read_csv(src_p))
+                _latest_pinelab_main_df = _df_m
+                _df_m.to_pickle(_PINELAB_MAIN_PKL)
+            except Exception:
+                pass
+    if _latest_pinelab_angamaly_df is None and os.path.exists(_PINELAB_ANG_PKL):
+        try:
+            _latest_pinelab_angamaly_df = pd.read_pickle(_PINELAB_ANG_PKL)
+        except Exception:
+            pass
+    if _latest_pinelab_cleaned_df is None:
+        frames = [d for d in (_latest_pinelab_main_df, _latest_pinelab_angamaly_df) if d is not None and not d.empty]
+        if frames:
+            from pine_lab_cleaner import COL_TXN_ID
+            _latest_pinelab_cleaned_df = pd.concat(frames, ignore_index=True).drop_duplicates(subset=[COL_TXN_ID], keep='first').copy()
+
+def _clear_pinelab_cache():
+    global _latest_pinelab_main_df, _latest_pinelab_angamaly_df, _latest_pinelab_cleaned_df, _latest_pinelab_slots
+    _latest_pinelab_main_df = None
+    _latest_pinelab_angamaly_df = None
+    _latest_pinelab_cleaned_df = None
+    _latest_pinelab_slots = {'main': None, 'angamaly': None, 'combined': None}
+    for p in (_PINELAB_MAIN_PKL, _PINELAB_ANG_PKL, _PINELAB_SLOTS_JSON):
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 # PPTX template: use env var (cloud) or fallback to local Windows path
 TEMPLATE_PPTX_PATH = os.environ.get(
@@ -220,7 +285,9 @@ def api_dashboard_data():
         try:
             # Result-level cache: the SQL result was already cached, but the pandas aggregation
             # (several seconds on a monthly range) was recomputed on every request.
-            from clickhouse_client import _cache_get, _cache_set
+            from clickhouse_client import _cache_get, _cache_set, cache_clear as ch_cache_clear
+            if str(request.args.get('refresh', '')).lower() in ('1', 'true', 'yes'):
+                ch_cache_clear()
             _tf = os.path.join(DATA_DIR, 'targets.json')
             _tf_mtime = os.path.getmtime(_tf) if os.path.exists(_tf) else 0
             _ckey = 'dash|' + repr((date_str, timeframe, end_date_str, rbm, bdm, store, staff, fin_bdm, state, district, _tf_mtime, emi_state.signature()))
@@ -239,19 +306,47 @@ def api_dashboard_data():
                         zone_map = json.load(tf).get('zone_map', {})
                 except Exception:
                     pass
-            # Get direct totals (from all uploaded file rows, not just ERP matches)
-            # Only apply this global override if NO hierarchy filters are active
-            pine_lab_override = {}
-            paytm_override = {}
-            benow_override = {}
-            if not any([rbm, bdm, store, staff, state, district, fin_bdm]):
+            # PineLab / PAYTM / Benow = counts from the manually uploaded files; they are
+            # deducted from aCASH.  The files carry no store info, so the full file counts are
+            # used when no store-level filter is active (State handled in get_card_overrides).
+            pine_lab_override = None
+            paytm_override = None
+            benow_override = None
+            pine_lab_val_override = None
+            paytm_val_override = None
+            benow_val_override = None
+            if not staff:
                 try:
-                    from clickhouse_aggregator import get_pine_lab_totals, get_paytm_totals, get_benow_totals
-                    pine_lab_override = get_pine_lab_totals(date_str, timeframe, end_date_str)
-                    paytm_override = get_paytm_totals(date_str, timeframe, end_date_str)
-                    benow_override = get_benow_totals(date_str, timeframe, end_date_str)
-                except Exception:
-                    pass
+                    from clickhouse_aggregator import get_card_overrides, get_card_value_overrides
+                    _ov = get_card_overrides(
+                        date_str, timeframe, end_date_str,
+                        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
+                    )
+                    pine_lab_override = _ov.get('PineLab')
+                    paytm_override = _ov.get('PAYTM')
+                    benow_override = _ov.get('Benow')
+                    _vov = get_card_value_overrides(
+                        date_str, timeframe, end_date_str,
+                        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
+                    )
+                    pine_lab_val_override = _vov.get('PineLab')
+                    paytm_val_override = _vov.get('PAYTM')
+                    benow_val_override = _vov.get('Benow')
+                except Exception as _ov_exc:
+                    app.logger.warning('Card EMI override failed: %s', _ov_exc)
+            if False:
+                try:
+                    from clickhouse_aggregator import get_card_overrides, get_card_value_overrides
+                    _ov = get_card_overrides(date_str, timeframe, end_date_str, state)
+                    pine_lab_override = _ov.get('PineLab', {})
+                    paytm_override = _ov.get('PAYTM', {})
+                    benow_override = _ov.get('Benow', {})
+                    _vov = get_card_value_overrides(date_str, timeframe, end_date_str, state)
+                    pine_lab_val_override = _vov.get('PineLab', {})
+                    paytm_val_override = _vov.get('PAYTM', {})
+                    benow_val_override = _vov.get('Benow', {})
+                except Exception as _ov_exc:
+                    app.logger.warning('Card EMI override failed: %s', _ov_exc)
             # Reuse existing aggregation logic, passing the ClickHouse DataFrame
             data = get_dashboard_data(
                 raw_file_path=None, target_date_str=date_str, timeframe=timeframe,
@@ -260,10 +355,32 @@ def api_dashboard_data():
                 pine_lab_override=pine_lab_override,
                 paytm_override=paytm_override,
                 benow_override=benow_override,
+                pine_lab_val_override=pine_lab_val_override,
+                paytm_val_override=paytm_val_override,
+                benow_val_override=benow_val_override,
                 state=state, district=district
             )
             if isinstance(data, dict) and 'error' not in data:
                 _cache_set(_ckey, data)
+            for _fk, _ek in (('PineLab', emi_state.PINE_FIN), ('PAYTM', emi_state.PAYTM_FIN), ('Benow', emi_state.BENOW_FIN)):
+                if not emi_state.is_uploaded(_ek) and "category_performance" in data:
+                    _cp = data["category_performance"]
+                    for _c, _row in (_cp.get("qty") or {}).items():
+                        if isinstance(_row, dict) and _row.get(_fk):
+                            _row["aCASH"] = int(_row.get("aCASH", 0) or 0) + int(_row.get(_fk, 0) or 0)
+                            _row[_fk] = 0
+                    for _c, _row in (_cp.get("value") or {}).items():
+                        if isinstance(_row, dict): _row[_fk] = 0.0
+                    for _pobj in filter(None, [_cp.get("products_qty"), (_cp.get("products") or {}).get("qty")]):
+                        for _c, _prods in _pobj.items():
+                            for _p, _pr in (_prods or {}).items():
+                                if isinstance(_pr, dict) and _pr.get(_fk):
+                                    _pr["aCASH"] = int(_pr.get("aCASH", 0) or 0) + int(_pr.get(_fk, 0) or 0)
+                                    _pr[_fk] = 0
+                    for _vobj in filter(None, [_cp.get("products_val"), (_cp.get("products") or {}).get("value")]):
+                        for _c, _prods in _vobj.items():
+                            for _p, _pr in (_prods or {}).items():
+                                if isinstance(_pr, dict): _pr[_fk] = 0.0
             return jsonify(data)
         except Exception as exc:
             app.logger.error('ClickHouse dashboard query failed: %s', exc, exc_info=True)
@@ -294,6 +411,7 @@ def api_price_range_data():
     end_date_str= request.args.get('end_date', '')
     timeframe   = request.args.get('timeframe', 'monthly')
     price_range = request.args.get('price_range', 'ALL')
+    state       = request.args.get('state', '')
     source      = request.args.get('source', 'excel')
     
     if not date_str:
@@ -303,10 +421,10 @@ def api_price_range_data():
         if not _CLICKHOUSE_AVAILABLE:
             return jsonify({'error': 'ClickHouse not available.'}), 503
         try:
-            ch_df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str)
+            ch_df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str, state=state)
             if ch_df.empty:
                 return jsonify({'error': 'No ClickHouse data for this timeframe.'}), 404
-            return jsonify(get_price_range_data(None, date_str, timeframe, price_range, df=ch_df, end_date_str=end_date_str))
+            return jsonify(get_price_range_data(None, date_str, timeframe, price_range, df=ch_df, end_date_str=end_date_str, state=state))
         except Exception as exc:
             app.logger.error('ClickHouse price-range query failed: %s', exc, exc_info=True)
             return jsonify({'error': str(exc)}), 500
@@ -315,7 +433,7 @@ def api_price_range_data():
     if not os.path.exists(raw_file):
         return jsonify({"error": "Raw sales report not uploaded yet."}), 404
     
-    data = get_price_range_data(raw_file, date_str, timeframe, price_range, end_date_str=end_date_str)
+    data = get_price_range_data(raw_file, date_str, timeframe, price_range, end_date_str=end_date_str, state=state)
     return jsonify(data)
 
 @app.route('/api/branch-districts', methods=['GET'])
@@ -324,8 +442,11 @@ def api_branch_districts():
     try:
         import clickhouse_client
         df = clickhouse_client.query_df("SELECT upper(trim(code)) AS code, upper(trim(district)) AS district FROM branch_master")
-        return jsonify({str(r['code']): str(r['district']).strip()
-                        for r in df.to_dict('records') if str(r['district']).strip()})
+        dists = {str(r['code']): str(r['district']).strip()
+                 for r in df.to_dict('records') if str(r['district']).strip()}
+        for b in ['CSB', 'GPF', '3GH', 'KSO', 'SMC']:
+            dists[b] = 'OTHERS'
+        return jsonify(dists)
     except Exception:
         return jsonify({})
 
@@ -337,6 +458,9 @@ def api_branch_names():
         df = clickhouse_client.query_df("SELECT upper(trim(code)) AS code, trim(branch_name) AS name FROM branch_master")
         names = {str(r['code']): str(r['name']).strip().upper()
                  for r in df.to_dict('records') if str(r['name']).strip()}
+        for b in ['CSB', 'GPF', '3GH', 'KSO', 'SMC']:
+            if b not in names:
+                names[b] = b
         return jsonify(names)
     except Exception as e:
         return jsonify({})
@@ -367,7 +491,7 @@ def api_brand_data():
             ch_df = get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district)
             if ch_df.empty:
                 return jsonify({'error': 'No ClickHouse data for this timeframe.'}), 404
-            return jsonify(get_brand_data(None, date_str, timeframe, category, product, df=ch_df, end_date_str=end_date_str))
+            return jsonify(get_brand_data(None, date_str, timeframe, category, product, df=ch_df, end_date_str=end_date_str, state=state))
         except Exception as exc:
             app.logger.error('ClickHouse brand query failed: %s', exc, exc_info=True)
             return jsonify({'error': str(exc)}), 500
@@ -375,7 +499,7 @@ def api_brand_data():
     raw_file = os.path.join(DATA_DIR, 'uploaded_sales_report.xlsx')
     if not os.path.exists(raw_file):
         return jsonify({"error": "Raw sales report not uploaded yet."}), 404
-    return jsonify(get_brand_data(raw_file, date_str, timeframe, category, product, end_date_str=end_date_str))
+    return jsonify(get_brand_data(raw_file, date_str, timeframe, category, product, end_date_str=end_date_str, state=state))
 
 @app.route('/api/store-data', methods=['GET'])
 def api_store_data():
@@ -384,6 +508,7 @@ def api_store_data():
     end_date_str = request.args.get('end_date', '')
     timeframe = request.args.get('timeframe', 'monthly')
     zone      = request.args.get('zone', 'ALL')
+    state     = request.args.get('state', '')
     source    = request.args.get('source', 'excel')
     if not date_str:
         return jsonify({"error": "date is required"}), 400
@@ -392,7 +517,7 @@ def api_store_data():
         if not _CLICKHOUSE_AVAILABLE:
             return jsonify({'error': 'ClickHouse not available.'}), 503
         try:
-            ch_df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str)
+            ch_df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str, state=state)
             if ch_df.empty:
                 return jsonify({'error': 'No ClickHouse data for this timeframe.'}), 404
             # Load zone_map
@@ -404,7 +529,7 @@ def api_store_data():
                         zone_map = json.load(tf).get('zone_map', {})
                 except Exception:
                     pass
-            return jsonify(get_store_data(None, date_str, timeframe, zone, zone_map, df=ch_df, end_date_str=end_date_str))
+            return jsonify(get_store_data(None, date_str, timeframe, zone, zone_map, df=ch_df, end_date_str=end_date_str, state=state))
         except Exception as exc:
             app.logger.error('ClickHouse store query failed: %s', exc, exc_info=True)
             return jsonify({'error': str(exc)}), 500
@@ -421,7 +546,23 @@ def api_store_data():
                 zone_map = json.load(tf).get('zone_map', {})
         except Exception:
             pass
-    return jsonify(get_store_data(raw_file, date_str, timeframe, zone, zone_map, end_date_str=end_date_str))
+    return jsonify(get_store_data(raw_file, date_str, timeframe, zone, zone_map, end_date_str=end_date_str, state=state))
+
+
+@app.route('/api/oct-sheets-data', methods=['GET'])
+def api_oct_sheets_data():
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'error': 'ClickHouse not available.'}), 503
+    date_str = request.args.get('date') or '2026-10-01'
+    end_date_str = request.args.get('end_date', '')
+    timeframe = request.args.get('timeframe', 'monthly')
+    period_mode = request.args.get('period_mode', 'reference')
+    try:
+        from clickhouse_aggregator import get_oct_sheets_data
+        return jsonify(get_oct_sheets_data(date_str, timeframe=timeframe, end_date_str=end_date_str, period_mode=period_mode))
+    except Exception as exc:
+        app.logger.error('api_oct_sheets_data failed: %s', exc, exc_info=True)
+        return jsonify({'error': str(exc)}), 500
 
 @app.route('/api/review/<date>', methods=['GET', 'POST'])
 def api_review(date):
@@ -467,6 +608,25 @@ def api_review(date):
                                 "aCASH": 0.0, "BAJAJ": 0.0, "HDB": 0.0, "IDFC": 0.0, "PFL": 0.0, "TVS": 0.0, "DMI": 0.0, "PineLab": 0.0, "PAYTM": 0.0, "Benow": 0.0, "last_week_pct": 0.0, "apr_closing_pct": 0.0
                             }
                         
+            for _fk, _ek in (('PineLab', emi_state.PINE_FIN), ('PAYTM', emi_state.PAYTM_FIN), ('Benow', emi_state.BENOW_FIN)):
+                if not emi_state.is_uploaded(_ek) and "category_performance" in data:
+                    _cp = data["category_performance"]
+                    for _c, _row in (_cp.get("qty") or {}).items():
+                        if isinstance(_row, dict) and _row.get(_fk):
+                            _row["aCASH"] = int(_row.get("aCASH", 0) or 0) + int(_row.get(_fk, 0) or 0)
+                            _row[_fk] = 0
+                    for _c, _row in (_cp.get("value") or {}).items():
+                        if isinstance(_row, dict): _row[_fk] = 0.0
+                    for _pobj in filter(None, [_cp.get("products_qty"), (_cp.get("products") or {}).get("qty")]):
+                        for _c, _prods in _pobj.items():
+                            for _p, _pr in (_prods or {}).items():
+                                if isinstance(_pr, dict) and _pr.get(_fk):
+                                    _pr["aCASH"] = int(_pr.get("aCASH", 0) or 0) + int(_pr.get(_fk, 0) or 0)
+                                    _pr[_fk] = 0
+                    for _vobj in filter(None, [_cp.get("products_val"), (_cp.get("products") or {}).get("value")]):
+                        for _c, _prods in _vobj.items():
+                            for _p, _pr in (_prods or {}).items():
+                                if isinstance(_pr, dict): _pr[_fk] = 0.0
             return jsonify(data)
     else:
         # Let's check if we can initialize from a template or find the "Last Week" data
@@ -716,8 +876,11 @@ def api_clean_sales_report():
                 ch_client = get_client()
                 ch_client.command("TRUNCATE TABLE IF EXISTS benow_pine_financier")
                 ch_client.command("TRUNCATE TABLE IF EXISTS pine_lab_transactions")
+                ch_client.command("TRUNCATE TABLE IF EXISTS paytm_transactions")
+                ch_client.command("TRUNCATE TABLE IF EXISTS benow_transactions")
                 app.logger.info("Truncated PineLab manual upload tables upon new sales upload.")
                 emi_state.clear()      # PineLab / PAYTM hidden until their files are uploaded again
+                _clear_pinelab_cache()
                 ch_cache_clear()
             except Exception as e:
                 app.logger.warning(f"Failed to truncate PineLab tables: {e}")
@@ -790,7 +953,24 @@ def api_upload_pinelab():
         df_raw = load_pine_lab_file(file)
 
         # Step 2: Apply Pine Labs cleaning rules
-        df_clean, stats = clean_pine_lab(df_raw)
+        global _latest_pinelab_main_df, _latest_pinelab_angamaly_df, _latest_pinelab_slots
+        _load_pinelab_cache_if_needed()
+
+        req_slot = (request.form.get('file_type') or '').strip().lower()
+        # Auto-detect Angamaly store file (NOT Angamaly Future) if all rows are Angamaly
+        is_angamaly_file = False
+        if not df_raw.empty and len(df_raw) < 500:
+            store_vals = df_raw['Store Name'].dropna().astype(str).str.upper() if 'Store Name' in df_raw.columns else pd.Series(dtype=str)
+            city_vals  = df_raw['City'].dropna().astype(str).str.upper() if 'City' in df_raw.columns else pd.Series(dtype=str)
+            if not store_vals.empty and store_vals.str.contains('ANGAMALY').all() and (~store_vals.str.contains('FUTURE')).all():
+                is_angamaly_file = True
+            elif not city_vals.empty and city_vals.str.contains('ANGAMALY').all() and (store_vals.empty or (~store_vals.str.contains('FUTURE')).all()):
+                is_angamaly_file = True
+
+        slot = 'angamaly' if (req_slot == 'angamaly' or is_angamaly_file) else 'main'
+        force_br = 'ANGAMALY' if slot == 'angamaly' else ''
+        df_clean, slot_stats = clean_pine_lab(df_raw, force_branch=force_br)
+        stats = dict(slot_stats)
 
         if df_clean.empty:
             return jsonify({
@@ -800,13 +980,53 @@ def api_upload_pinelab():
             })
 
         # Step 3: Match IMEI → invoice_no and insert into ClickHouse
-        _latest_pinelab_cleaned_df = df_clean.copy()   # cache for download
-        stats = pine_upload_to_ch(df_clean, stats)
+        from pine_lab_cleaner import COL_TXN_ID, COL_ORIG_AMT
+        if slot == 'angamaly':
+            _latest_pinelab_angamaly_df = df_clean.copy()
+            try:
+                _latest_pinelab_angamaly_df.to_pickle(_PINELAB_ANG_PKL)
+            except Exception:
+                pass
+            _latest_pinelab_slots['angamaly'] = {'filename': file.filename, **slot_stats}
+        else:
+            _latest_pinelab_main_df = df_clean.copy()
+            try:
+                _latest_pinelab_main_df.to_pickle(_PINELAB_MAIN_PKL)
+            except Exception:
+                pass
+            _latest_pinelab_slots['main'] = {'filename': file.filename, **slot_stats}
+
+        frames = [d for d in (_latest_pinelab_main_df, _latest_pinelab_angamaly_df) if d is not None and not d.empty]
+        df_combined = pd.concat(frames, ignore_index=True).drop_duplicates(subset=[COL_TXN_ID], keep='first').copy() if frames else df_clean.copy()
+        _latest_pinelab_cleaned_df = df_combined.copy()   # cache combined for download
+
+        m_st = _latest_pinelab_slots.get('main') or {}
+        a_st = _latest_pinelab_slots.get('angamaly') or {}
+        stats = {
+            'raw_rows':       int(m_st.get('raw_rows', 0)) + int(a_st.get('raw_rows', 0)),
+            'after_filter':   int(m_st.get('after_filter', 0)) + int(a_st.get('after_filter', 0)),
+            'after_dedup':    len(df_combined),
+            'date_from':      df_combined['_date'].min().strftime('%Y-%m-%d') if '_date' in df_combined.columns and not df_combined.empty else slot_stats.get('date_from', ''),
+            'date_to':        df_combined['_date'].max().strftime('%Y-%m-%d') if '_date' in df_combined.columns and not df_combined.empty else slot_stats.get('date_to', ''),
+            'total_orig_amt': float(df_combined[COL_ORIG_AMT].sum()) if COL_ORIG_AMT in df_combined.columns else 0.0,
+        }
+        emi_state.clear(emi_state.PINE_FIN)
+        stats = pine_upload_to_ch(df_combined, stats)
+        _latest_pinelab_slots['combined'] = dict(stats)
+        _save_pinelab_slots()
         ch_cache_clear()
 
         return jsonify({
             'status': 'success',
-            'message': f'Pine Lab EMI data uploaded successfully. {stats.get("inserted_records", 0)} invoice records updated.',
+            'message': (
+                f'Pine Lab EMI ({("Main + Angamaly combined" if (m_st and a_st) else ("Angamaly Store" if slot == "angamaly" else "Main Report"))}) '
+                f'uploaded successfully. {stats.get("inserted_records", 0)} invoice records updated.'
+            ),
+            'file_type':         slot,
+            'main_uploaded':     bool(m_st),
+            'angamaly_uploaded': bool(a_st),
+            'main_stats':        m_st or None,
+            'angamaly_stats':    a_st or None,
             'raw_rows':          stats.get('raw_rows', 0),
             'after_filter':      stats.get('after_filter', 0),
             'after_dedup':       stats.get('after_dedup', 0),
@@ -825,10 +1045,45 @@ def api_upload_pinelab():
         return jsonify({'status': 'error', 'message': f'Upload failed: {str(e)}'}), 500
 
 
+@app.route('/api/pinelab-status', methods=['GET'])
+def api_pinelab_status():
+    """Return current Pine Labs upload status for Main and Angamaly files."""
+    _load_pinelab_cache_if_needed()
+    m_st = _latest_pinelab_slots.get('main') or {}
+    a_st = _latest_pinelab_slots.get('angamaly') or {}
+    c_st = _latest_pinelab_slots.get('combined') or {}
+    has_any = bool((m_st or a_st) and emi_state.is_uploaded(emi_state.PINE_FIN))
+    return jsonify({
+        'status': 'success',
+        'uploaded': has_any,
+        'main_uploaded': bool(m_st) and has_any,
+        'angamaly_uploaded': bool(a_st) and has_any,
+        'main_stats': m_st if has_any else None,
+        'angamaly_stats': a_st if has_any else None,
+        'combined': c_st if has_any else None,
+    })
+
+@app.route('/api/reset-pinelab', methods=['POST'])
+def api_reset_pinelab():
+    """Clear uploaded Pine Labs data (Main + Angamaly) from memory and ClickHouse."""
+    _clear_pinelab_cache()
+    emi_state.clear(emi_state.PINE_FIN)
+    if _CLICKHOUSE_AVAILABLE:
+        try:
+            from clickhouse_client import get_client
+            ch_client = get_client()
+            ch_client.command("TRUNCATE TABLE IF EXISTS pine_lab_transactions")
+            ch_client.command("ALTER TABLE benow_pine_financier DELETE WHERE financier = 'Pine Lab EMI'")
+            ch_cache_clear()
+        except Exception as e:
+            app.logger.warning(f"Failed to reset PineLab ClickHouse tables: {e}")
+    return jsonify({'status': 'success', 'message': 'Pine Labs uploads cleared.'})
+
 @app.route('/api/download-pinelab-cleaned', methods=['GET'])
 @app.route('/api/files/PineLab_Cleaned.xlsx', methods=['GET'])
 def api_download_pinelab_cleaned():
     """Serve the most recently cleaned Pine Lab file as an Excel download."""
+    _load_pinelab_cache_if_needed()
     global _latest_pinelab_cleaned_df
     if _latest_pinelab_cleaned_df is None or _latest_pinelab_cleaned_df.empty:
         return jsonify({'status': 'error', 'message': 'No cleaned Pine Lab data available. Please upload a file first.'}), 404
@@ -841,7 +1096,7 @@ def api_download_pinelab_cleaned():
     # Format Bank Txn Date as clean string date
     if 'Bank Txn Date' in export_df.columns:
         export_df['Bank Txn Date'] = pd.to_datetime(
-            export_df['Bank Txn Date'], dayfirst=True, errors='coerce'
+            export_df['Bank Txn Date'], dayfirst=True, format='mixed', errors='coerce'
         ).dt.strftime('%Y-%m-%d 00:00:00')
 
     buf = _io.BytesIO()
@@ -857,6 +1112,7 @@ def api_download_pinelab_cleaned():
 
 @app.route('/api/filter-pinelab-by-date', methods=['POST'])
 def api_filter_pinelab_by_date():
+    _load_pinelab_cache_if_needed()
     """
     Filter the cached cleaned Pine Lab DataFrame by a date range (Bank Txn Date),
     then call upload_to_clickhouse() with the filtered subset.
@@ -883,7 +1139,7 @@ def api_filter_pinelab_by_date():
         df = _latest_pinelab_cleaned_df.copy()
 
         # Parse Bank Txn Date and filter by selected range
-        df['_txn_date'] = pd.to_datetime(df[COL_DATE], dayfirst=True, errors='coerce').dt.date
+        df['_txn_date'] = pd.to_datetime(df[COL_DATE], dayfirst=True, format='mixed', errors='coerce').dt.date
         date_from_d = pd.to_datetime(date_from).date()
         date_to_d   = pd.to_datetime(date_to).date()
 
@@ -965,6 +1221,7 @@ def api_upload_paytm():
             })
 
         _latest_paytm_cleaned_df = df_clean.copy()   # cache for download / date filter
+        emi_state.clear(emi_state.PAYTM_FIN)
         stats = paytm_upload_to_ch(df_clean, stats)
         ch_cache_clear()
 
@@ -1022,6 +1279,7 @@ def api_upload_benow():
             })
 
         _latest_benow_cleaned_df = df_clean.copy()
+        emi_state.clear(emi_state.BENOW_FIN)
         stats = benow_upload_to_ch(df_clean, stats)
         ch_cache_clear()
 
@@ -1306,8 +1564,8 @@ def api_export_date_range():
                 worksheet.write(0, col_num, col_name, hdr_fmt)
 
             # Write data with alternating rows + numeric formatting
-            num_cols    = {'QTY', 'Sold Price', 'Price', 'EMI', 'Slno'}
-            price_cols  = {'Sold Price', 'Price', 'EMI'}
+            num_cols    = {'QTY', 'Sold Price', 'Price', 'Slno'}
+            price_cols  = {'Sold Price', 'Price'}
             for row_num, (_, row) in enumerate(df.iterrows()):
                 row_fmt = alt_fmt if row_num % 2 == 0 else nrm_fmt
                 for col_num, (col_name, val) in enumerate(zip(df.columns, row)):
@@ -1519,6 +1777,11 @@ def api_get_cleaned_aggregation():
                     branches[branch] = {"OPPO": 0, "SAMSUNG": 0, "VIVO": 0}
                 if brand in branches[branch]:
                     branches[branch][brand] += qty_val
+
+        for _c in standardCats:
+            qty[_c]['_emi_deducted'] = True
+            for _b in (brands_perf if 'brands_perf' in locals() else brands_performance).values():
+                _b['qty'][_c]['_emi_deducted'] = True
                     
         return jsonify({
             "status": "success",
@@ -1556,6 +1819,7 @@ def api_clickhouse_aggregate_review():
         return jsonify({'status': 'error', 'message': 'date is required'}), 400
 
     try:
+        end_date_str = request.args.get('end_date', '')
         df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str)
         if df.empty:
             return jsonify({'status': 'error', 'message': f'No ClickHouse data for {date_str} ({timeframe}).'}), 404
@@ -1628,6 +1892,11 @@ def api_clickhouse_aggregate_review():
                     branches[branch] = {"OPPO": 0, "SAMSUNG": 0, "VIVO": 0}
                 if brand in branches.get(branch, {}):
                     branches[branch][brand] += qty_val
+
+        for _c in standardCats:
+            qty[_c]['_emi_deducted'] = True
+            for _b in (brands_perf if 'brands_perf' in locals() else brands_performance).values():
+                _b['qty'][_c]['_emi_deducted'] = True
 
         return jsonify({
             'status': 'success',

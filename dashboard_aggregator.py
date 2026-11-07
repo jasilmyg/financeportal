@@ -4,12 +4,29 @@ import os
 from datetime import datetime
 from sales_cleaner import _normalize_columns, PRODUCT_CATEGORY_MAP
 
-CARD_FINS = ['PINE LAB EMI', 'PAYTM', 'BENOW'] # Upper case for matching
+CARD_FINS = ['PINE LAB EMI', 'PINELAB', 'PINE LAB', 'PAYTM', 'BENOW'] # Upper case for matching
+
+
+def _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str=None):
+    """(uppercase_raw_names, std_keys) for card financiers NOT uploaded in emi_state for this period."""
+    import emi_state
+    rng_start, rng_end = emi_state.range_of(target_date_str, timeframe, end_date_str)
+    raw_names = set()
+    std_keys = set()
+    for std_k, emi_k, aliases in (
+        ('PineLab', emi_state.PINE_FIN, ('PINE LAB EMI', 'PINELAB', 'PINE LAB')),
+        ('PAYTM',   emi_state.PAYTM_FIN, ('PAYTM', 'PAYTM EMI')),
+        ('Benow',   emi_state.BENOW_FIN, ('BENOW', 'BENOW FINANCE')),
+    ):
+        if not emi_state.overlapping_spans(emi_k, rng_start, rng_end):
+            raw_names.update(aliases)
+            std_keys.add(std_k)
+    return raw_names, std_keys
 
 _cached_df = None
 _cached_mtime = 0
 
-def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district=''):
+def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district='', pine_lab_val_override=None, paytm_val_override=None, benow_val_override=None):
     global _cached_df, _cached_mtime
     try:
         # 1. Read data (with caching) — or use a pre-loaded DataFrame (e.g. from ClickHouse)
@@ -69,6 +86,18 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             df_filtered['Category'] = df_filtered['Product_upper'].map(PRODUCT_CATEGORY_MAP).fillna('BANK EMI')
             
         # Is Finance boolean
+        _unup_raw, _unup_std = _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str)
+        if _unup_raw:
+            df_filtered.loc[df_filtered['Financier'].isin(_unup_raw), 'Financier'] = 'ACASH'
+        if 'PineLab' in _unup_std:
+            pine_lab_override = None
+            pine_lab_val_override = None
+        if 'PAYTM' in _unup_std:
+            paytm_override = None
+            paytm_val_override = None
+        if 'Benow' in _unup_std:
+            benow_override = None
+            benow_val_override = None
         df_filtered['Is_Finance'] = (df_filtered['Financier'] != '') & (df_filtered['Financier'] != 'NAN') & (df_filtered['Financier'].str.lower() != 'acash')
         df_filtered['Is_Card'] = df_filtered['Financier'].isin(CARD_FINS)
         
@@ -113,7 +142,9 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         if bdm:   df_cat = df_cat[df_cat['BDM'].str.upper().str.strip()   == bdm.upper().strip()]
         if store: df_cat = df_cat[df_cat['Branch'].str.upper().str.strip() == store.upper().strip()]
         if staff: df_cat = df_cat[df_cat['Staff'].str.upper().str.strip()  == staff.upper().strip()]
-        if state: df_cat = df_cat[df_cat['State'].str.upper().str.strip()  == state.upper().strip()]
+        if state:
+            _sts = [x.strip().upper() for x in str(state).split(',') if x.strip()]
+            if _sts: df_cat = df_cat[df_cat['State'].str.upper().str.strip().isin(_sts)]
         if district: df_cat = df_cat[df_cat['District'].str.upper().str.strip() == district.upper().strip()]
 
         # Map Financier column to standard names
@@ -152,20 +183,40 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             return {"qty": qty, "value": val}
             
         cat_perf = build_performance_dict(df_cat)
+        _pre_df_card = {
+            std_cat: {
+                f: int(cat_perf['qty'][std_cat].get(f, 0) or 0)
+                for f in ('PineLab', 'PAYTM', 'Benow')
+            }
+            for std_cat in standardCats
+        }
+        _pre_df_card_val = {
+            std_cat: {
+                f: float(cat_perf['value'][std_cat].get(f, 0.0) or 0.0)
+                for f in ('PineLab', 'PAYTM', 'Benow')
+            }
+            for std_cat in standardCats
+        }
+        _emi_val_applied = {}
 
         _emi_applied = {}   # fin_key -> {CATEGORY: qty from the uploaded file}
 
-        def _apply_emi_override(fin_key, override):
+        def _apply_emi_override(fin_key, override, val_override=None):
             # The uploaded file is the source of truth for this financier: categories
             # that are absent from the file must be 0 (ERP-matched invoices can carry a
             # different category, e.g. a PAYTM txn matched to a Small Appliances invoice).
             file_cats = {str(k).strip().upper(): int(v) for k, v in override.items()}
             _emi_applied[fin_key] = file_cats
+            if val_override is not None:
+                _emi_val_applied[fin_key] = {str(k).strip().upper(): float(v) for k, v in (val_override or {}).items()}
             for std_cat in standardCats:
                 if std_cat in file_cats:
                     cat_perf['qty'][std_cat][fin_key] = file_cats[std_cat]
+                    if fin_key in _emi_val_applied:
+                        cat_perf['value'][std_cat][fin_key] = _emi_val_applied[fin_key].get(std_cat, 0.0)
                 else:
                     cat_perf['qty'][std_cat][fin_key] = 0
+                    cat_perf['value'][std_cat]['aCASH'] = float(cat_perf['value'][std_cat].get('aCASH', 0.0) or 0.0) + (0.0 if val_override is not None else float(cat_perf['value'][std_cat].get(fin_key, 0.0) or 0.0))
                     cat_perf['value'][std_cat][fin_key] = 0.0
 
         def _patch_products_for_emi(products_qty, products_val):
@@ -181,9 +232,13 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
                     old_val = 0.0
                     if qrows:
                         for prod in qrows:
+                            if prod != 'UNMAPPED':
+                                qrows[prod]['aCASH'] = int(qrows[prod].get('aCASH', 0) or 0) + int(qrows[prod].get(fin_key, 0) or 0)
                             qrows[prod][fin_key] = 0
                     if vrows:
                         for prod in vrows:
+                            if (fin_key in _emi_val_applied or not file_cats.get(std_cat, 0)) and prod != 'UNMAPPED':
+                                vrows[prod]['aCASH'] = float(vrows[prod].get('aCASH', 0.0) or 0.0) + float(vrows[prod].get(fin_key, 0.0) or 0.0)
                             old_val += vrows[prod].get(fin_key, 0.0)
                             vrows[prod][fin_key] = 0.0
                     file_qty = file_cats.get(std_cat, 0)
@@ -191,22 +246,71 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
                         qrows = products_qty.setdefault(std_cat, {})
                         vrows = products_val.setdefault(std_cat, {})
                         qrows.setdefault('UNMAPPED', {f: 0 for f in standardFins})[fin_key] = file_qty
-                        vrows.setdefault('UNMAPPED', {f: 0.0 for f in standardFins})[fin_key] = old_val
+                        target_val = _emi_val_applied[fin_key].get(std_cat, 0.0) if fin_key in _emi_val_applied else old_val
+                        vrows.setdefault('UNMAPPED', {f: 0.0 for f in standardFins})[fin_key] = target_val
+                        if fin_key in _emi_val_applied:
+                            rem_v = float(target_val)
+                            for p in sorted([k for k in vrows if k != 'UNMAPPED'], key=lambda k: float(vrows[k].get('aCASH', 0.0) or 0.0), reverse=True):
+                                if rem_v <= 0.0:
+                                    break
+                                take_v = min(max(0.0, float(vrows[p].get('aCASH', 0.0) or 0.0)), rem_v)
+                                vrows[p]['aCASH'] = float(vrows[p].get('aCASH', 0.0) or 0.0) - take_v
+                                rem_v -= take_v
+                            if rem_v > 0.0:
+                                _un_v = vrows['UNMAPPED']
+                                _un_v['aCASH'] = float(_un_v.get('aCASH', 0.0) or 0.0) - rem_v
+                        rem = int(file_qty)
+                        for p in sorted([k for k in qrows if k != 'UNMAPPED'], key=lambda k: int(qrows[k].get('aCASH', 0) or 0), reverse=True):
+                            if rem <= 0:
+                                break
+                            take = min(max(0, int(qrows[p].get('aCASH', 0) or 0)), rem)
+                            qrows[p]['aCASH'] = int(qrows[p].get('aCASH', 0) or 0) - take
+                            rem -= take
+                        if rem > 0:
+                            # Nothing left to deduct from at product level (e.g. the BANK EMI row has no
+                            # ERP products): book the remaining card units against aCASH in the UNMAPPED row.
+                            _un = qrows['UNMAPPED']
+                            _un['aCASH'] = int(_un.get('aCASH', 0) or 0) - rem
 
         # ── Pine Lab direct override ──────────────────────────────────────────
         # Replace the ERP-matched PineLab counts with direct counts from the
         # Pine Lab file (all transactions, not just matched ones).
         # pine_lab_override = {erp_category: total_qty}
-        if pine_lab_override:
-            _apply_emi_override('PineLab', pine_lab_override)
+        if pine_lab_override is not None:
+            _apply_emi_override('PineLab', pine_lab_override, pine_lab_val_override)
 
         # ── Paytm direct override ──────────────────────────────────────────
-        if paytm_override:
-            _apply_emi_override('PAYTM', paytm_override)
+        if paytm_override is not None:
+            _apply_emi_override('PAYTM', paytm_override, paytm_val_override)
 
         # ── Benow direct override ──────────────────────────────────────────
-        if benow_override:
-            _apply_emi_override('Benow', benow_override)
+        if benow_override is not None:
+            _apply_emi_override('Benow', benow_override, benow_val_override)
+
+        # ── Deduct Paytm, Benow, and Pinelab data count from aCASH ────────────
+        # Credit card EMI transactions are initially recorded under cash/aCash in ERP.
+        # Deduct Card EMI counts (PineLab, PAYTM, Benow) from aCASH so they are not double-counted.
+        for std_cat in standardCats:
+            card_count = (cat_perf['qty'][std_cat].get('PineLab', 0) or 0) + \
+                         (cat_perf['qty'][std_cat].get('PAYTM', 0) or 0) + \
+                         (cat_perf['qty'][std_cat].get('Benow', 0) or 0)
+            emi_delta = sum(
+                int(cat_perf['qty'][std_cat].get(fk, 0) or 0) - _pre_df_card[std_cat][fk]
+                for fk in ('PineLab', 'PAYTM', 'Benow')
+                if fk in _emi_applied
+            )
+            # No clamp at 0: card-EMI units that have no ERP category (the BANK EMI row) are still
+            # deducted from aCASH, so the Grand Total always equals the cleaned-report total.
+            cat_perf['qty'][std_cat]['aCASH'] = int(cat_perf['qty'][std_cat].get('aCASH', 0) or 0) - emi_delta
+            cat_perf['qty'][std_cat]['_emi_deducted'] = True
+            if _emi_val_applied:
+                emi_val_delta = sum(
+                    float(cat_perf['value'][std_cat].get(fk, 0.0) or 0.0) - _pre_df_card_val[std_cat][fk]
+                    for fk in ('PineLab', 'PAYTM', 'Benow')
+                    if fk in _emi_val_applied
+                )
+                cat_perf['value'][std_cat]['aCASH'] = float(cat_perf['value'][std_cat].get('aCASH', 0.0) or 0.0) - emi_val_delta
+                cat_perf['value'][std_cat]['_emi_deducted'] = True
         
         # --- PRODUCT-LEVEL BREAKDOWN (within each category) ---
         # Use 'Product' as the sub-product label (per user requirement)
@@ -241,6 +345,23 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         _patch_products_for_emi(products_qty, products_val)
         cat_perf["products_qty"] = products_qty
         cat_perf["products_val"] = products_val
+        _paper_fins = ["BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI"]
+        _card_fins  = ["PineLab", "PAYTM", "Benow"]
+        _fin_cols   = _paper_fins + _card_fins
+        _val_tots   = {f: sum(float(cat_perf['value'][c].get(f, 0.0) or 0.0) for c in standardCats) for f in standardFins}
+        _qty_tots   = {f: sum(int(cat_perf['qty'][c].get(f, 0) or 0) for c in standardCats) for f in standardFins}
+        _paper_val_tot = sum(_val_tots[f] for f in _paper_fins)
+        _card_val_tot  = sum(_val_tots[f] for f in _card_fins)
+        _tot_fin_val   = _paper_val_tot + _card_val_tot
+        cat_perf["sif"] = {
+            **{f: (_val_tots[f] / _tot_fin_val * 100.0 if _tot_fin_val > 0 else 0.0) for f in _fin_cols},
+            "paper_total": (_paper_val_tot / _tot_fin_val * 100.0 if _tot_fin_val > 0 else 0.0),
+            "card_total":  (_card_val_tot  / _tot_fin_val * 100.0 if _tot_fin_val > 0 else 0.0),
+        }
+        cat_perf["asp"] = {
+            f: ((_val_tots[f] / _qty_tots[f]) * 10000000.0 if _qty_tots[f] > 0 else 0.0)
+            for f in _fin_cols
+        }
         
         brands_performance = {}
         if 'Brand' in df_cat.columns:
@@ -257,6 +378,12 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
                 bq, bv = _brand_acc[b_]
                 _fill_perf(bq, bv, [(c_, f_, q_, p_)])
             for b_, (bq, bv) in _brand_acc.items():
+                for std_cat in standardCats:
+                    card_count = (bq[std_cat].get('PineLab', 0) or 0) + \
+                                 (bq[std_cat].get('PAYTM', 0) or 0) + \
+                                 (bq[std_cat].get('Benow', 0) or 0)
+                    # bq[std_cat]['aCASH'] already excludes PineLab/PAYTM/Benow via Fin_Mapped partition
+                    bq[std_cat]['_emi_deducted'] = True
                 brands_performance[b_] = {"qty": bq, "value": bv}
         fin_vols = {}
         fin_grouped = fin_df.groupby('Financier')['QTY'].sum().to_dict()
@@ -323,6 +450,10 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         
         zone_performance = {}
         df_zone = df_filtered.copy()
+        if state and 'State' in df_zone.columns:
+            _z_sts = [x.strip().upper() for x in str(state).split(',') if x.strip()]
+            if _z_sts:
+                df_zone = df_zone[df_zone['State'].fillna('').astype(str).str.upper().str.strip().isin(_z_sts)]
         df_zone['RBM'] = df_zone['RBM'].fillna('Unknown').astype(str)
         df_zone['Category'] = df_zone['Category'].astype(object).fillna('BANK EMI').apply(str).str.strip().str.upper()
         df_zone['Category'] = df_zone['Category'].replace({'': 'BANK EMI', 'NAN': 'BANK EMI'})
@@ -459,7 +590,7 @@ PRICE_RANGES = {
     "Above 150K":   (150000, float("inf")),
 }
 
-def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range="ALL", df=None, end_date_str=None):
+def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range="ALL", df=None, end_date_str=None, state=""):
     global _cached_df, _cached_mtime
     try:
         # Load & cache — or use a pre-loaded DataFrame (e.g. from ClickHouse)
@@ -482,6 +613,7 @@ def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range=
             return {"error": "Date column not found"}
 
         target_date = pd.to_datetime(target_date_str)
+        end_date = pd.to_datetime(end_date_str) if end_date_str else target_date
 
         # Timeframe filter
         if timeframe == 'daily':
@@ -490,12 +622,21 @@ def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range=
             mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.month == target_date.month)
         elif timeframe == 'quarterly':
             mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.quarter == target_date.quarter)
+        elif timeframe == 'custom':
+            mask = (df['Date'].dt.date >= target_date.date()) & (df['Date'].dt.date <= end_date.date())
         else:
             mask = pd.Series(True, index=df.index)
 
         df_f = df[mask].copy()
         if df_f.empty:
             return {"error": "No data found for the selected timeframe"}
+
+        if state and 'State' in df_f.columns:
+            _sts = [x.strip().upper() for x in str(state).split(',') if x.strip()]
+            if _sts:
+                df_f = df_f[df_f['State'].fillna('').astype(str).str.upper().str.strip().isin(_sts)]
+                if df_f.empty:
+                    return {"qty": {}, "val": {}, "all_ranges": {}, "status": "success", "price_range": price_range}
 
         # Numeric
         for col in ['Sold Price', 'QTY']:
@@ -524,6 +665,9 @@ def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range=
             'ACASH': 'aCASH', 'A CASH': 'aCASH',
         }
         df_f['Financier'] = df_f['Financier'].fillna('').astype(str).str.strip().str.upper()
+        _unup_raw_pr, _ = _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str)
+        if _unup_raw_pr:
+            df_f.loc[df_f['Financier'].isin(_unup_raw_pr), 'Financier'] = 'ACASH'
         df_f['Fin_Mapped'] = df_f['Financier'].map(lambda x: fin_map.get(x, x))
         df_f.loc[df_f['Fin_Mapped'] == 'ACASH', 'Fin_Mapped'] = 'aCASH'
 
@@ -585,7 +729,7 @@ def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range=
         return {"error": str(e)}
 
 
-def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_date_str=None):
+def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_date_str=None, state=""):
     """Shared helper: load cached df and apply timeframe filter.
 
     If *df* is provided (e.g. pre-fetched from ClickHouse) the file-read
@@ -629,6 +773,13 @@ def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_dat
     if df_f.empty:
         return None, "No data found for the selected timeframe"
 
+    if state and 'State' in df_f.columns:
+        _sts = [x.strip().upper() for x in str(state).split(',') if x.strip()]
+        if _sts:
+            df_f = df_f[df_f['State'].fillna('').astype(str).str.upper().str.strip().isin(_sts)]
+            if df_f.empty:
+                return None, "No data found for the selected state"
+
     for col in ['Sold Price', 'QTY']:
         if col in df_f.columns:
             df_f[col] = pd.to_numeric(df_f[col], errors='coerce').fillna(0)
@@ -644,6 +795,9 @@ def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_dat
         'ACASH': 'aCASH', 'A CASH': 'aCASH',
     }
     df_f['Financier'] = df_f.get('Financier', pd.Series([''] * len(df_f))).fillna('').astype(str).str.strip().str.upper()
+    _unup_raw_lf, _ = _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str)
+    if _unup_raw_lf:
+        df_f.loc[df_f['Financier'].isin(_unup_raw_lf), 'Financier'] = 'ACASH'
     df_f['Fin_Mapped'] = df_f['Financier'].map(lambda x: fin_map.get(x, x))
     df_f.loc[df_f['Fin_Mapped'] == 'ACASH', 'Fin_Mapped'] = 'aCASH'
 
@@ -655,9 +809,9 @@ def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_dat
     return df_f, None
 
 
-def get_brand_data(raw_file_path, target_date_str, timeframe, category='ALL', product='ALL', df=None, end_date_str=None):
+def get_brand_data(raw_file_path, target_date_str, timeframe, category='ALL', product='ALL', df=None, end_date_str=None, state=""):
     try:
-        df_f, err = _load_and_filter(raw_file_path, target_date_str, timeframe, df=df, end_date_str=end_date_str)
+        df_f, err = _load_and_filter(raw_file_path, target_date_str, timeframe, df=df, end_date_str=end_date_str, state=state)
         if err:
             return {"error": err}
 
@@ -699,10 +853,12 @@ def get_brand_data(raw_file_path, target_date_str, timeframe, category='ALL', pr
             for fin in fins:
                 sub = bdf[bdf['Fin_Mapped'] == fin]
                 row[fin] = int(sub['QTY'].sum())
+            card_count = (row.get('PineLab', 0) or 0) + (row.get('PAYTM', 0) or 0) + (row.get('Benow', 0) or 0)
+            # row['aCASH'] already excludes PineLab/PAYTM/Benow via Fin_Mapped partition
             acash = row.get('aCASH', 0)
-            fin_total = total_qty - acash
-            row['total'] = total_qty
-            row['fin_pct'] = round(fin_total / total_qty * 100, 1) if total_qty > 0 else 0
+            fin_total = sum(row.get(f, 0) for f in fins if f != 'aCASH')
+            row['total'] = acash + fin_total
+            row['fin_pct'] = round(fin_total / row['total'] * 100, 1) if row['total'] > 0 else 0
             row['value'] = round(total_val / 10000000, 4)   # in Crores, consistent with all other value fields
             # Per-financier value breakdown (in Crores) — used by Value mode in the UI
             for fin in fins:
@@ -719,9 +875,9 @@ def get_brand_data(raw_file_path, target_date_str, timeframe, category='ALL', pr
         return {"error": str(e)}
 
 
-def get_store_data(raw_file_path, target_date_str, timeframe, zone='ALL', zone_map=None, df=None, end_date_str=None):
+def get_store_data(raw_file_path, target_date_str, timeframe, zone='ALL', zone_map=None, df=None, end_date_str=None, state=""):
     try:
-        df_f, err = _load_and_filter(raw_file_path, target_date_str, timeframe, df=df, end_date_str=end_date_str)
+        df_f, err = _load_and_filter(raw_file_path, target_date_str, timeframe, df=df, end_date_str=end_date_str, state=state)
         if err:
             return {"error": err}
 

@@ -1,0 +1,848 @@
+{
+  "PERUMBAVOOR FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KOTTAKKAL FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "MARINE DRIVE FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "MOBISH",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "PERAMBRA FUTURE": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "AAKKULAM FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "AMAL",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "KOLLAM FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "VYPIN FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KARAMANA": {
+    "Fin BDM": "ASHIK",
+    "BDM": "AMAL",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "POTTAMMAL FUTURE": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "THONDAYAD FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "PATHANAMTHITTA FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SIJU",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "CHALAKKUDY FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "GOPAKUMAR",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "MUVATTUPUZHA": {
+    "Fin BDM": "ARUN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KASARGOD FUTURE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ANOOP",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "OTTUPARA FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "PRASEED",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KANNUR FUTURE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ABHILASH",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "KONDOTTY FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "PAYYANNUR": {
+    "Fin BDM": "SREEJU",
+    "BDM": "FAISAL",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "PIRAVOM FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "BALUSSERY FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "RANNI FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SIJU",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "POOTHOLE FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "PRASEED",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "MAVELIKARA FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "PATTAMBI FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "KOTTAYAM FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SHAMEER",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "MANNARKAD FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "ADOOR FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SIJU",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "LANDSHIP MALL": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "ERATTUPETTA FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SHAMEER",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "MUVATTUPUZHA FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "MANJERY": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "KALPETTA FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "JOBIN",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KOTTARAKKARA": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "EDAPPALLY FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "NAGAMPADAM": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SHAMEER",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "KADAVANTHRA": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "THIRUVALLA FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SIJU",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "MENAKA": {
+    "Fin BDM": "ARUN",
+    "BDM": "MOBISH",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "THRIPUNITHURA FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "MOBISH",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "THODUPUZHA": {
+    "Fin BDM": "FEBIN",
+    "BDM": "SREERAG",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "BYPASS ROAD": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "EAST FORT": {
+    "Fin BDM": "FEBIN",
+    "BDM": "PRASEED",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KINGSWAY": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KANHANGAD FUTURE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ANOOP",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "ALAPPUZHA": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "PAYYANNUR FUTURE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "FAISAL",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "THAMARASSERY FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "EDAPPAL FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "AREEKODE FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "HI LITE MALL": {
+    "Fin BDM": "ASWIN",
+    "BDM": "PRASOON",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KUTTIYADI FUTURE": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "MUKKAM FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "NADAKKAVU FUTURE": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "CHEMMAD FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "PALARIVATTOM": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "PERINTHALMANNA FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "CHAVAKKAD FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "GOPAKUMAR",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "PANAVILA FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "AMAL",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "THRIPUNITHURA": {
+    "Fin BDM": "ARUN",
+    "BDM": "MOBISH",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "NILAMBUR FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "KARUNAGAPPALLY FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "KOTHAMANGALAM FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "ALAPPUZHA FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "ANGAMALY FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "MANANTHAVADY FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "JOBIN",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "THOPPUMPADY FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "MOBISH",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "VADAKARA FUTURE": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "CHALAKKUDI": {
+    "Fin BDM": "FEBIN",
+    "BDM": "GOPAKUMAR",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "PAZHAVANGADI": {
+    "Fin BDM": "ASHIK",
+    "BDM": "AMAL",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "ALUVA FUTURE": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "THODUPUZHA FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "SREERAG",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "SABA MAHARANI": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "HARIPAD FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "THALASSERY FUTURE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ABHILASH",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "IRINJALAKUDA FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "GOPAKUMAR",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "VADAKKENCHERRY FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "TALIPARAMBA FUTURE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "FAISAL",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "VENJARAMOODU FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "ABHIRAJ",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "BANK ROAD": {
+    "Fin BDM": "SREEJU",
+    "BDM": "FAISAL",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "BALUSSERY": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KUNNAMANGALAM FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "PRASOON",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KAYAMKULAM": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "VALANCHERY FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "KUNNAMKULAM": {
+    "Fin BDM": "FEBIN",
+    "BDM": "PRASEED",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "EDAKKARA": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "ANGAMALY": {
+    "Fin BDM": "FEBIN",
+    "BDM": "JALEEL",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "ATTINGAL FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "ABHIRAJ",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "KILIMANOOR": {
+    "Fin BDM": "ASHIK",
+    "BDM": "ABHIRAJ",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "PALAKKAD FUTURE": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "TIRUR": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "CHANGANASSERY": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SHAMEER",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "OTTAPALAM": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "PUNALUR FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "KANJIRAPPALLY FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SHAMEER",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "KOYILANDY 2": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "PARAVOOR": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "THIRUNAKKARA": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SHAMEER",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "BATHERY FUTURE": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "JOBIN",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "MALAPPURAM": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "TB ROAD": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "ASHIF",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "PATTOM": {
+    "Fin BDM": "ASHIK",
+    "BDM": "AMAL",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "IRITTY": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ABHILASH",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "CHERTHALA FUTURE": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "KATTAPPANA FUTURE": {
+    "Fin BDM": "FEBIN",
+    "BDM": "SREERAG",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KASARGOD": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ANOOP",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "KURUPPAM ROAD": {
+    "Fin BDM": "FEBIN",
+    "BDM": "PRASEED",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "THANA": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ABHILASH",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "KARUNAGAPPALLY": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "PERAMBRA": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KOTTAKKAL": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "ADIMALI": {
+    "Fin BDM": "FEBIN",
+    "BDM": "SREERAG",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "UPPALA": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ANOOP",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "KALPETTA": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "JOBIN",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "ADOOR": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SIJU",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "THALASSERY": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ABHILASH",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "FEROKE FUTURE": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "THIRUVALLA": {
+    "Fin BDM": "JACKSON",
+    "BDM": "SIJU",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "CHERTHALA": {
+    "Fin BDM": "JACKSON",
+    "BDM": "RENJITHMON",
+    "RBM": "MAHESH",
+    "Zone": "SOUTH"
+  },
+  "FORUM MALL": {
+    "Fin BDM": "ARUN",
+    "BDM": "MOBISH",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "KANHANGAD": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ANOOP",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "KOLLAM": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "EDAPPAL": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "MANU",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "KUTTIYADI": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "MAHE": {
+    "Fin BDM": "SREEJU",
+    "BDM": "ABHILASH",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "ATTINGAL": {
+    "Fin BDM": "ASHIK",
+    "BDM": "ABHIRAJ",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  },
+  "PUTHIYARA": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "TALIPARAMBA": {
+    "Fin BDM": "SREEJU",
+    "BDM": "FAISAL",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "RAMANATTUKARA": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "PRASOON",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KOYILANDY": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "SNPARK": {
+    "Fin BDM": "SREEJU",
+    "BDM": "FAISAL",
+    "RBM": "SAMEEM",
+    "Zone": "NORTH"
+  },
+  "WANDOOR": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "VADAKARA": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SHAFEEK",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "KONDOTTY": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "ALUVA": {
+    "Fin BDM": "ARUN",
+    "BDM": "SALAJ",
+    "RBM": "RENJITH",
+    "Zone": "SOUTH"
+  },
+  "P TOWER": {
+    "Fin BDM": "ASWIN",
+    "BDM": "SARATH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "VENGARA": {
+    "Fin BDM": "SIRAJ",
+    "BDM": "PRANAV",
+    "RBM": "SAMEER",
+    "Zone": "NORTH"
+  },
+  "MANANTHAVADY": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "JOBIN",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "myG CARE BATHERY": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "JOBIN",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "MUKKOM": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "NARIKKUNI": {
+    "Fin BDM": "NIKHIL",
+    "BDM": "NIDEESH",
+    "RBM": "ALFAS",
+    "Zone": "NORTH"
+  },
+  "IRON BRIDGE FUTURE": {
+    "Fin BDM": "ASHIK",
+    "BDM": "NIYAD",
+    "RBM": "VAISAKH",
+    "Zone": "SOUTH"
+  }
+}

@@ -380,6 +380,10 @@
           <i data-lucide="store"></i>
           <span>Store Performance</span>
         </li>
+        <li class="nav-item" data-tab="oct-sheets">
+          <i data-lucide="file-spreadsheet"></i>
+          <span>OCT &amp; OCT Vol</span>
+        </li>
         <li class="nav-item" data-tab="team">
           <i data-lucide="users"></i>
           <span>Team Performance</span>
@@ -634,9 +638,12 @@
           <div class="category-filters-bar" style="display: flex; gap: 15px; padding: 15px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap;">
             <div style="display: flex; flex-direction: column; gap: 5px;">
               <label style="font-size: 12px; color: var(--text-muted);">Filter by State</label>
-              <select id="cat-filter-state" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px;">
-                <option value="">All States</option>
-              </select>
+              <!-- Multi-select State filter: checkbox dropdown; hidden input holds comma-separated selection (empty = all) -->
+              <div id="cat-filter-state-wrap" style="position: relative; width: 140px;">
+                <button type="button" id="cat-filter-state-btn" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer;">All States</button>
+                <div id="cat-filter-state-panel" style="display: none; position: absolute; top: 36px; left: 0; z-index: 1000; min-width: 170px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="cat-filter-state" value="">
+              </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 5px;">
               <label style="font-size: 12px; color: var(--text-muted);">Filter by District</label>
@@ -742,6 +749,14 @@
           <!-- FILTERS BAR -->
           <div class="category-filters-bar" style="display: flex; gap: 15px; padding: 15px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
             <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 12px; color: var(--text-muted);">Filter by State</label>
+              <div id="zone-filter-state-wrap" style="position: relative; width: 140px;">
+                <button type="button" id="zone-filter-state-btn" class="date-select" style="width: 140px; padding: 4px 8px; height: 32px; font-size: 13px; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer;">All States</button>
+                <div id="zone-filter-state-panel" style="display: none; position: absolute; top: 36px; left: 0; z-index: 1000; min-width: 170px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="zone-filter-state" value="">
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
               <label style="font-size: 12px; color: var(--text-muted);">Select Zone</label>
               <select id="zone-rbm-filter" class="date-select" style="width: 180px; padding: 4px 8px; height: 32px; font-size: 13px;">
                 <option value="ALL">All Zones</option>
@@ -825,6 +840,14 @@
         <div class="tab-page" id="tab-price">
           <!-- FILTERS BAR -->
           <div class="category-filters-bar" style="display:flex; gap:15px; padding:15px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Filter by State</label>
+              <div id="price-filter-state-wrap" style="position:relative; width:140px;">
+                <button type="button" id="price-filter-state-btn" class="date-select" style="width:140px; padding:4px 8px; height:32px; font-size:13px; text-align:left; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer;">All States</button>
+                <div id="price-filter-state-panel" style="display:none; position:absolute; top:36px; left:0; z-index:1000; min-width:170px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:6px; box-shadow:0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="price-filter-state" value="">
+              </div>
+            </div>
             <div style="display:flex; flex-direction:column; gap:4px;">
               <label style="font-size:12px; color:var(--text-muted);">Price Range</label>
               <select id="price-range-filter" class="date-select" style="width:180px; padding:4px 8px; height:32px; font-size:13px;">
@@ -920,6 +943,14 @@
           <!-- FILTERS BAR -->
           <div class="category-filters-bar" style="display:flex; gap:15px; padding:15px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
             <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Filter by State</label>
+              <div id="brand-filter-state-wrap" style="position:relative; width:140px;">
+                <button type="button" id="brand-filter-state-btn" class="date-select" style="width:140px; padding:4px 8px; height:32px; font-size:13px; text-align:left; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer;">All States</button>
+                <div id="brand-filter-state-panel" style="display:none; position:absolute; top:36px; left:0; z-index:1000; min-width:170px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:6px; box-shadow:0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="brand-filter-state" value="">
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
               <label style="font-size:12px; color:var(--text-muted);">Category</label>
               <select id="brand-category-filter" class="date-select" style="width:170px; padding:4px 8px; height:32px; font-size:13px;">
                 <option value="ALL">All Categories</option>
@@ -993,6 +1024,14 @@
           <!-- FILTERS BAR -->
           <div class="category-filters-bar" style="display:flex; gap:15px; padding:15px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
             <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:12px; color:var(--text-muted);">Filter by State</label>
+              <div id="store-filter-state-wrap" style="position:relative; width:140px;">
+                <button type="button" id="store-filter-state-btn" class="date-select" style="width:140px; padding:4px 8px; height:32px; font-size:13px; text-align:left; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer;">All States</button>
+                <div id="store-filter-state-panel" style="display:none; position:absolute; top:36px; left:0; z-index:1000; min-width:170px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:6px; box-shadow:0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="store-filter-state" value="">
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
               <label style="font-size:12px; color:var(--text-muted);">Zone</label>
               <select id="store-zone-filter" class="date-select" style="width:160px; padding:4px 8px; height:32px; font-size:13px;">
                 <option value="ALL">All Zones</option>
@@ -1037,6 +1076,195 @@
                   <tr><td colspan="16" style="text-align:center; color:var(--text-muted); padding:30px;">Select a timeframe to load data</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- OCT & OCT VOL SHEETS TAB -->
+        <div class="tab-page" id="tab-oct-sheets">
+          <!-- Top Sheet Switcher + Filter Bar -->
+          <div class="category-filters-bar" style="display:flex; gap:14px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:10px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
+            <!-- Excel-style Sheet Tabs: OCT vs OCT Vol -->
+            <div style="display:flex; align-items:center; background:rgba(15,23,42,0.08); padding:4px; border-radius:8px; border:1px solid var(--card-border); gap:4px;">
+              <button type="button" id="btn-oct-sheet-val" onclick="switchOctSubSheet('oct')"
+                style="padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;">
+                <span>OCT</span>
+                <span style="font-size:10px; font-weight:600; opacity:0.8;">(Value &#8377;)</span>
+              </button>
+              <button type="button" id="btn-oct-sheet-vol" onclick="switchOctSubSheet('oct_vol')"
+                style="padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;">
+                <span>OCT Vol</span>
+                <span style="font-size:10px; font-weight:500; opacity:0.8;">(Volume Qty)</span>
+              </button>
+            </div>
+
+            <!-- Store Search -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Search Store</label>
+              <input type="text" id="oct-store-search" placeholder="Search 144 stores..." oninput="renderOctSheetsUI()"
+                class="date-select" style="width:170px; padding:4px 10px; height:32px; font-size:12px;" />
+            </div>
+
+            <!-- Filter by Fin BDM (TM) -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Fin BDM (TM)</label>
+              <select id="oct-filter-tm" onchange="renderOctSheetsUI()" class="date-select" style="width:130px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="ALL">All Fin BDMs</option>
+              </select>
+            </div>
+
+            <!-- Filter by RBM -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">RBM</label>
+              <select id="oct-filter-rbm" onchange="renderOctSheetsUI()" class="date-select" style="width:130px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="ALL">All RBMs</option>
+              </select>
+            </div>
+
+            <!-- Filter by BDM -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">BDM</label>
+              <select id="oct-filter-bdm" onchange="renderOctSheetsUI()" class="date-select" style="width:135px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="ALL">All BDMs</option>
+              </select>
+            </div>
+
+            <!-- Period Window Mode -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Data Window</label>
+              <select id="oct-period-mode" onchange="loadOctSheetsData(true)" class="date-select" style="width:195px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="reference" selected>OCT 2026 Sheet (01–27 Oct)</option>
+                <option value="live">Live Period (Top Date Picker)</option>
+              </select>
+            </div>
+
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+              <button type="button" onclick="resetOctSheetFilters()" class="btn" style="padding:5px 11px; font-size:12px; height:32px;">
+                Reset Filters
+              </button>
+              <button type="button" onclick="exportOctSheetsToExcel()" style="padding:6px 14px; height:32px; border-radius:6px; border:1.5px solid rgba(16,185,129,0.45); background:rgba(16,185,129,0.1); color:#059669; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                &#128196; Export Sheet
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary KPI Strip -->
+          <div class="dashboard-grid" style="grid-template-columns:repeat(auto-fit, minmax(195px, 1fr)); gap:12px; margin-bottom:16px;">
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span id="oct-kpi-fin-label">Total Finance (FIN)</span></div>
+              <div class="kpi-value" id="oct-kpi-fin" style="font-size:20px;">—</div>
+              <div class="kpi-footer"><span id="oct-kpi-fin-sub">Paper Finance + Card EMI</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span id="oct-kpi-tot-label">Total Sales (Total)</span></div>
+              <div class="kpi-value" id="oct-kpi-tot" style="font-size:20px;">—</div>
+              <div class="kpi-footer"><span id="oct-kpi-tot-sub">144 Kerala Retail Stores</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span>Overall FIN SHARE</span></div>
+              <div class="kpi-value" id="oct-kpi-share" style="font-size:20px; color:#059669;">—</div>
+              <div class="kpi-footer"><span id="oct-kpi-share-sub">FIN / Total</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span>North vs South Share</span></div>
+              <div class="kpi-value" id="oct-kpi-north-south" style="font-size:17px;">—</div>
+              <div class="kpi-footer"><span id="oct-kpi-ns-sub">North (4 TMs) · South (4 TMs)</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span>Card EMI Achievement</span></div>
+              <div class="kpi-value" id="oct-kpi-card-ach" style="font-size:19px; color:#2563eb;">—</div>
+              <div class="kpi-footer"><span id="oct-kpi-card-sub">vs Card Slab 2 (&#8377;40.50 Cr)</span></div>
+            </div>
+          </div>
+
+          <!-- Main Coordinated Layout: Left = Store Table (Cols A-I), Right = TM + RBM + BDM Summary Tables -->
+          <div style="display:grid; grid-template-columns:minmax(540px, 1.35fr) minmax(460px, 1fr); gap:16px; align-items:start;">
+            <!-- LEFT PANEL: 144 Store-wise Finance Share Table -->
+            <div class="data-card" style="margin-bottom:0;">
+              <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div>
+                  <h2 id="oct-store-table-title">OCT &mdash; Store-wise Value Finance Share (&#8377;)</h2>
+                  <span class="badge" id="oct-store-count-badge">144 Stores</span>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted);" id="oct-formula-hint">
+                  FIN = Paper Finance + PineLab + PAYTM + Benow
+                </span>
+              </div>
+              <div class="table-responsive" style="max-height:760px; overflow-y:auto;">
+                <table class="data-table" id="table-oct-stores">
+                  <thead id="oct-stores-thead" style="position:sticky; top:0; z-index:5;">
+                    <!-- Populated by JS -->
+                  </thead>
+                  <tbody id="oct-stores-tbody">
+                    <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading OCT sheet data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- RIGHT PANEL: TM Summary + RBM Summary + BDM Summary -->
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <!-- Table 2: TM (Fin BDM) Summary & Target / Card Slab Table -->
+              <div class="data-card" style="margin-bottom:0;">
+                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <div>
+                    <h2 id="oct-tm-table-title">TM (Fin BDM) Summary &amp; Targets</h2>
+                    <span class="badge">Click any TM row to filter stores</span>
+                  </div>
+                  <label style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" id="oct-tm-show-targets" onchange="renderOctSheetsUI()" checked />
+                    Show Targets &amp; Card Slabs
+                  </label>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table" id="table-oct-tm">
+                    <thead id="oct-tm-thead"></thead>
+                    <tbody id="oct-tm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Table 3: RBM Summary Table -->
+              <div class="data-card" style="margin-bottom:0;">
+                <div class="card-title">
+                  <h2 id="oct-rbm-table-title">RBM Summary</h2>
+                  <span class="badge">Click any RBM row to filter stores</span>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table" id="table-oct-rbm">
+                    <thead>
+                      <tr>
+                        <th>RBM</th>
+                        <th class="num-align">FIN</th>
+                        <th class="num-align">Total</th>
+                        <th class="num-align" style="background:#eab30822; color:#b45309;">FIN SHARE</th>
+                      </tr>
+                    </thead>
+                    <tbody id="oct-rbm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Table 4: BDM Summary Table -->
+              <div class="data-card" style="margin-bottom:0;">
+                <div class="card-title">
+                  <h2 id="oct-bdm-table-title">BDM Summary (23 BDMs)</h2>
+                  <span class="badge">Click any BDM row to filter stores</span>
+                </div>
+                <div class="table-responsive" style="max-height:380px; overflow-y:auto;">
+                  <table class="data-table" id="table-oct-bdm">
+                    <thead style="position:sticky; top:0; z-index:4;">
+                      <tr>
+                        <th>BDM</th>
+                        <th class="num-align">FIN</th>
+                        <th class="num-align">Total</th>
+                        <th class="num-align" style="background:#eab30822; color:#b45309;">FIN SHARE</th>
+                      </tr>
+                    </thead>
+                    <tbody id="oct-bdm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1166,13 +1394,25 @@
             </div>
 
             <!-- Drop zone -->
-            <div id="pinelabDragZone" class="upload-zone" style="margin-bottom:20px;border-color:rgba(245,158,11,0.4);cursor:pointer;"
+            <!-- Dual Drop zones: Main PineLab File + Angamaly PineLab File -->
+            <div id="pinelabUploadZones" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:20px;">
+            <div id="pinelabDragZone" class="upload-zone" style="margin-bottom:0;border-color:rgba(245,158,11,0.4);cursor:pointer;position:relative;"
                  onclick="document.getElementById('pinelabFileInput').click()">
               <i data-lucide="hard-drive-upload" style="color:#f59e0b;width:38px;height:38px;margin-bottom:12px;"></i>
-              <p>Drag &amp; Drop <strong>Pine Labs EMI Report</strong> here</p>
+              <p>Drag &amp; Drop <strong>Main Pine Labs EMI Report</strong> here</p>
+              <div id="pinelabMainStatusBadge" style="margin-top:8px;display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:rgba(245,158,11,0.12);color:#f59e0b;">1. Main PineLab File (All Stores)</div>
               <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Accepts <code>.csv</code> or <code>.zip</code> (the exported file from Pine Labs portal)</p>
             </div>
             <input type="file" id="pinelabFileInput" accept=".csv,.zip" style="display:none;">
+            <div id="pinelabAngamalyDragZone" class="upload-zone" style="margin-bottom:0;border-color:rgba(16,185,129,0.45);cursor:pointer;position:relative;"
+                 onclick="document.getElementById('pinelabAngamalyFileInput').click()">
+              <i data-lucide="file-plus-2" style="color:#10b981;width:38px;height:38px;margin-bottom:12px;"></i>
+              <p>Drag &amp; Drop <strong>Angamaly Pine Labs EMI Report</strong> here</p>
+              <div id="pinelabAngamalyStatusBadge" style="margin-top:8px;display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:rgba(16,185,129,0.12);color:#10b981;">2. Angamaly Store Only (NOT Angamaly Future)</div>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Accepts <code>.csv</code> or <code>.zip</code> · Auto-merges with Main PineLab file</p>
+            </div>
+            <input type="file" id="pinelabAngamalyFileInput" accept=".csv,.zip" style="display:none;">
+            </div>
 
             <!-- Progress bar (hidden initially) -->
             <div id="pinelabProgress" style="display:none;margin-bottom:20px;">
@@ -1231,8 +1471,15 @@
                   <i data-lucide="download" style="width:14px;height:14px;"></i> Download Cleaned Excel
                 </a>
 
-                <button id="btnPinelabUploadAnother" class="btn" style="font-size:12px;padding:6px 16px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);color:#f59e0b;border-radius:8px;cursor:pointer;">
-                  ↑ Upload Another File
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button id="btnPinelabUploadAngamaly" class="btn" type="button" onclick="document.getElementById('pinelabAngamalyFileInput').click()" style="font-size:12px;padding:6px 14px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.45);color:#10b981;border-radius:8px;cursor:pointer;font-weight:600;">+ Upload Angamaly PineLab File</button>
+                  <button id="btnPinelabUploadAnother" class="btn" type="button" onclick="document.getElementById('pinelabFileInput').click()" style="font-size:12px;padding:6px 14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);color:#f59e0b;border-radius:8px;cursor:pointer;">↑ Upload / Replace Main File</button>
+                  <button id="btnPinelabReset" class="btn" type="button" style="font-size:12px;padding:6px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.35);color:#ef4444;border-radius:8px;cursor:pointer;">✕ Clear Both</button>
+                </div>
+                  <button class="btn" type="button" style="display:none;">
+                  </button>
+                  <button class="btn" type="button" style="display:none;">
+                  ↑ Upload / Replace Main File
                 </button>
               </div>
             </div>
@@ -1379,7 +1626,7 @@
                 </a>
 
                 <button id="btnPaytmUploadAnother" class="btn" style="font-size:12px;padding:6px 16px;background:rgba(0,186,242,0.1);border:1px solid rgba(0,186,242,0.4);color:#00baf2;border-radius:8px;cursor:pointer;">
-                  ↑ Upload Another File
+                  ↑ Upload / Replace Main File
                 </button>
               </div>
             </div>
@@ -1520,7 +1767,7 @@
                 </a>
 
                 <button id="btnBenowUploadAnother" class="btn" style="font-size:12px;padding:6px 16px;background:rgba(242,169,0,0.1);border:1px solid rgba(242,169,0,0.4);color:#f2a900;border-radius:8px;cursor:pointer;">
-                  ↑ Upload Another File
+                  ↑ Upload / Replace Main File
                 </button>
               </div>
             </div>
@@ -1838,9 +2085,8 @@
   <script src="/static/js/chart.min.js"></script>
   <!-- SheetJS for Excel export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- Main JS -->
-  <script src="/static/js/main.js?v=20261013_emi_sync"></script>
-  <script src="/static/js/drill_down.js?v=20260921_prod_fix"></script>
+  <script src="/static/js/main.js?v=20261106_state_filter"></script>
+  <script src="/static/js/drill_down.js?v=20261103_emi_gate"></script>
 
   <!-- Data Plexus Network Animation (Light Theme) -->
   <script>

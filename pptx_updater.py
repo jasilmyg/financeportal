@@ -14,10 +14,10 @@ def get_pct_str(val):
     # if it's already a string, return
     if isinstance(val, str):
         return val
-    # Format float like 68.76 as 68.76% or 0.6876 as 68.8%
-    if val < 1.0 and val > 0:
-        return f"{val*100:.2f}%"
-    return f"{val:.2f}%"
+    try:
+        return f"{float(val):.2f}%"
+    except (ValueError, TypeError):
+        return str(val)
 
 def get_value_ach_str(ach, tgt):
     # Formats like 407.89(88.67%)

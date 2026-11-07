@@ -164,6 +164,12 @@ STORE_RBM_MAP = {
     'ALUVA FUTURE':          'Renjith',
     'ANGAMALY':              'Renjith',
     'ANGAMALY FUTURE':       'Renjith',
+    'FALNIR FUTURE':         'KARNATAKA RBM',
+    'CSB':                   'Others',
+    'GPF':                   'Others',
+    '3GH':                   'Others',
+    'KSO':                   'Others',
+    'SMC':                   'Others',
     'AREEKODE FUTURE':       'Sameer',
     'ATTINGAL':              'Vaisakh',
     'ATTINGAL FUTURE':       'Vaisakh',
@@ -655,7 +661,9 @@ def clean_sales_report(input_path, output_path):
 
     # ── 3. Remove E-commerce entries ─────────────────────────────────────────
     financier = df['Financier'].astype(str).str.strip().str.upper()
-    ecommerce_mask = financier.str.contains('ECOMMERCE|E-COMMERCE', na=False)
+    ecommerce_mask = financier.str.contains('ECOMMERCE|E-COMMERCE|MYG ONLINE', na=False)
+    if 'Customer Type' in df.columns:
+        ecommerce_mask = ecommerce_mask | (df['Customer Type'].astype(str).str.strip().str.upper() == 'CORPORATE')
     df = df[~ecommerce_mask]
     print(f"Shape after E-commerce filter: {df.shape}")
 
@@ -688,10 +696,29 @@ def clean_sales_report(input_path, output_path):
 
     # ── 6. Category mapping & blacklist removal ───────────────────────────────
     prod = df['Product'].astype(str).str.strip().str.upper()
+    prod = prod.replace({'NAN': '', 'NONE': '', 'NULL': ''})
+    if 'Item Code' in df.columns:
+        _ITEM_PREFIX_MAP = {
+            'MOB': 'MOBILE', 'TAB': 'TABLET', 'LAP': 'LAPTOP', 'DES': 'DESKTOP',
+            'AC': 'AIR CONDITIONER', 'TV': 'TV', 'REF': 'REFRIGERATORS',
+            'WSM': 'WASHING MACHINES', 'MWO': 'MICROWAVE OVEN', 'DSW': 'DISH WASHER',
+            'FRZ': 'FREEZER', 'DRY': 'DRYER',
+            'CMY': 'HOME APPLIANCES', 'WPU': 'HOME APPLIANCES', 'WTH': 'HOME APPLIANCES', 'SEM': 'HOME APPLIANCES',
+            'SMA': 'SMALL APPLIANCES', 'VMC': 'SMALL APPLIANCES', 'MXI': 'SMALL APPLIANCES',
+            'AUD': 'AUDIO', 'EWRB': 'EAR WEARABLES', 'HVA': 'EAR WEARABLES',
+            'HTR': 'HOME THEATRE', 'SWA': 'SMART WATCH', 'GMG': 'GAMING',
+            'PRT': 'PRINTER', 'RIG': 'RIG', 'ITA': 'IT ACCESSORIES',
+            'STB': 'STABILIZER', 'CAM': 'CAMERA', 'DIY': 'DIY',
+        }
+        inferred_prod = (
+            df['Item Code'].astype(str).str.strip().str.extract(r'^([A-Za-z]+)', expand=False)
+            .str.upper().map(_ITEM_PREFIX_MAP).fillna('')
+        )
+        prod = prod.where(prod != '', inferred_prod)
     prod_clean = prod.str.replace(' ', '', regex=False)
     
-    res_cat = pd.Series('BANK EMI', index=prod.index)
-    res_cat = np.where(prod.isin(['', 'NAN', 'UNKNOWN']) & res_fin.isin(['Pine Lab EMI', 'PAYTM', 'Benow']), 'BANK EMI', res_cat)
+    res_cat = pd.Series('Others', index=prod.index)
+    res_cat = np.where(prod.isin(['', 'NAN', 'UNKNOWN']) & pd.Series(res_fin, index=prod.index).isin(['Pine Lab EMI', 'PAYTM', 'Benow']), 'BANK EMI', res_cat)
     res_cat = np.where(prod.str.contains('SMALL APPLIANCE', na=False, regex=False), 'SA', res_cat)
     res_cat = np.where(prod.str.contains('TABLET|TAB', na=False), 'MOBILE', res_cat)
     
@@ -701,6 +728,7 @@ def clean_sales_report(input_path, output_path):
     
     mapped_cat = prod.map(PRODUCT_CATEGORY_MAP)
     res_cat = np.where(mapped_cat.notna(), mapped_cat, res_cat)
+    res_cat = np.where(prod.isin(['', 'NAN', 'UNKNOWN']) & ~pd.Series(res_fin, index=prod.index).isin(['Pine Lab EMI', 'PAYTM', 'Benow']), 'REMOVE', res_cat)
     
     df['Category_Cleaned'] = res_cat
     
@@ -747,8 +775,16 @@ def clean_sales_report(input_path, output_path):
     zone_mapped = store_upper.map(STORE_ZONE_MAP)
     rbm_upper = df['RBM'].astype(str).str.strip().str.upper()
     zone_rbm = np.where(rbm_upper.isin(['ALFAS','SAMEER','SAMEEM']), 'NORTH',
-               np.where(rbm_upper.isin(['RENJITH','MAHESH','VAISAKH']), 'SOUTH', ''))
+               np.where(rbm_upper.isin(['RENJITH','MAHESH','VAISAKH']), 'SOUTH',
+               np.where(rbm_upper == 'KARNATAKA RBM', 'KARNATAKA', 'Others')))
     df['Zone_Cleaned'] = zone_mapped.fillna(pd.Series(zone_rbm, index=zone_mapped.index))
+
+    # Keep only Kerala retail RBMs and exclude non-retail branch codes (matches Workbook5)
+    kerala_rbms = {'RENJITH', 'ALFAS', 'SAMEER', 'VAISAKH', 'MAHESH', 'SAMEEM'}
+    excluded_stores = {'CSB', 'GPF', '3GH', 'KSO', 'SMC', 'FLF', 'FALNIR FUTURE'}
+    keep_retail_mask = rbm_upper.isin(kerala_rbms) & ~store_upper.isin(excluded_stores)
+    df = df[keep_retail_mask]
+    print(f"Shape after Kerala retail RBM/Store filter: {df.shape}")
 
     # ── 8. Price Range classification (11 slabs per spec) ────────────────────
     price = pd.to_numeric(df['Sold Price'], errors='coerce').fillna(0.0)
@@ -802,7 +838,7 @@ def clean_sales_report(input_path, output_path):
         print(f"  DMI DO override applied: {dmi_overridden} rows set to DMI FINANCE")
 
     # IDFC FIRST BANK: DO starts with 10108
-    idfc_mask = do_clean.str.startswith('10108', na=False)
+    idfc_mask = do_clean.str.startswith(('10108', '10109'), na=False)
     df.loc[idfc_mask, 'Financier_Cleaned'] = 'IDFC FIRST BANK LTD'
     df.loc[idfc_mask, 'Finance_Cleaned']   = 'FIN'
     idfc_overridden = idfc_mask.sum()
@@ -818,7 +854,7 @@ def clean_sales_report(input_path, output_path):
         print(f"  Poonawalla DO override applied: {poonawalla_overridden} rows set to Poonawalla Fincorp")
 
     # TVS CREDIT: DO starts with 3022CD or 3023CD (or any 30xxCD pattern)
-    tvs_mask = do_clean.str.startswith(('3022CD', '3023CD'), na=False)
+    tvs_mask = do_clean.str.contains('3022CD|3023CD', na=False)
     df.loc[tvs_mask, 'Financier_Cleaned'] = 'TVS Credit'
     df.loc[tvs_mask, 'Finance_Cleaned']   = 'FIN'
     tvs_overridden = tvs_mask.sum()
@@ -829,15 +865,26 @@ def clean_sales_report(input_path, output_path):
     # These are DOs that start with a digit but didn't match IDFC (10108) prefix.
     # Any DO number that is purely numeric and not caught by IDFC → HDB FINANCE.
     hdb_mask = (
-        do_clean.str.match(r'^\d+$', na=False)   # purely numeric
+        do_clean.str.match(r'^[1-9]\d{10,11}$', na=False)
         & ~idfc_mask                              # not already mapped to IDFC
-        & (do_clean.str.len() >= 8)              # long enough to be a real finance DO
+        & ~tvs_mask
+        & ~do_clean.str.startswith(('1018', '1019', '10208', '11090', '3022', '3023'), na=False)
+        & ~df['Financier'].astype(str).str.strip().str.upper().str.contains('BENOW', na=False)
     )
     df.loc[hdb_mask, 'Financier_Cleaned'] = 'HDB FINANCE'
     df.loc[hdb_mask, 'Finance_Cleaned']   = 'FIN'
     hdb_overridden = hdb_mask.sum()
     if hdb_overridden:
         print(f"  HDB DO override applied: {hdb_overridden} rows set to HDB FINANCE")
+
+    # Exclude unrecognized institutional / co-op society / credit tie-up Financiers unless overridden by DO
+    fin_raw_upper = df['Financier'].astype(str).str.strip().str.upper()
+    fin_raw_empty = fin_raw_upper.isin(['', 'NAN', 'NONE', 'NULL'])
+    allowed_retail_fin = fin_raw_upper.str.contains(
+        'BAJAJ|HDB|DMI|IDFC|TVS|POONAWALLA|PFL|BENOW|PINE LAB|PINELAB|PAYTM|CASH', na=False
+    )
+    has_fin_override = df['Financier_Cleaned'] != 'aCash'
+    df = df[fin_raw_empty | allowed_retail_fin | has_fin_override]
 
     print(f"Final output shape will be: ({len(df)}, 30)")
 

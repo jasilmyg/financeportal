@@ -132,6 +132,10 @@ window.refreshCurrentTab = function() {
         loadStoreData();
         setTimeout(done, 800);
         break;
+      case 'oct-sheets':
+        loadOctSheetsData(true);
+        setTimeout(done, 800);
+        break;
       default:
         // Generic fallback — reload all dashboard data
         loadDashboardData(activeDate, timeframe);
@@ -205,19 +209,72 @@ function _apiCacheClearDate(date) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Global data-loading indicator: top progress bar + floating status pill with a live
+// elapsed-time counter, and the page content is dimmed while any request is in flight.
+// ---------------------------------------------------------------------------
+let _loadingCount = 0, _loadingStart = 0, _loadingTick = null, _loadingHideT = null;
+function _loadingEls() {
+  let pill = document.getElementById('global-loading-pill');
+  if (!pill) {
+    const bar = document.createElement('div');
+    bar.id = 'global-loading-bar';
+    document.body.appendChild(bar);
+    pill = document.createElement('div');
+    pill.id = 'global-loading-pill';
+    pill.innerHTML = '<span class="gl-spinner"></span><span class="gl-text"></span>';
+    document.body.appendChild(pill);
+  }
+  return { bar: document.getElementById('global-loading-bar'), pill, text: pill.querySelector('.gl-text') };
+}
+function _loadingBegin() {
+  const el = _loadingEls();
+  clearTimeout(_loadingHideT);
+  if (_loadingCount++ === 0) {
+    _loadingStart = Date.now();
+    document.body.classList.add('data-loading');
+    el.pill.className = 'visible';
+    el.bar.className = 'active';
+    el.text.textContent = 'Loading data\u2026 0s';
+    clearInterval(_loadingTick);
+    _loadingTick = setInterval(() => {
+      el.text.textContent = `Loading data\u2026 ${Math.floor((Date.now() - _loadingStart) / 1000)}s`;
+    }, 500);
+  }
+}
+function _loadingEnd(ok) {
+  _loadingCount = Math.max(0, _loadingCount - 1);
+  if (_loadingCount > 0) return;
+  const el = _loadingEls();
+  clearInterval(_loadingTick);
+  document.body.classList.remove('data-loading');
+  el.bar.className = '';
+  const secs = ((Date.now() - _loadingStart) / 1000).toFixed(1);
+  el.pill.className = 'visible ' + (ok ? 'done' : 'failed');
+  el.text.textContent = ok ? `\u2713 Data loaded in ${secs}s` : '\u2717 Failed to load data - try Refresh';
+  _loadingHideT = setTimeout(() => { el.pill.className = ''; }, ok ? 1500 : 4000);
+}
+
+// Monotonic id so a slow, older response can never overwrite a newer date/filter selection.
+let _dashReqSeq = 0; let _catFilterReqSeq = 0;
+
 /** Fetch with JS-side cache. Returns a Promise<data>. */
-function _cachedFetch(url) {
+function _cachedFetch(url, opts) {
+  const silent = !!(opts && opts.silent);
   const cached = _apiCacheGet(url);
   if (cached) {
     console.debug('[cache HIT]', url);
     return Promise.resolve(cached);
   }
+  if (!silent) _loadingBegin();
   return fetch(url)
     .then(r => r.json())
     .then(data => {
       if (!data.error) _apiCacheSet(url, data);  // only cache successful responses
+      if (!silent) _loadingEnd(!data.error);
       return data;
-    });
+    })
+    .catch(err => { if (!silent) _loadingEnd(false); throw err; });
 }
 
 /** Fire background prewarm for all 3 timeframes for a date. */
@@ -296,6 +353,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Store Performance tab
   const storeZoneFilter = document.getElementById("store-zone-filter");
   if (storeZoneFilter) storeZoneFilter.addEventListener("change", loadStoreData);
+
+  // Initialize multi-select State filters across all tabs with default states
+  renderStateMulti(["KARNATAKA", "KERALA", "OTHERS"]);
 });
 
 // =====================================================
@@ -306,13 +366,14 @@ function loadPriceRangeData() {
   if (!activeDate) return;
   const timeframe  = (document.getElementById("timeframeSelect") || {}).value || "monthly";
   const priceRange = (document.getElementById("price-range-filter") || {}).value || "ALL";
+  const state      = ((document.getElementById("price-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
   
   const qtyBody = document.getElementById("price-qty-body");
   const valBody = document.getElementById("price-val-body");
   if (qtyBody) qtyBody.innerHTML = `<tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:20px;">Loading...</td></tr>`;
   if (valBody) valBody.innerHTML = `<tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:20px;">Loading...</td></tr>`;
   
-  const url = `/api/price-range-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&price_range=${encodeURIComponent(priceRange)}${_src()}`;
+  const url = `/api/price-range-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&price_range=${encodeURIComponent(priceRange)}&state=${encodeURIComponent(state)}${_src()}`;
   _cachedFetch(url)
     .then(data => {
       if (data.error) {
@@ -476,9 +537,10 @@ function loadBrandData() {
   const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
   const category  = (document.getElementById("brand-category-filter") || {}).value || "ALL";
   const product   = (document.getElementById("brand-product-filter") || {}).value || "ALL";
+  const state     = ((document.getElementById("brand-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
   const tbody = document.getElementById("brand-perf-body");
   if (tbody) tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; color:var(--text-muted); padding:20px;">Loading...</td></tr>`;
-  const url = `/api/brand-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&category=${encodeURIComponent(category)}&product=${encodeURIComponent(product)}${_src()}`;
+  const url = `/api/brand-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&category=${encodeURIComponent(category)}&product=${encodeURIComponent(product)}&state=${encodeURIComponent(state)}${_src()}`;
   _cachedFetch(url)
     .then(data => {
       if (data.error) {
@@ -541,9 +603,10 @@ function loadStoreData() {
   if (!activeDate) return;
   const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
   const zone      = (document.getElementById("store-zone-filter") || {}).value || "ALL";
+  const state     = ((document.getElementById("store-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
   const tbody = document.getElementById("store-perf-body");
   if (tbody) tbody.innerHTML = `<tr><td colspan="16" style="text-align:center; color:var(--text-muted); padding:20px;">Loading...</td></tr>`;
-  const url = `/api/store-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&zone=${encodeURIComponent(zone)}${_src()}`;
+  const url = `/api/store-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&zone=${encodeURIComponent(zone)}&state=${encodeURIComponent(state)}${_src()}`;
   _cachedFetch(url)
     .then(data => {
       if (data.error) {
@@ -663,6 +726,9 @@ function initSidebar() {
       }
       
       // Load store data on tab switch
+      if (tab === "oct-sheets") {
+        setTimeout(() => loadOctSheetsData(false), 50);
+      }
       if (tab === "store") {
         setTimeout(loadStoreData, 100);
       }
@@ -749,6 +815,10 @@ function initDateSelector() {
     _apiCacheClearDate(activeDate);
     loadData(activeDate);
     loadDashboardData(activeDate, tf);
+    if (document.getElementById("tab-price")?.classList.contains("active")) loadPriceRangeData();
+    if (document.getElementById("tab-brand")?.classList.contains("active")) loadBrandData();
+    if (document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
+    if (document.getElementById("tab-oct-sheets")?.classList.contains("active") && typeof loadOctSheetsData === "function") loadOctSheetsData(false);
     _prewarmClickHouse(activeDate);
   }
 
@@ -894,8 +964,10 @@ function loadDashboardData(date, timeframe) {
   if (!date) return;
   const endDate = (timeframe === 'custom' && activeEndDate) ? activeEndDate : '';
   const url = `/api/dashboard-data?date=${date}&end_date=${endDate}&timeframe=${timeframe}${_src()}`;
+  const _seq = ++_dashReqSeq;
   _cachedFetch(url)
     .then(data => {
+      if (_seq !== _dashReqSeq) return;   // a newer date/filter request superseded this one
       const tbody = document.querySelector("#table-team-perf tbody");
       if (data.error) {
         console.warn("Dashboard data error:", data.error);
@@ -933,14 +1005,27 @@ function loadDashboardData(date, timeframe) {
         loadMonthwisePerformance(activeDate);
       }
       
-      // Always update category performance if available
-      if (data.category_performance) {
+      // Always update category performance if available (re-run active filter if one is selected)
+      const _hasActiveCatFilter = Boolean(
+        _selectedStates().length > 0 ||
+        ((document.getElementById("cat-filter-district") || {}).value || "") ||
+        ((document.getElementById("cat-filter-rbm") || {}).value || "") ||
+        ((document.getElementById("cat-filter-fin-bdm") || {}).value || "") ||
+        ((document.getElementById("cat-filter-bdm") || {}).value || "") ||
+        ((document.getElementById("cat-filter-store") || {}).value || "") ||
+        ((document.getElementById("cat-filter-staff") || {}).value || "")
+      );
+      if (_hasActiveCatFilter) {
+        triggerCategoryFilterLoad();
+      } else if (data.category_performance) {
         reviewData.category_performance = data.category_performance;
+        reviewData._fromLiveDb = (typeof date !== 'undefined' ? date : activeDate);
         reviewData.brand_performance = data.brand_performance || {};
         populateBrandFilter();
         renderCategoryPerformance();
         if (typeof recalculateAll === 'function') {
             recalculateAll();
+            renderCategoryPerformance();
         }
       }
       
@@ -1223,6 +1308,112 @@ Promise.all([
   if (_catHierarchy) initCategoryFilters(_catHierarchy);
 });
 
+// ---- Multi-select State filter (shared across Category, Zone, Price, Brand, Store tabs) ----
+const _STATE_FILTER_PREFIXES = ["cat", "zone", "price", "brand", "store"];
+
+function _selectedStates(prefix = "cat") {
+  const el = document.getElementById(`${prefix}-filter-state`) || document.getElementById("cat-filter-state");
+  return ((el && el.value) || "").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+}
+
+function _updateStateBtnLabel(prefix) {
+  const prefixes = prefix ? [prefix] : _STATE_FILTER_PREFIXES;
+  prefixes.forEach(p => {
+    const btn = document.getElementById(`${p}-filter-state-btn`);
+    if (!btn) return;
+    const sel = _selectedStates(p);
+    btn.innerText = sel.length === 0 ? "All States" : (sel.length <= 2 ? sel.join(", ") : `${sel.length} States`);
+    btn.title = sel.length ? sel.join(", ") : "All States";
+  });
+}
+
+function _syncAllStateFilters(csvVal) {
+  const selSet = new Set((csvVal || "").split(",").map(s => s.trim().toUpperCase()).filter(Boolean));
+  _STATE_FILTER_PREFIXES.forEach(p => {
+    const hidden = document.getElementById(`${p}-filter-state`);
+    const panel  = document.getElementById(`${p}-filter-state-panel`);
+    if (hidden) hidden.value = Array.from(selSet).join(",");
+    if (panel) {
+      const allCb = panel.querySelector(`#${p}-filter-state-all`);
+      if (allCb) allCb.checked = selSet.size === 0;
+      panel.querySelectorAll("input[type=checkbox][data-state]").forEach(cb => {
+        cb.checked = selSet.has(cb.dataset.state);
+      });
+    }
+    _updateStateBtnLabel(p);
+  });
+}
+
+function renderStateMulti(states) {
+  const rawList = (states && states.length) ? states : ["KARNATAKA", "KERALA", "OTHERS"];
+  const list = Array.from(new Set(rawList.map(s => String(s).trim().toUpperCase())))
+    .filter(s => s && s !== "UNKNOWN").sort();
+  const prev = new Set(_selectedStates("cat"));
+  const syncedVal = list.filter(s => prev.has(s)).join(",");
+  const rowStyle = "display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:13px;cursor:pointer;border-radius:4px;color:var(--text-main, inherit);";
+
+  _STATE_FILTER_PREFIXES.forEach(prefix => {
+    const panel  = document.getElementById(`${prefix}-filter-state-panel`);
+    const btn    = document.getElementById(`${prefix}-filter-state-btn`);
+    const hidden = document.getElementById(`${prefix}-filter-state`);
+    if (!panel || !btn || !hidden) return;
+
+    hidden.value = syncedVal;
+    panel.innerHTML = "";
+
+    const fire = () => {
+      const newVal = Array.from(panel.querySelectorAll("input[type=checkbox][data-state]"))
+        .filter(c => c.checked).map(c => c.dataset.state).join(",");
+      _syncAllStateFilters(newVal);
+
+      const catHidden = document.getElementById("cat-filter-state");
+      if (catHidden) catHidden.dispatchEvent(new Event("change"));
+      if (prefix === "zone" && !_catFiltersAttached) triggerCategoryFilterLoad();
+      if (prefix === "price" || document.getElementById("tab-price")?.classList.contains("active")) loadPriceRangeData();
+      if (prefix === "brand" || document.getElementById("tab-brand")?.classList.contains("active")) loadBrandData();
+      if (prefix === "store" || document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
+    };
+
+    const allRow = document.createElement("label");
+    allRow.style.cssText = rowStyle + "font-weight:600;border-bottom:1px solid var(--card-border);margin-bottom:4px;";
+    allRow.innerHTML = `<input type="checkbox" id="${prefix}-filter-state-all"> <span>All States</span>`;
+    panel.appendChild(allRow);
+    const allCb = allRow.querySelector("input");
+    allCb.checked = !hidden.value;
+    allCb.addEventListener("change", () => {
+      panel.querySelectorAll("input[data-state]").forEach(c => { c.checked = false; });
+      allCb.checked = true;
+      fire();
+    });
+
+    list.forEach(st => {
+      const row = document.createElement("label");
+      row.style.cssText = rowStyle;
+      row.innerHTML = `<input type="checkbox" data-state="${st}"> <span>${st}</span>`;
+      const cb = row.querySelector("input");
+      cb.checked = prev.has(st);
+      cb.addEventListener("change", () => {
+        const anyChecked = panel.querySelector("input[data-state]:checked");
+        allCb.checked = !anyChecked;
+        fire();
+      });
+      panel.appendChild(row);
+    });
+    _updateStateBtnLabel(prefix);
+
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      });
+      document.addEventListener("click", e => {
+        if (!panel.contains(e.target) && e.target !== btn) panel.style.display = "none";
+      });
+    }
+  });
+}
+
 function initCategoryFilters(hierarchy, states = [], districts = [], districtStates = null) {
   if (!hierarchy) return;
   _catHierarchy = hierarchy;
@@ -1268,12 +1459,12 @@ function initCategoryFilters(hierarchy, states = [], districts = [], districtSta
             if (match(b, bFilter)) {
               if (level === 'store') {
                 const selDist  = districtSelect ? districtSelect.value : '';
-                const selState = stateSelect ? stateSelect.value : '';
+                const selStates = _selectedStates();
                 Object.keys(bData.branches || {}).forEach(s => {
-                  if (selDist || selState) {
+                  if (selDist || selStates.length) {
                     const d = _branchDistricts[String(s).trim().toUpperCase()] || '';
                     if (selDist && d.toUpperCase() !== selDist.toUpperCase()) return;
-                    if (selState && (_districtStateMap[d] || '').toUpperCase() !== selState.toUpperCase()) return;
+                    if (selStates.length && !selStates.includes((_districtStateMap[d] || '').toUpperCase())) return;
                   }
                   opts.add(s);
                 });
@@ -1310,15 +1501,15 @@ function initCategoryFilters(hierarchy, states = [], districts = [], districtSta
   }
   fillSelect(finBdmSelect, getFinBdmOptions(), "All Fin BDMs");
   if (stateSelect && states && states.length > 0) {
-    fillSelect(stateSelect, states, "All States");
+    renderStateMulti(states);
   }
   // District options (narrowed to the selected State, when one is chosen)
   if (districts && districts.length > 0) _districtList = districts;
   if (districtStates) _districtStateMap = districtStates;
   function refreshDistricts() {
     if (!districtSelect) return;
-    const st = stateSelect ? stateSelect.value : '';
-    const opts = _districtList.filter(d => !st || (_districtStateMap[d] || '').toUpperCase() === st.toUpperCase());
+    const sts = _selectedStates();
+    const opts = _districtList.filter(d => !sts.length || sts.includes((_districtStateMap[d] || '').toUpperCase()));
     fillSelect(districtSelect, opts, "All Districts");
   }
   refreshDistricts();
@@ -1404,8 +1595,10 @@ function triggerCategoryFilterLoad() {
     
     const url = `/api/dashboard-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&state=${state}&district=${district}&rbm=${rbm}&fin_bdm=${finBdm}&bdm=${bdm}&store=${store}&staff=${staff}${_src()}`;
     
+    const _seq = ++_catFilterReqSeq;
     _cachedFetch(url)
       .then(data => {
+        if (_seq !== _catFilterReqSeq) return;   // superseded by a newer request
         if (data.error) {
           console.warn("Dashboard filter error:", data.error);
           return;
@@ -1413,11 +1606,16 @@ function triggerCategoryFilterLoad() {
         if (data.category_performance) {
           // IMPORTANT: update the module-level `reviewData`, not window.reviewData
           reviewData.category_performance = data.category_performance;
+        reviewData._fromLiveDb = (typeof date !== 'undefined' ? date : activeDate);
           reviewData.brand_performance = data.brand_performance || {};
           
           populateBrandFilter();
           renderCategoryPerformance();
           if (typeof recalculateAll === 'function') recalculateAll();
+          renderCategoryPerformance();
+        }
+        if (data.zone_performance) {
+          renderZonePerformance(data.zone_performance);
         }
       })
       .catch(err => console.error("Error loading filtered category data:", err));
@@ -1437,7 +1635,10 @@ function loadData(date) {
     })
     .then(res => res.json())
     .then(data => {
+      const _keepCat = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === date) ? reviewData.category_performance : null;
+      const _keepBrand = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === date) ? reviewData.brand_performance : null;
       reviewData = data;
+      if (_keepCat) { reviewData.category_performance = _keepCat; reviewData.brand_performance = _keepBrand || {}; reviewData._fromLiveDb = date; }
       recalculateAll();
       populateBrandFilter();
       renderAllTables();
@@ -1695,7 +1896,7 @@ function loadMonthwisePerformance(dateStr) {
   const promises = months.map(m => {
     const d = new Date(year, m, 10); // day 10 is safe for any month
     const dateParam = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-10`;
-    return _cachedFetch(`/api/dashboard-data?date=${dateParam}&end_date=&timeframe=monthly${_src()}`)
+    return _cachedFetch(`/api/dashboard-data?date=${dateParam}&end_date=&timeframe=monthly${_src()}`, { silent: true })
   });
 
   Promise.all(promises).then(results => {
@@ -3140,11 +3341,7 @@ function formatNumber(val, type) {
   if (val === null || val === undefined || isNaN(val)) return "-";
   
   if (type === "percent") {
-    // Check if it's decimal (e.g. 0.68) or base 100 (e.g. 68.7)
-    if (Math.abs(val) > 0 && Math.abs(val) < 1.0) {
-      return `${(val * 100).toFixed(1)}%`;
-    }
-    return `${val.toFixed(1)}%`;
+    return `${Number(val).toFixed(1)}%`;
   }
   
   if (type === "currency") {
@@ -3274,7 +3471,7 @@ function initCleanerPage() {
       document.getElementById('pinelabProgress').style.display = 'block';
       document.getElementById('pinelabResult').style.display   = 'none';
       document.getElementById('pinelabError').style.display    = 'none';
-      zone.style.display = 'none';
+      const zonesWrap = document.getElementById('pinelabUploadZones'); if (zonesWrap) zonesWrap.style.opacity = '0.5';
       const pb = document.getElementById('pinelabProgressBar');
       const pt = document.getElementById('pinelabProgressText');
       pt.textContent = text || 'Processing Pine Labs data…';
@@ -3305,6 +3502,7 @@ function initCleanerPage() {
       document.getElementById('pinelabProgressText').textContent = 'Done!';
       setTimeout(() => {
         document.getElementById('pinelabProgress').style.display = 'none';
+        const zw = document.getElementById('pinelabUploadZones'); if (zw) zw.style.opacity = '1';
       }, 400);
     }
 
@@ -3312,6 +3510,40 @@ function initCleanerPage() {
     function showResult(data) {
       const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
       document.getElementById('pinelabResult').style.display = 'block';
+      const mainBadge = document.getElementById('pinelabMainStatusBadge');
+      const angBadge  = document.getElementById('pinelabAngamalyStatusBadge');
+      if (mainBadge) {
+        if (data.main_uploaded && data.main_stats) {
+          mainBadge.textContent = '✓ Main Uploaded (' + fmt(data.main_stats.after_dedup) + ' dedup rows)';
+          mainBadge.style.background = 'rgba(16,185,129,0.18)';
+          mainBadge.style.color = '#34d399';
+        } else {
+          mainBadge.textContent = '1. Main PineLab File (All Stores)';
+          mainBadge.style.background = 'rgba(245,158,11,0.12)';
+          mainBadge.style.color = '#f59e0b';
+        }
+      }
+      if (angBadge) {
+        if (data.angamaly_uploaded && data.angamaly_stats) {
+          angBadge.textContent = '✓ Angamaly Uploaded (' + fmt(data.angamaly_stats.after_dedup) + ' rows · ANGAMALY)';
+          angBadge.style.background = 'rgba(16,185,129,0.22)';
+          angBadge.style.color = '#34d399';
+        } else {
+          angBadge.textContent = '2. Angamaly Store Only (NOT Angamaly Future)';
+          angBadge.style.background = 'rgba(16,185,129,0.12)';
+          angBadge.style.color = '#10b981';
+        }
+      }
+      const titleEl = document.getElementById('pinelabResultTitle');
+      if (titleEl) {
+        if (data.main_uploaded && data.angamaly_uploaded) {
+          titleEl.textContent = 'Pine Labs EMI Uploaded (Main + Angamaly Store Combined)';
+        } else if (data.angamaly_uploaded) {
+          titleEl.textContent = 'Pine Labs EMI Uploaded (Angamaly Store — Upload Main File Above)';
+        } else {
+          titleEl.textContent = 'Pine Labs EMI Uploaded (Main File — Upload Angamaly File Above)';
+        }
+      }
       document.getElementById('pinelabResultMsg').textContent = data.message || '';
       document.getElementById('statRawRows').textContent     = fmt(data.raw_rows);
       document.getElementById('statAfterFilter').textContent = fmt(data.after_filter);
@@ -3335,7 +3567,7 @@ function initCleanerPage() {
     }
 
     // Core upload function
-    function uploadPineLab(file) {
+    function uploadPineLab(file, fileType) {
       const fname = file.name.toLowerCase();
       if (!fname.endsWith('.csv') && !fname.endsWith('.zip')) {
         showToast('Please upload a .csv or .zip file', 'error');
@@ -3344,6 +3576,7 @@ function initCleanerPage() {
       const interval = showProgress('Uploading ' + file.name + '…');
       const fd = new FormData();
       fd.append('file', file);
+      if (typeof fileType !== 'undefined') fd.append('file_type', fileType || 'main');
       fetch('/api/upload-pinelab', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
@@ -3381,14 +3614,73 @@ function initCleanerPage() {
       zone.style.borderColor = 'rgba(245,158,11,0.4)';
       zone.style.background  = 'rgba(255,255,255,0.01)';
       const file = e.dataTransfer.files[0];
-      if (file) uploadPineLab(file);
+      if (file) uploadPineLab(file, 'main');
     });
 
     // File picker
     fileInput.addEventListener('change', () => {
-      if (fileInput.files[0]) uploadPineLab(fileInput.files[0]);
+      if (fileInput.files[0]) uploadPineLab(fileInput.files[0], 'main');
       fileInput.value = '';
     });
+
+    // Angamaly PineLab Drag & Drop + File Picker
+    const angZone = document.getElementById('pinelabAngamalyDragZone');
+    const angInput = document.getElementById('pinelabAngamalyFileInput');
+    if (angZone && angInput) {
+      angZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        angZone.style.borderColor = '#10b981';
+        angZone.style.background  = 'rgba(16,185,129,0.08)';
+      });
+      angZone.addEventListener('dragleave', () => {
+        angZone.style.borderColor = 'rgba(16,185,129,0.45)';
+        angZone.style.background  = 'rgba(255,255,255,0.01)';
+      });
+      angZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        angZone.style.borderColor = 'rgba(16,185,129,0.45)';
+        angZone.style.background  = 'rgba(255,255,255,0.01)';
+        const file = e.dataTransfer.files[0];
+        if (file) uploadPineLab(file, 'angamaly');
+      });
+      angInput.addEventListener('change', () => {
+        if (angInput.files[0]) uploadPineLab(angInput.files[0], 'angamaly');
+        angInput.value = '';
+      });
+    }
+
+    const btnReset = document.getElementById('btnPinelabReset');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        fetch('/api/reset-pinelab', { method: 'POST' })
+          .then(r => r.json())
+          .then(() => {
+            document.getElementById('pinelabResult').style.display = 'none';
+            document.getElementById('pinelabError').style.display  = 'none';
+            showResult({ main_uploaded: false, angamaly_uploaded: false });
+            document.getElementById('pinelabResult').style.display = 'none';
+            if (window.refreshDashboardAfterEmi) window.refreshDashboardAfterEmi();
+            showToast('Cleared Pine Labs uploads', 'info');
+          });
+      });
+    }
+
+    // Restore PineLab upload status on page load if already uploaded in this session
+    fetch('/api/pinelab-status')
+      .then(r => r.json())
+      .then(st => {
+        if (st && st.uploaded && st.combined) {
+          showResult({
+            ...st.combined,
+            main_uploaded: st.main_uploaded,
+            angamaly_uploaded: st.angamaly_uploaded,
+            main_stats: st.main_stats,
+            angamaly_stats: st.angamaly_stats,
+            message: 'Pine Lab EMI (' + (st.main_uploaded && st.angamaly_uploaded ? 'Main + Angamaly combined' : (st.angamaly_uploaded ? 'Angamaly Store' : 'Main Report')) + ') active. ' + (st.combined.inserted_records || 0) + ' invoice records updated.'
+          });
+        }
+      })
+      .catch(() => {});
 
     // "Upload Another" resets the UI
     const btnAnother = document.getElementById('btnPinelabUploadAnother');
@@ -3475,7 +3767,7 @@ function initCleanerPage() {
       $('paytmProgress').style.display = 'block';
       $('paytmResult').style.display   = 'none';
       $('paytmError').style.display    = 'none';
-      zone.style.display = 'none';
+      const zonesWrap = document.getElementById('pinelabUploadZones'); if (zonesWrap) zonesWrap.style.opacity = '0.5';
       const pb = $('paytmProgressBar');
       const pt = $('paytmProgressText');
       pt.textContent = text || 'Processing Paytm data…';
@@ -3534,6 +3826,7 @@ function initCleanerPage() {
       const interval = showProgress('Uploading ' + file.name + '…');
       const fd = new FormData();
       fd.append('file', file);
+      if (typeof fileType !== 'undefined') fd.append('file_type', fileType || 'main');
       fetch('/api/upload-paytm', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
@@ -3654,7 +3947,7 @@ function initCleanerPage() {
       $('benowProgress').style.display = 'block';
       $('benowResult').style.display   = 'none';
       $('benowError').style.display    = 'none';
-      zone.style.display = 'none';
+      const zonesWrap = document.getElementById('pinelabUploadZones'); if (zonesWrap) zonesWrap.style.opacity = '0.5';
       const pb = $('benowProgressBar');
       const pt = $('benowProgressText');
       pt.textContent = text || 'Processing Benow data…';
@@ -3713,6 +4006,7 @@ function initCleanerPage() {
       const interval = showProgress('Uploading ' + file.name + '…');
       const fd = new FormData();
       fd.append('file', file);
+      if (typeof fileType !== 'undefined') fd.append('file_type', fileType || 'main');
       fetch('/api/upload-benow', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
@@ -4012,6 +4306,7 @@ function recalculateCategoryMath(catData) {
   fins_keys.forEach(k => qtyTotals.totals[k] = 0);
   
   cats.forEach(cat => {
+    const wasDeducted = Boolean(catData.qty && catData.qty[cat] && catData.qty[cat]._emi_deducted);
     let prodsObj = catData.products_qty;
     if (catData.products && catData.products.qty) {
         prodsObj = catData.products.qty;
@@ -4034,6 +4329,17 @@ function recalculateCategoryMath(catData) {
        catData.qty[cat]["apr_closing_pct"] = sumApr / numProds;
     }
     const info = catData.qty[cat];
+    // Deduct Paytm, Benow, and Pinelab data count from aCASH
+    if (wasDeducted) info._emi_deducted = true;
+    const cardEmiCount = (info["PineLab"] || 0) + (info["PAYTM"] || 0) + (info["Benow"] || 0);
+    if (prodsObj && prodsObj[cat]) {
+      if (!info._emi_deducted) info["aCASH"] = Math.max(0, (info["aCASH"] || 0) - cardEmiCount);
+      info["_emi_deducted"] = true;
+    } else if (!info._emi_deducted) {
+      if (!info._emi_deducted) info["aCASH"] = Math.max(0, (info["aCASH"] || 0) - cardEmiCount);
+      info["_emi_deducted"] = true;
+    }
+
     let row_tot = 0;
     let paper_tot = 0;
     let card_tot = 0;
@@ -4591,3 +4897,530 @@ function resetCleanerState() {
     xhr.send();
   });
 })();
+
+// ============================================================================
+// OCT & OCT Vol SHEETS TAB (Store-wise, TM, RBM, BDM Value & Volume Share)
+// ============================================================================
+let _octSheetsCacheData = null;
+let _activeOctSubSheet = "oct"; // 'oct' (Value ₹) | 'oct_vol' (Volume Qty)
+
+window.switchOctSubSheet = function(subSheet) {
+  _activeOctSubSheet = subSheet === "oct_vol" ? "oct_vol" : "oct";
+  const btnVal = document.getElementById("btn-oct-sheet-val");
+  const btnVol = document.getElementById("btn-oct-sheet-vol");
+  if (btnVal && btnVol) {
+    if (_activeOctSubSheet === "oct") {
+      btnVal.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;";
+      btnVol.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;";
+    } else {
+      btnVol.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;";
+      btnVal.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;";
+    }
+  }
+  renderOctSheetsUI();
+};
+
+window.resetOctSheetFilters = function() {
+  const sInput = document.getElementById("oct-store-search");
+  const fTm = document.getElementById("oct-filter-tm");
+  const fRbm = document.getElementById("oct-filter-rbm");
+  const fBdm = document.getElementById("oct-filter-bdm");
+  if (sInput) sInput.value = "";
+  if (fTm) fTm.value = "ALL";
+  if (fRbm) fRbm.value = "ALL";
+  if (fBdm) fBdm.value = "ALL";
+  renderOctSheetsUI();
+};
+
+window.filterOctSheetBy = function(field, val) {
+  const elId = field === "tm" ? "oct-filter-tm" : field === "rbm" ? "oct-filter-rbm" : "oct-filter-bdm";
+  const sel = document.getElementById(elId);
+  if (!sel) return;
+  const targetVal = String(val || "").toUpperCase();
+  if (sel.value.toUpperCase() === targetVal) {
+    sel.value = "ALL";
+  } else {
+    for (const opt of sel.options) {
+      if (opt.value.toUpperCase() === targetVal) {
+        sel.value = opt.value;
+        break;
+      }
+    }
+  }
+  renderOctSheetsUI();
+};
+
+window.loadOctSheetsData = function(forceReload) {
+  const date = activeDate || "2026-10-01";
+  const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
+  const periodMode = (document.getElementById("oct-period-mode") || {}).value || "reference";
+  const endDate = _endDate();
+  const url = `/api/oct-sheets-data?date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}`;
+
+  if (!forceReload && _octSheetsCacheData && _octSheetsCacheData._url === url) {
+    renderOctSheetsUI();
+    return;
+  }
+
+  const tbody = document.getElementById("oct-stores-tbody");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading OCT &amp; OCT Vol data...</td></tr>`;
+  }
+
+  _cachedFetch(url)
+    .then(data => {
+      if (data.error) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--color-danger);">${data.error}</td></tr>`;
+        return;
+      }
+      data._url = url;
+      _octSheetsCacheData = data;
+      populateOctFilterDropdowns(data);
+      renderOctSheetsUI();
+    })
+    .catch(err => {
+      console.error("Failed to load OCT sheets data:", err);
+      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load OCT sheets data</td></tr>`;
+    });
+};
+
+function populateOctFilterDropdowns(data) {
+  if (!data || !data.oct) return;
+  const tmSel = document.getElementById("oct-filter-tm");
+  const rbmSel = document.getElementById("oct-filter-rbm");
+  const bdmSel = document.getElementById("oct-filter-bdm");
+
+  if (tmSel && tmSel.options.length <= 1) {
+    (data.oct.tms || []).forEach(t => {
+      const o = document.createElement("option");
+      o.value = t.tm;
+      o.textContent = t.tm;
+      tmSel.appendChild(o);
+    });
+  }
+  if (rbmSel && rbmSel.options.length <= 1) {
+    (data.oct.rbms || []).forEach(r => {
+      const o = document.createElement("option");
+      o.value = r.rbm;
+      o.textContent = r.rbm;
+      rbmSel.appendChild(o);
+    });
+  }
+  if (bdmSel && bdmSel.options.length <= 1) {
+    (data.oct.bdms || []).forEach(b => {
+      const o = document.createElement("option");
+      o.value = b.bdm;
+      o.textContent = b.bdm;
+      bdmSel.appendChild(o);
+    });
+  }
+}
+
+function _octValShareBg(pctInt) {
+  if (pctInt >= 70) return "background:#10b981; color:#052e16; font-weight:700;";
+  if (pctInt >= 65) return "background:#4ade80; color:#052e16; font-weight:700;";
+  if (pctInt >= 60) return "background:#a3e635; color:#1a2e05; font-weight:700;";
+  return "background:#bef264; color:#1a2e05; font-weight:700;";
+}
+
+function _octVolShareBg(pctInt) {
+  if (pctInt >= 58) return "background:#38bdf8; color:#082f49; font-weight:700;";
+  if (pctInt >= 50) return "background:#34d399; color:#052e16; font-weight:700;";
+  if (pctInt >= 45) return "background:#a3e635; color:#1a2e05; font-weight:700;";
+  return "background:#f87171; color:#450a0a; font-weight:700;";
+}
+
+window.renderOctSheetsUI = function() {
+  if (!_octSheetsCacheData) return;
+  const isVal = _activeOctSubSheet === "oct";
+  const sheetObj = isVal ? _octSheetsCacheData.oct : _octSheetsCacheData.oct_vol;
+  if (!sheetObj) return;
+
+  const qSearch = ((document.getElementById("oct-store-search") || {}).value || "").trim().toUpperCase();
+  const qTm = ((document.getElementById("oct-filter-tm") || {}).value || "ALL").toUpperCase();
+  const qRbm = ((document.getElementById("oct-filter-rbm") || {}).value || "ALL").toUpperCase();
+  const qBdm = ((document.getElementById("oct-filter-bdm") || {}).value || "ALL").toUpperCase();
+  const showTargets = Boolean((document.getElementById("oct-tm-show-targets") || {}).checked);
+
+  // Filter stores
+  const allStores = sheetObj.stores || [];
+  const filteredStores = allStores.filter(s => {
+    if (qSearch && !String(s.store).toUpperCase().includes(qSearch)) return false;
+    if (qTm !== "ALL" && String(s.fin_bdm).toUpperCase() !== qTm) return false;
+    if (qRbm !== "ALL" && String(s.rbm).toUpperCase() !== qRbm) return false;
+    if (qBdm !== "ALL" && String(s.bdm).toUpperCase() !== qBdm) return false;
+    return true;
+  });
+
+  // Update KPI Strip
+  const totRow = sheetObj.tm_total || { fin: 0, total: 0, fin_share: 0 };
+  const northRow = sheetObj.tm_north || { fin_share: 0 };
+  const southRow = sheetObj.tm_south || { fin_share: 0 };
+  const octTot = (_octSheetsCacheData.oct && _octSheetsCacheData.oct.tm_total) || {};
+
+  const kpiFin = document.getElementById("oct-kpi-fin");
+  const kpiTot = document.getElementById("oct-kpi-tot");
+  const kpiShare = document.getElementById("oct-kpi-share");
+  const kpiNS = document.getElementById("oct-kpi-north-south");
+  const kpiCard = document.getElementById("oct-kpi-card-ach");
+  const kpiFinSub = document.getElementById("oct-kpi-fin-sub");
+  const kpiTotSub = document.getElementById("oct-kpi-tot-sub");
+
+  if (isVal) {
+    if (kpiFin) kpiFin.textContent = "₹" + (totRow.fin / 10000000).toFixed(2) + " Cr";
+    if (kpiFinSub) kpiFinSub.textContent = "Exact: ₹" + Math.round(totRow.fin).toLocaleString("en-IN");
+    if (kpiTot) kpiTot.textContent = "₹" + (totRow.total / 10000000).toFixed(2) + " Cr";
+    if (kpiTotSub) kpiTotSub.textContent = "Exact: ₹" + Math.round(totRow.total).toLocaleString("en-IN");
+  } else {
+    if (kpiFin) kpiFin.textContent = Number(totRow.fin || 0).toLocaleString("en-IN") + " Units";
+    if (kpiFinSub) kpiFinSub.textContent = "Paper Finance + Card EMI Qty";
+    if (kpiTot) kpiTot.textContent = Number(totRow.total || 0).toLocaleString("en-IN") + " Units";
+    if (kpiTotSub) kpiTotSub.textContent = "Total ERP Sales Qty (144 Stores)";
+  }
+  if (kpiShare) kpiShare.textContent = ((totRow.fin_share || 0) * 100).toFixed(2) + "%";
+  if (kpiNS) {
+    kpiNS.textContent = `N: ${((northRow.fin_share || 0) * 100).toFixed(1)}% · S: ${((southRow.fin_share || 0) * 100).toFixed(1)}%`;
+  }
+  if (kpiCard && octTot.card_ach !== undefined) {
+    const cardCr = (octTot.card_ach / 10000000).toFixed(2);
+    const cardPct = ((octTot.card_ach_pct || 0) * 100).toFixed(1);
+    kpiCard.textContent = `₹${cardCr} Cr (${cardPct}%)`;
+  }
+
+  // 1. Render Store Table (Left Panel)
+  const storeTitle = document.getElementById("oct-store-table-title");
+  const storeBadge = document.getElementById("oct-store-count-badge");
+  if (storeTitle) {
+    storeTitle.innerHTML = isVal
+      ? "OCT &mdash; Store-wise Value Finance Share (&#8377;)"
+      : "OCT Vol &mdash; Store-wise Volume Finance Share (Qty)";
+  }
+  if (storeBadge) {
+    storeBadge.textContent = `${filteredStores.length} of ${allStores.length} Stores`;
+  }
+
+  const sThead = document.getElementById("oct-stores-thead");
+  const sTbody = document.getElementById("oct-stores-tbody");
+  if (sThead) {
+    sThead.innerHTML = isVal
+      ? `<tr>
+          <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
+          <th class="num-align">FIN</th>
+          <th class="num-align">Total</th>
+          <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
+          <th>Fin BDM</th>
+          <th>BDM</th>
+          <th>RBM</th>
+          <th class="num-align">AMJ</th>
+          <th class="num-align">DIF</th>
+        </tr>`
+      : `<tr>
+          <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
+          <th class="num-align">FIN</th>
+          <th class="num-align">Total</th>
+          <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
+          <th>Fin BDM</th>
+          <th>BDM</th>
+          <th>RBM</th>
+          <th class="num-align">JAS</th>
+          <th class="num-align">DIF</th>
+        </tr>`;
+  }
+
+  if (sTbody) {
+    if (!filteredStores.length) {
+      sTbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
+    } else {
+      let rowsHtml = "";
+      let sumFin = 0, sumTot = 0;
+      filteredStores.forEach(s => {
+        sumFin += (s.fin || 0);
+        sumTot += (s.total || 0);
+        const sharePctInt = Math.round((s.fin_share || 0) * 100);
+        const shareExact = ((s.fin_share || 0) * 100).toFixed(2) + "%";
+        const shareStyle = isVal ? _octValShareBg(sharePctInt) : _octVolShareBg(sharePctInt);
+
+        const benchVal = isVal ? s.amj : s.jas;
+        let benchCell = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
+        if (benchVal !== null && benchVal !== undefined) {
+          const bPctInt = Math.round(benchVal * 100);
+          const bStyle = isVal ? _octValShareBg(bPctInt) : _octVolShareBg(bPctInt);
+          benchCell = `<td class="num-align" style="${bStyle} text-align:center;" title="${(benchVal * 100).toFixed(2)}%">${bPctInt}%</td>`;
+        }
+
+        let difCell = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
+        if (s.dif !== null && s.dif !== undefined) {
+          const difPct = (s.dif * 100);
+          const isUp = difPct >= 0;
+          const arrow = isUp ? "&#9650;" : "&#9660;";
+          const difStyle = isUp
+            ? "color:#16a34a; font-weight:700;"
+            : "background:#f87171; color:#450a0a; font-weight:700;";
+          difCell = `<td class="num-align" style="${difStyle}">${arrow}${Math.abs(difPct).toFixed(2)}%</td>`;
+        }
+
+        const finDisplay = Math.round(s.fin || 0).toString();
+        const totDisplay = Math.round(s.total || 0).toString();
+        const tip = isVal
+          ? `Paper Fin: ₹${Math.round(s.paper_fin || 0).toLocaleString('en-IN')} | Card EMI: ₹${Math.round(s.card_fin || 0).toLocaleString('en-IN')}`
+          : `Paper Fin: ${s.paper_fin || 0} | Card EMI: ${s.card_fin || 0}`;
+
+        rowsHtml += `<tr title="${tip}">
+          <td style="font-weight:600; white-space:nowrap;">${s.store}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums;">${finDisplay}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums;">${totDisplay}</td>
+          <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${sharePctInt}%</td>
+          <td style="white-space:nowrap;">${s.fin_bdm}</td>
+          <td style="white-space:nowrap;">${s.bdm}</td>
+          <td style="white-space:nowrap;">${s.rbm}</td>
+          ${benchCell}
+          ${difCell}
+        </tr>`;
+      });
+
+      // Footer total row for filtered stores
+      const totSharePct = sumTot > 0 ? ((sumFin / sumTot) * 100).toFixed(1) : "0.0";
+      rowsHtml += `<tr class="total-row" style="font-weight:800;">
+        <td>Total (${filteredStores.length} Stores)</td>
+        <td class="num-align">${Math.round(sumFin).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center; color:#059669;">${totSharePct}%</td>
+        <td colspan="5"></td>
+      </tr>`;
+      sTbody.innerHTML = rowsHtml;
+    }
+  }
+
+  // 2. Render TM (Fin BDM) Summary Table (Right Top)
+  const tmThead = document.getElementById("oct-tm-thead");
+  const tmTbody = document.getElementById("oct-tm-tbody");
+  if (tmThead && tmTbody) {
+    if (isVal && showTargets) {
+      tmThead.innerHTML = `<tr>
+        <th>TM</th>
+        <th class="num-align">FIN</th>
+        <th class="num-align">Total</th>
+        <th class="num-align" style="background:#fef08a; color:#1e293b;">FIN SHARE</th>
+        <th class="num-align">Value Target</th>
+        <th class="num-align">Ach %</th>
+        <th class="num-align">Card Slab 2</th>
+        <th class="num-align">Card Ach</th>
+        <th class="num-align">Card Ach %</th>
+      </tr>`;
+    } else if (!isVal && showTargets) {
+      tmThead.innerHTML = `<tr>
+        <th>TM</th>
+        <th class="num-align">FIN</th>
+        <th class="num-align">Total</th>
+        <th class="num-align" style="background:#fef08a; color:#1e293b;">FIN SHARE</th>
+        <th class="num-align">Value Target</th>
+        <th class="num-align">Card Slab 2</th>
+        <th class="num-align">Card Ach</th>
+      </tr>`;
+    } else {
+      tmThead.innerHTML = `<tr>
+        <th>TM</th>
+        <th class="num-align">FIN</th>
+        <th class="num-align">Total</th>
+        <th class="num-align" style="background:#fef08a; color:#1e293b;">FIN SHARE</th>
+      </tr>`;
+    }
+
+    const tmRows = [...(sheetObj.tms || [])];
+    const renderTmRow = (r, isSummary, highlightBg) => {
+      const isSelected = qTm !== "ALL" && String(r.tm).toUpperCase() === qTm;
+      const rowStyle = isSelected
+        ? "background:rgba(37,99,235,0.18); font-weight:700; cursor:pointer;"
+        : isSummary
+          ? (highlightBg || "font-weight:800; background:rgba(15,23,42,0.06);")
+          : "cursor:pointer;";
+      const clickAttr = isSummary ? "" : `onclick="filterOctSheetBy('tm', '${r.tm}')"`;
+      const shareInt = Math.round((r.fin_share || 0) * 100);
+      const shareExact = ((r.fin_share || 0) * 100).toFixed(2) + "%";
+      const shareStyle = isVal ? _octValShareBg(shareInt) : _octVolShareBg(shareInt);
+
+      let cols = `<td>${r.tm}</td>
+        <td class="num-align">${Math.round(r.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(r.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${shareInt}%</td>`;
+
+      if (isVal && showTargets) {
+        const achPct = r.ach_pct !== undefined ? Math.round(r.ach_pct * 100) + "%" : "—";
+        const cAchPct = r.card_ach_pct !== undefined ? Math.round(r.card_ach_pct * 100) + "%" : "—";
+        cols += `
+          <td class="num-align">${Math.round(r.value_target || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align" style="font-weight:600; color:#2563eb;">${achPct}</td>
+          <td class="num-align">${Math.round(r.card_slab_2 || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align">${Math.round(r.card_ach || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align" style="font-weight:700; color:${(r.card_ach_pct || 0) >= 1 ? '#16a34a' : '#d97706'};">${cAchPct}</td>`;
+      } else if (!isVal && showTargets) {
+        cols += `
+          <td class="num-align">${Math.round(r.value_target || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align">${r.card_slab_2 ? Math.round(r.card_slab_2).toLocaleString("en-IN") : "—"}</td>
+          <td class="num-align">${Math.round(r.card_ach || 0).toLocaleString("en-IN")}</td>`;
+      }
+      return `<tr style="${rowStyle}" ${clickAttr}>${cols}</tr>`;
+    };
+
+    let tmHtml = tmRows.map(r => renderTmRow(r, false)).join("");
+    if (sheetObj.tm_total) {
+      tmHtml += renderTmRow(sheetObj.tm_total, true, "font-weight:800; border-top:2px solid var(--card-border);");
+    }
+    if (sheetObj.tm_north) {
+      tmHtml += renderTmRow(sheetObj.tm_north, true, "font-weight:700; background:rgba(16,185,129,0.10);");
+    }
+    if (sheetObj.tm_south) {
+      tmHtml += renderTmRow(sheetObj.tm_south, true, "font-weight:700; background:rgba(59,130,246,0.08);");
+    }
+    tmTbody.innerHTML = tmHtml;
+  }
+
+  // 3. Render RBM Summary Table (Right Middle)
+  const rbmTbody = document.getElementById("oct-rbm-tbody");
+  if (rbmTbody) {
+    const rbms = sheetObj.rbms || [];
+    let rbmHtml = "";
+    rbms.forEach(r => {
+      const isSel = qRbm !== "ALL" && String(r.rbm).toUpperCase() === qRbm;
+      const shareInt = Math.round((r.fin_share || 0) * 100);
+      const shareStyle = isVal ? _octValShareBg(shareInt) : _octVolShareBg(shareInt);
+      rbmHtml += `<tr style="cursor:pointer; ${isSel ? 'background:rgba(37,99,235,0.18); font-weight:700;' : ''}" onclick="filterOctSheetBy('rbm', '${r.rbm}')">
+        <td style="font-weight:600;">${r.rbm}</td>
+        <td class="num-align">${Math.round(r.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(r.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="${shareStyle} text-align:center;" title="${((r.fin_share || 0) * 100).toFixed(2)}%">${shareInt}%</td>
+      </tr>`;
+    });
+    if (sheetObj.tm_total) {
+      const t = sheetObj.tm_total;
+      const tInt = Math.round((t.fin_share || 0) * 100);
+      rbmHtml += `<tr class="total-row" style="font-weight:800;">
+        <td>Total</td>
+        <td class="num-align">${Math.round(t.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(t.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center; color:#059669;">${tInt}%</td>
+      </tr>`;
+    }
+    rbmTbody.innerHTML = rbmHtml;
+  }
+
+  // 4. Render BDM Summary Table (Right Bottom)
+  const bdmTbody = document.getElementById("oct-bdm-tbody");
+  if (bdmTbody) {
+    const bdms = sheetObj.bdms || [];
+    let bdmHtml = "";
+    bdms.forEach(b => {
+      const isSel = qBdm !== "ALL" && String(b.bdm).toUpperCase() === qBdm;
+      const shareInt = Math.round((b.fin_share || 0) * 100);
+      const shareStyle = isVal ? _octValShareBg(shareInt) : _octVolShareBg(shareInt);
+      bdmHtml += `<tr style="cursor:pointer; ${isSel ? 'background:rgba(37,99,235,0.18); font-weight:700;' : ''}" onclick="filterOctSheetBy('bdm', '${b.bdm}')">
+        <td style="font-weight:600;">${b.bdm}</td>
+        <td class="num-align">${Math.round(b.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(b.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="${shareStyle} text-align:center;" title="${((b.fin_share || 0) * 100).toFixed(2)}%">${shareInt}%</td>
+      </tr>`;
+    });
+    if (sheetObj.tm_total) {
+      const t = sheetObj.tm_total;
+      const tInt = Math.round((t.fin_share || 0) * 100);
+      bdmHtml += `<tr class="total-row" style="font-weight:800;">
+        <td>Total</td>
+        <td class="num-align">${Math.round(t.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(t.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center; color:#059669;">${tInt}%</td>
+      </tr>`;
+    }
+    bdmTbody.innerHTML = bdmHtml;
+  }
+};
+
+window.exportOctSheetsToExcel = function() {
+  if (!_octSheetsCacheData || typeof XLSX === "undefined") {
+    showToast("Data not loaded yet", "error");
+    return;
+  }
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: OCT (Value)
+    const oct = _octSheetsCacheData.oct;
+    const octRows = [["Stores", "FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "AMJ", "DIF"]];
+    (oct.stores || []).forEach(s => {
+      octRows.push([
+        s.store,
+        Math.round(s.fin || 0),
+        Math.round(s.total || 0),
+        ((s.fin_share || 0) * 100).toFixed(2) + "%",
+        s.fin_bdm,
+        s.bdm,
+        s.rbm,
+        s.amj !== null && s.amj !== undefined ? (s.amj * 100).toFixed(2) + "%" : "#N/A",
+        s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
+      ]);
+    });
+    octRows.push([]);
+    octRows.push(["TM", "FIN", "Total", "FIN SHARE", "Value Target", "Ach %", "Card Slab 2", "Card Ach", "Card Ach %"]);
+    [...(oct.tms || []), oct.tm_total, oct.tm_north, oct.tm_south].filter(Boolean).forEach(t => {
+      octRows.push([
+        t.tm,
+        Math.round(t.fin || 0),
+        Math.round(t.total || 0),
+        ((t.fin_share || 0) * 100).toFixed(2) + "%",
+        Math.round(t.value_target || 0),
+        ((t.ach_pct || 0) * 100).toFixed(2) + "%",
+        Math.round(t.card_slab_2 || 0),
+        Math.round(t.card_ach || 0),
+        ((t.card_ach_pct || 0) * 100).toFixed(2) + "%",
+      ]);
+    });
+    octRows.push([]);
+    octRows.push(["RBM", "FIN", "Total", "FIN SHARE"]);
+    (oct.rbms || []).forEach(r => {
+      octRows.push([r.rbm, Math.round(r.fin || 0), Math.round(r.total || 0), ((r.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    octRows.push([]);
+    octRows.push(["BDM", "FIN", "Total", "FIN SHARE"]);
+    (oct.bdms || []).forEach(b => {
+      octRows.push([b.bdm, Math.round(b.fin || 0), Math.round(b.total || 0), ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(octRows), "OCT");
+
+    // Sheet 2: OCT Vol (Volume)
+    const vol = _octSheetsCacheData.oct_vol;
+    const volRows = [["Stores", "FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "JAS", "DIF"]];
+    (vol.stores || []).forEach(s => {
+      volRows.push([
+        s.store,
+        s.fin || 0,
+        s.total || 0,
+        ((s.fin_share || 0) * 100).toFixed(2) + "%",
+        s.fin_bdm,
+        s.bdm,
+        s.rbm,
+        s.jas !== null && s.jas !== undefined ? (s.jas * 100).toFixed(2) + "%" : "#N/A",
+        s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
+      ]);
+    });
+    volRows.push([]);
+    volRows.push(["TM", "FIN", "Total", "FIN SHARE"]);
+    [...(vol.tms || []), vol.tm_total, vol.tm_north, vol.tm_south].filter(Boolean).forEach(t => {
+      volRows.push([t.tm, t.fin || 0, t.total || 0, ((t.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    volRows.push([]);
+    volRows.push(["RBM", "FIN", "Total", "FIN SHARE"]);
+    (vol.rbms || []).forEach(r => {
+      volRows.push([r.rbm, r.fin || 0, r.total || 0, ((r.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    volRows.push([]);
+    volRows.push(["BDM", "FIN", "Total", "FIN SHARE"]);
+    (vol.bdms || []).forEach(b => {
+      volRows.push([b.bdm, b.fin || 0, b.total || 0, ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(volRows), "OCT Vol");
+
+    XLSX.writeFile(wb, `OCT_and_OCT_Vol_${activeDate || "2026-10"}.xlsx`);
+    showToast("✅ Exported OCT & OCT Vol sheets to Excel", "success");
+  } catch (e) {
+    showToast("Export failed: " + e.message, "error");
+  }
+};

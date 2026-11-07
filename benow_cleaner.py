@@ -78,7 +78,7 @@ def clean_benow(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     # Date parsing (ONLY DATE FORMAT)
     if col_date in df_clean.columns:
-        df_clean['_date'] = pd.to_datetime(df_clean[col_date], errors='coerce').dt.normalize()
+        df_clean['_date'] = pd.to_datetime(df_clean[col_date], dayfirst=True, errors='coerce').dt.normalize()
         stats['date_from'] = df_clean['_date'].min().strftime('%Y-%m-%d') if not df_clean['_date'].isna().all() else ''
         stats['date_to']   = df_clean['_date'].max().strftime('%Y-%m-%d') if not df_clean['_date'].isna().all() else ''
     else:
@@ -87,7 +87,18 @@ def clean_benow(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # Ensure amount is numeric (No filtering below MIN_AMOUNT anymore)
     if col_amt in df_clean.columns:
         df_clean[col_amt] = pd.to_numeric(df_clean[col_amt], errors='coerce')
-    stats['removed_below_min'] = 0
+    col_txn_amt = col_map.get('txn amount', 'Txn Amount')
+    if col_txn_amt in df_clean.columns:
+        df_clean[col_txn_amt] = pd.to_numeric(df_clean[col_txn_amt], errors='coerce')
+    if col_amt in df_clean.columns and col_txn_amt in df_clean.columns:
+        df_clean[col_amt] = df_clean[col_amt].fillna(df_clean[col_txn_amt])
+    before_min = len(df_clean)
+    if col_amt in df_clean.columns or col_txn_amt in df_clean.columns:
+        eff_amt = df_clean[col_amt] if col_amt in df_clean.columns else pd.Series(index=df_clean.index, dtype=float)
+        if col_txn_amt in df_clean.columns:
+            eff_amt = eff_amt.fillna(df_clean[col_txn_amt])
+        df_clean = df_clean[eff_amt.isna() | (eff_amt >= MIN_AMOUNT)]
+    stats['removed_below_min'] = before_min - len(df_clean)
 
     # No deduplication on Transaction ID required anymore
     
@@ -104,14 +115,14 @@ def clean_benow(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             
         if 'mobile' in cat_str or 'pad' in cat_str or 'tablet' in cat_str:
             return 'Mobile'
-        elif 'panal' in cat_str or 'tv' in cat_str or 'television' in cat_str or 'wm' in cat_str or 'washing' in cat_str or 'rer' in cat_str or 'refrigeranor' in cat_str or 'refrigerator' in cat_str:
+        elif 'panal' in cat_str or 'panel' in cat_str or 'tv' in cat_str or 'television' in cat_str or 'wm' in cat_str or 'washing' in cat_str or 'rer' in cat_str or 'ref' in cat_str or 'refrigeranor' in cat_str or 'refrigerator' in cat_str or 'ac' in cat_str or 'air conditioner' in cat_str or 'rac' in cat_str:
             return 'CD Products'
-        elif 'ac' in cat_str or 'air conditioner' in cat_str or 'rac' in cat_str or 'smart watch' in cat_str or 'watch' in cat_str:
+        elif 'smart watch' in cat_str or 'watch' in cat_str or 'wearable' in cat_str or 'ear' in cat_str or 'buds' in cat_str:
             return 'HVA'
         elif 'laptop' in cat_str or 'desktop' in cat_str:
             return 'Laptop'
         
-        return 'CD Products' # Fallback for unknown
+        return str(cat).strip() # Preserve raw category for unmapped values (e.g. LED)
     
     # Map user-specified Product names based on Category column
     def map_product_name(cat):
@@ -151,6 +162,23 @@ def clean_benow(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     else:
         df_clean['Product'] = df_clean[col_prod] if col_prod in df_clean.columns else ''
     df_clean['Brand'] = df_clean[col_brand] if col_brand in df_clean.columns else ''
+    col_mid = col_map.get('merchant id', 'Merchant ID')
+    df_clean['Branch'] = ''
+    if col_mid in df_clean.columns:
+        import json as _json
+        _bn_bmap_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'benow_mid_branch_map.json')
+        if os.path.exists(_bn_bmap_path):
+            try:
+                with open(_bn_bmap_path, encoding='utf-8') as _fh:
+                    _bn_bmap = _json.load(_fh)
+                _mid_s = df_clean[col_mid].fillna('').astype(str).str.strip().str.lstrip("'").str.replace(r'\.0$', '', regex=True)
+                df_clean['Branch'] = _mid_s.map(_bn_bmap).fillna('')
+            except Exception:
+                pass
+    if (df_clean['Branch'] == '').any() and col_store in df_clean.columns:
+        from paytm_cleaner import clean_branch_name as _cbn
+        _empty_b = df_clean['Branch'] == ''
+        df_clean.loc[_empty_b, 'Branch'] = df_clean.loc[_empty_b, col_store].apply(_cbn)
     
     stats['total_orig_amt'] = float(df_clean[col_amt].sum()) if col_amt in df_clean.columns else 0.0
 
@@ -215,11 +243,16 @@ def upload_to_clickhouse(df_clean: pd.DataFrame, stats: dict) -> dict:
             erp_category String,
             qty Float32,
             original_amount Float32,
-            data_month String
+            data_month String,
+            branch String DEFAULT ''
         ) ENGINE = MergeTree()
         ORDER BY (data_month, txn_date)
     """)
 
+    try:
+        client.command("ALTER TABLE benow_transactions ADD COLUMN IF NOT EXISTS branch String DEFAULT ''")
+    except Exception:
+        pass
     bn_txn_rows = []
     col_txn_id = col_map.get('transaction id', 'Transaction ID')
     col_store = col_map.get('store name', 'Store Name')
@@ -238,7 +271,8 @@ def upload_to_clickhouse(df_clean: pd.DataFrame, stats: dict) -> dict:
             str(row['Category']),
             1.0,
             float(row[col_amt]) if col_amt in row and pd.notnull(row[col_amt]) else 0.0,
-            r_month
+            r_month,
+            str(row.get('Branch', '') or '').strip().upper()
         ))
 
     # Insert the new rows first, then remove older rows of this exact date range
@@ -246,7 +280,7 @@ def upload_to_clickhouse(df_clean: pd.DataFrame, stats: dict) -> dict:
     replace_rows(
         'benow_transactions', bn_txn_rows,
         ['txn_date', 'txn_id', 'store', 'brand', 'product_name', 'product_category',
-         'erp_category', 'qty', 'original_amount', 'data_month'],
+         'erp_category', 'qty', 'original_amount', 'data_month', 'branch'],
         f"toDate(txn_date) BETWEEN toDate('{date_min_str}') AND toDate('{date_max_str}')"
     )
     log.info(f'Benow: stored {len(bn_txn_rows)} rows in benow_transactions for range {date_min_str} to {date_max_str}')

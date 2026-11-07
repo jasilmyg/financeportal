@@ -199,8 +199,9 @@ def bpf_filter_sql(start: date, end: date) -> str:
         if tags[fin] and overlapping_spans(fin, start, end):
             months = ", ".join(f"'{m}'" for m in tags[fin])
             allowed.append(f"(financier = '{fin}' AND data_month IN ({months}))")
-    base = "financier NOT IN (" + ", ".join(f"'{f}'" for f in _ALL_FINS) + ")"
-    return "AND (" + " OR ".join([base] + allowed) + ")"
+    if not allowed:
+        return "AND 1 = 0"
+    return "AND (" + " OR ".join(allowed) + ")"
 
 
 def signature() -> tuple:
@@ -212,4 +213,5 @@ def signature() -> tuple:
         )
 
 
+# Restore state saved by the current session so reloader restarts don't wipe uploaded files.
 _load()

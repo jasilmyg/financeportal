@@ -22,8 +22,8 @@
 
   /* ── Format helper ──────────────────────────────────────────── */
   function _f(v, type) {
+    if (type === 'percent')  return (v != null && !isNaN(v)) ? Number(v).toFixed(1) + '%' : '-';
     if (typeof formatNumber === 'function') return formatNumber(v, type);
-    if (type === 'percent')  return v != null ? parseFloat(v).toFixed(1) + '%' : '-';
     if (type === 'decimal')  return v != null ? parseFloat(v).toFixed(2)       : '-';
     if (type === 'currency') return v != null ? '\u20B9' + Math.round(v).toLocaleString() : '-';
     return v != null ? String(v) : '-';
@@ -165,7 +165,7 @@
   }
 
   /* ── Build a single data row ────────────────────────────────── */
-  function _buildDataRow(key, info, isQty, clickFn) {
+  function _buildDataRow(key, info, isQty, clickFn, bankEmi) {
     var tr = document.createElement('tr');
     tr.setAttribute('data-category', key);
     if (clickFn) {
@@ -184,10 +184,12 @@
     var tds = '<td class="drill-cell' + (clickFn ? '' : ' drill-leaf') + '">' + key + '</td>';
     COLS.forEach(function(c){
       var v = isQty ? (info[c] || 0) : (parseFloat(info[c]) || 0);
-      tds += '<td class="num-align">' + fmt(v) + '</td>';
+      /* BANK EMI has no aCASH sales: leave the aCASH cell blank. The card units are still deducted
+         from the aCASH Grand Total (colTotals keep the underlying value). */
+      tds += '<td class="num-align">' + ((bankEmi && c === 'aCASH') ? '' : fmt(v)) + '</td>';
     });
-    tds += '<td class="num-align" style="font-weight:700">' + fmt(total)             + '</td>' +
-           '<td class="num-align" style="font-weight:600">' + _f(fin,   'percent')   + '</td>' +
+    tds += '<td class="num-align" style="font-weight:700">' + (bankEmi ? '' : fmt(total)) + '</td>' +
+           '<td class="num-align" style="font-weight:600">' + (bankEmi ? '-' : _f(fin,   'percent')) + '</td>' +
            '<td class="num-align" style="font-weight:600">' + fmt(paper)              + '</td>' +
            '<td class="num-align" style="font-weight:600">' + fmt(card)               + '</td>' +
            '<td class="num-align">' + (info.last_week_pct   != null ? _f(info.last_week_pct,   'percent') : '-') + '</td>' +
@@ -242,6 +244,11 @@
 
     rowKeys.forEach(function(key) {
       var info    = getData(key);
+      if (level === 0 && isQty && !info._emi_deducted) {
+        var cardCount = (info["PineLab"] || 0) + (info["PAYTM"] || 0) + (info["Benow"] || 0);
+        info["aCASH"] = Math.max(0, (info["aCASH"] || 0) - cardCount);
+        info._emi_deducted = true;
+      }
       var lvlSnap = level;
 
       var clickFn = function() {
@@ -252,7 +259,8 @@
         );
       };
 
-      body.appendChild(_buildDataRow(key, info, isQty, clickFn));
+      body.appendChild(_buildDataRow(key, info, isQty, clickFn,
+        (level === 0 ? key === 'BANK EMI' : drillCat === 'BANK EMI')));
       COLS.forEach(function(c){
         colTotals[c] += isQty ? (info[c] || 0) : (parseFloat(info[c]) || 0);
       });

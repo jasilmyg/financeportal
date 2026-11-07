@@ -203,13 +203,24 @@ def clean_paytm(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     tmp['Product Category'] = df_clean[COL_PROD_CAT].apply(_norm_cat) if COL_PROD_CAT in df_clean.columns else None
     tmp['Product Name']     = df_clean[COL_PROD_NAME] if COL_PROD_NAME in df_clean.columns else None
     tmp['Manufacturer']     = df_clean[COL_BRAND]
-    tmp['Serial']           = df_clean[COL_SERIAL]
+    tmp['Serial']           = df_clean[COL_SERIAL].where(~_blank(df_clean[COL_BRAND]), None)
     tmp = apply_product_mapping(tmp)
     df_clean['Product']  = tmp['Product']
     df_clean['Category'] = tmp['Category']
 
     # -- Branch: branch name only (drop the 'myG' prefix) ----------------------
     df_clean[COL_BRANCH] = df_clean[COL_STORE].apply(clean_branch_name)
+    if COL_MID in df_clean.columns:
+        _pt_bmap_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'paytm_mid_branch_map.json')
+        if os.path.exists(_pt_bmap_path):
+            try:
+                with open(_pt_bmap_path, encoding='utf-8') as _fh:
+                    _pt_bmap = json.load(_fh)
+                _mid_s = _strip_apostrophe(df_clean[COL_MID]).fillna('').astype(str).str.strip()
+                _mapped_b = _mid_s.map(_pt_bmap)
+                df_clean[COL_BRANCH] = _mapped_b.where(_mapped_b.notna() & (_mapped_b != ''), df_clean[COL_BRANCH])
+            except Exception:
+                pass
     cols = list(df_clean.columns)
     cols.remove(COL_BRANCH)
     cols.insert(cols.index(COL_STORE) + 1, COL_BRANCH)
@@ -499,11 +510,16 @@ def upload_to_clickhouse(df_clean: pd.DataFrame, stats: dict) -> dict:
             erp_category String,
             qty Float32,
             original_amount Float32,
-            data_month String
+            data_month String,
+            branch String DEFAULT ''
         ) ENGINE = MergeTree()
         ORDER BY (data_month, txn_date)
     """)
 
+    try:
+        client.command("ALTER TABLE paytm_transactions ADD COLUMN IF NOT EXISTS branch String DEFAULT ''")
+    except Exception:
+        pass
     pt_txn_rows = []
     for _, row in df_clean.iterrows():
         r_date = row['_date'].date() if pd.notnull(row['_date']) else pd.to_datetime('2000-01-01').date()
@@ -520,7 +536,8 @@ def upload_to_clickhouse(df_clean: pd.DataFrame, stats: dict) -> dict:
             str(row.get('Category', '')),
             1.0,
             float(row[COL_ORG_AMT]) if pd.notnull(row[COL_ORG_AMT]) else 0.0,
-            r_month
+            r_month,
+            str(row.get(COL_BRANCH, '') or '').strip().upper()
         ))
 
     # Insert the new rows first, then remove older rows of this exact date range
@@ -528,7 +545,7 @@ def upload_to_clickhouse(df_clean: pd.DataFrame, stats: dict) -> dict:
     replace_rows(
         'paytm_transactions', pt_txn_rows,
         ['txn_date', 'txn_id', 'store', 'brand', 'product_name', 'product_category',
-         'pl_product', 'pl_category', 'erp_category', 'qty', 'original_amount', 'data_month'],
+         'pl_product', 'pl_category', 'erp_category', 'qty', 'original_amount', 'data_month', 'branch'],
         f"toDate(txn_date) BETWEEN toDate('{date_min_str}') AND toDate('{date_max_str}')"
     )
     log.info(f'Paytm: stored {len(pt_txn_rows)} rows in paytm_transactions for range {date_min_str} to {date_max_str}')
