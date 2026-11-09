@@ -5106,6 +5106,8 @@ window.renderOctSheetsUI = function() {
       ? `<tr>
           <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
           <th class="num-align">FIN</th>
+          <th class="num-align" style="color:#4ade80;">Paper FIN</th>
+          <th class="num-align" style="color:#a78bfa;">Card FIN</th>
           <th class="num-align">Total</th>
           <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
           <th>Fin BDM</th>
@@ -5117,6 +5119,8 @@ window.renderOctSheetsUI = function() {
       : `<tr>
           <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
           <th class="num-align">FIN</th>
+          <th class="num-align" style="color:#4ade80;">Paper FIN</th>
+          <th class="num-align" style="color:#a78bfa;">Card FIN</th>
           <th class="num-align">Total</th>
           <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
           <th>Fin BDM</th>
@@ -5129,13 +5133,15 @@ window.renderOctSheetsUI = function() {
 
   if (sTbody) {
     if (!filteredStores.length) {
-      sTbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
+      sTbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
     } else {
       let rowsHtml = "";
-      let sumFin = 0, sumTot = 0;
+      let sumFin = 0, sumTot = 0, sumPaper = 0, sumCard = 0;
       filteredStores.forEach(s => {
         sumFin += (s.fin || 0);
         sumTot += (s.total || 0);
+        sumPaper += (s.paper_fin || 0);
+        sumCard += (s.card_fin || 0);
         const sharePctInt = Math.round((s.fin_share || 0) * 100);
         const shareExact = ((s.fin_share || 0) * 100).toFixed(2) + "%";
         const shareStyle = isVal ? _octValShareBg(sharePctInt) : _octVolShareBg(sharePctInt);
@@ -5168,6 +5174,8 @@ window.renderOctSheetsUI = function() {
         rowsHtml += `<tr title="${tip}">
           <td style="font-weight:600; white-space:nowrap;">${s.store}</td>
           <td class="num-align" style="font-variant-numeric:tabular-nums;">${finDisplay}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(s.paper_fin || 0)}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(s.card_fin || 0)}</td>
           <td class="num-align" style="font-variant-numeric:tabular-nums;">${totDisplay}</td>
           <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${sharePctInt}%</td>
           <td style="white-space:nowrap;">${s.fin_bdm}</td>
@@ -5183,6 +5191,8 @@ window.renderOctSheetsUI = function() {
       rowsHtml += `<tr class="total-row" style="font-weight:800;">
         <td>Total (${filteredStores.length} Stores)</td>
         <td class="num-align">${Math.round(sumFin).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="color:#16a34a;">${Math.round(sumPaper).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>
         <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
         <td class="num-align" style="text-align:center; color:#059669;">${totSharePct}%</td>
         <td colspan="5"></td>
@@ -5344,11 +5354,13 @@ window.exportOctSheetsToExcel = function() {
 
     // Sheet 1: OCT (Value)
     const oct = _octSheetsCacheData.oct;
-    const octRows = [["Stores", "FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "AMJ", "DIF"]];
+    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "AMJ", "DIF"]];
     (oct.stores || []).forEach(s => {
       octRows.push([
         s.store,
         Math.round(s.fin || 0),
+        Math.round(s.paper_fin || 0),
+        Math.round(s.card_fin || 0),
         Math.round(s.total || 0),
         ((s.fin_share || 0) * 100).toFixed(2) + "%",
         s.fin_bdm,
@@ -5387,11 +5399,13 @@ window.exportOctSheetsToExcel = function() {
 
     // Sheet 2: OCT Vol (Volume)
     const vol = _octSheetsCacheData.oct_vol;
-    const volRows = [["Stores", "FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "JAS", "DIF"]];
+    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "JAS", "DIF"]];
     (vol.stores || []).forEach(s => {
       volRows.push([
         s.store,
         s.fin || 0,
+        s.paper_fin || 0,
+        s.card_fin || 0,
         s.total || 0,
         ((s.fin_share || 0) * 100).toFixed(2) + "%",
         s.fin_bdm,
