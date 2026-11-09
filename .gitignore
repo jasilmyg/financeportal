@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.pyo
 
 # Environment / secrets
 .env
@@ -13,3 +15,45 @@ data/*.pptx
 # Generated standalone HTML (too large for git)
 myG_Finance_Portal.html
 netlify_deploy/
+
+# Runtime cache / EMI state (auto-regenerated, machine-specific)
+emi_state.json
+data/*.pkl
+data/_pinelab_slots_meta.json
+data/oct_sheets_reference_cache.json
+
+# Diagnostic / debug dumps
+data/diag*.txt
+data/cat_mapping.txt
+data/store_mapping.txt
+debug_hierarchy.txt
+scratch_diff.json
+scratch_diff_all.json
+
+# Scratch / one-off debug scripts (not part of the app)
+scratch_*.py
+check_ch*.py
+check_imei_link.py
+check_pinelab_count.py
+patch_*.py
+fix_pinelab_cleaned.py
+reclean_pinelab.py
+clear_legacy_pine_lab.py
+add_data_month_col.py
+verify_mwo_fix.py
+upload_benow_pinelab.py
+compare_reference_map.py
+generate_portal_presentation.py
+
+# Presentation duplicates / Office temp files
+~$*.pptx
+~$*.xlsx
+myG_Finance_Portal_Management_Deck.pptx
+myG_Finance_Portal_Management_Deck_v2.pptx
+myG_Finance_Portal_Presentation.pptx
+myG_Finance_Portal_Project_Presentation.pptx
+myG_Finance_Portal_Project_Presentation_v2.pptx
+Finance_Portal_Client_Handover.pptx
+
+# Cloudflare tunnel binary
+cloudflared.exe
