@@ -4976,6 +4976,7 @@ window.loadOctSheetsData = function(forceReload) {
       data._url = url;
       _octSheetsCacheData = data;
       populateOctFilterDropdowns(data);
+      renderOctNotice(data);
       renderOctSheetsUI();
     })
     .catch(err => {
@@ -4990,6 +4991,12 @@ function populateOctFilterDropdowns(data) {
   const rbmSel = document.getElementById("oct-filter-rbm");
   const bdmSel = document.getElementById("oct-filter-bdm");
 
+  // Rebuild lists on every load (TMs / RBMs / BDMs come from the data of the selected period)
+  [[tmSel, "All Fin BDMs"], [rbmSel, "All RBMs"], [bdmSel, "All BDMs"]].forEach(([sel, lbl]) => {
+    if (!sel) return;
+    sel.dataset.prev = sel.value;
+    sel.innerHTML = `<option value="ALL">${lbl}</option>`;
+  });
   if (tmSel && tmSel.options.length <= 1) {
     (data.oct.tms || []).forEach(t => {
       const o = document.createElement("option");
@@ -5014,7 +5021,82 @@ function populateOctFilterDropdowns(data) {
       bdmSel.appendChild(o);
     });
   }
+  [tmSel, rbmSel, bdmSel].forEach(sel => {
+    if (sel && sel.dataset.prev && [...sel.options].some(o => o.value === sel.dataset.prev)) sel.value = sel.dataset.prev;
+  });
 }
+
+// ---- Notices (benchmark / card upload status / targets) ----
+function renderOctNotice(data) {
+  const box = document.getElementById("oct-notice");
+  if (!box || !data) return;
+  const msgs = [];
+  const b = data.benchmark || {};
+  if (b.warning) msgs.push(b.warning);
+  const cs = data.card_status || {};
+  const missing = Object.keys(cs).filter(k => !cs[k].uploaded);
+  if (missing.length) {
+    msgs.push(`Card data not uploaded for this period: ${missing.join(", ")}. FIN is understated until those files are uploaded.`);
+  }
+  const t = data.targets || {};
+  if (t.month && !t.set) {
+    msgs.push(`No TM targets set for ${t.month}. Click "Set Targets" to enter them (Ach %, DRR and Trend need targets).`);
+  }
+  box.innerHTML = msgs.map(m => "&#9888; " + m).join("<br>");
+  box.style.display = msgs.length ? "block" : "none";
+}
+
+// ---- TM targets editor ----
+window.toggleOctTargetsPanel = function() {
+  const panel = document.getElementById("oct-targets-panel");
+  if (!panel || !_octSheetsCacheData) return;
+  if (panel.style.display !== "none") { panel.style.display = "none"; return; }
+  const month = (_octSheetsCacheData.targets || {}).month || "";
+  const title = document.getElementById("oct-targets-title");
+  if (title) title.textContent = `TM Targets \u2014 ${month}`;
+  fetch(`/api/tm-targets?month=${encodeURIComponent(month)}`)
+    .then(r => r.json())
+    .then(cur => {
+      const body = document.getElementById("oct-targets-body");
+      body.innerHTML = "";
+      (_octSheetsCacheData.oct.tms || []).forEach(t => {
+        const c = (cur && cur[String(t.tm).toUpperCase()]) || {};
+        const inp = (k) => `<input type="number" min="0" step="any" data-k="${k}" value="${c[k] || ""}" style="width:150px; text-align:right; padding:4px 6px;" />`;
+        const tr = document.createElement("tr");
+        tr.dataset.tm = t.tm;
+        tr.innerHTML = `<td style="font-weight:600;">${t.tm}</td>
+          <td class="num-align">${inp("value_target")}</td>
+          <td class="num-align">${inp("card_slab_1")}</td>
+          <td class="num-align">${inp("card_slab_2")}</td>`;
+        body.appendChild(tr);
+      });
+      panel.style.display = "block";
+    })
+    .catch(() => showToast("Could not load targets", "error"));
+};
+
+window.saveOctTargets = function() {
+  const month = (_octSheetsCacheData.targets || {}).month || "";
+  const rows = [...document.querySelectorAll("#oct-targets-body tr")].map(tr => {
+    const o = { tm: tr.dataset.tm };
+    tr.querySelectorAll("input").forEach(i => { o[i.dataset.k] = parseFloat(i.value) || 0; });
+    return o;
+  });
+  fetch("/api/tm-targets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ month, rows })
+  })
+    .then(r => r.json())
+    .then(res => {
+      if (res.error) { showToast("Save failed: " + res.error, "error"); return; }
+      showToast("Targets saved", "success");
+      _apiCache.clear();
+      document.getElementById("oct-targets-panel").style.display = "none";
+      loadOctSheetsData(true);
+    })
+    .catch(e => showToast("Save failed: " + e.message, "error"));
+};
 
 function _octValShareBg(pctInt) {
   if (pctInt >= 70) return "background:#10b981; color:#052e16; font-weight:700;";
@@ -5075,7 +5157,7 @@ window.renderOctSheetsUI = function() {
     if (kpiFin) kpiFin.textContent = Number(totRow.fin || 0).toLocaleString("en-IN") + " Units";
     if (kpiFinSub) kpiFinSub.textContent = "Paper Finance + Card EMI Qty";
     if (kpiTot) kpiTot.textContent = Number(totRow.total || 0).toLocaleString("en-IN") + " Units";
-    if (kpiTotSub) kpiTotSub.textContent = "Total ERP Sales Qty (144 Stores)";
+    if (kpiTotSub) kpiTotSub.textContent = "Total ERP Sales Qty (" + (sheetObj.stores || []).length + " Stores)";
   }
   if (kpiShare) kpiShare.textContent = ((totRow.fin_share || 0) * 100).toFixed(2) + "%";
   if (kpiNS) {
@@ -5101,6 +5183,7 @@ window.renderOctSheetsUI = function() {
 
   const sThead = document.getElementById("oct-stores-thead");
   const sTbody = document.getElementById("oct-stores-tbody");
+  const benchLabel = ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr";
   if (sThead) {
     sThead.innerHTML = isVal
       ? `<tr>
@@ -5113,7 +5196,7 @@ window.renderOctSheetsUI = function() {
           <th>Fin BDM</th>
           <th>BDM</th>
           <th>RBM</th>
-          <th class="num-align">AMJ</th>
+          <th class="num-align">${benchLabel}</th>
           <th class="num-align">DIF</th>
         </tr>`
       : `<tr>
@@ -5126,7 +5209,7 @@ window.renderOctSheetsUI = function() {
           <th>Fin BDM</th>
           <th>BDM</th>
           <th>RBM</th>
-          <th class="num-align">JAS</th>
+          <th class="num-align">${benchLabel}</th>
           <th class="num-align">DIF</th>
         </tr>`;
   }
@@ -5255,17 +5338,19 @@ window.renderOctSheetsUI = function() {
         <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${shareInt}%</td>`;
 
       if (isVal && showTargets) {
-        const achPct = r.ach_pct !== undefined ? Math.round(r.ach_pct * 100) + "%" : "—";
-        const cAchPct = r.card_ach_pct !== undefined ? Math.round(r.card_ach_pct * 100) + "%" : "—";
+        const dash = "—";
+        const fmtN = (v) => (v == null ? dash : Math.round(v).toLocaleString("en-IN"));
+        const achPct = r.ach_pct != null ? Math.round(r.ach_pct * 100) + "%" : dash;
+        const cAchPct = r.card_ach_pct != null ? Math.round(r.card_ach_pct * 100) + "%" : dash;
         cols += `
-          <td class="num-align">${Math.round(r.value_target || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align">${fmtN(r.value_target)}</td>
           <td class="num-align" style="font-weight:600; color:#2563eb;">${achPct}</td>
-          <td class="num-align">${Math.round(r.card_slab_2 || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align">${fmtN(r.card_slab_2)}</td>
           <td class="num-align">${Math.round(r.card_ach || 0).toLocaleString("en-IN")}</td>
           <td class="num-align" style="font-weight:700; color:${(r.card_ach_pct || 0) >= 1 ? '#16a34a' : '#d97706'};">${cAchPct}</td>`;
       } else if (!isVal && showTargets) {
         cols += `
-          <td class="num-align">${Math.round(r.value_target || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align">${r.value_target != null ? Math.round(r.value_target).toLocaleString("en-IN") : "—"}</td>
           <td class="num-align">${r.card_slab_2 ? Math.round(r.card_slab_2).toLocaleString("en-IN") : "—"}</td>
           <td class="num-align">${Math.round(r.card_ach || 0).toLocaleString("en-IN")}</td>`;
       }
@@ -5354,7 +5439,7 @@ window.exportOctSheetsToExcel = function() {
 
     // Sheet 1: OCT (Value)
     const oct = _octSheetsCacheData.oct;
-    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "AMJ", "DIF"]];
+    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
     (oct.stores || []).forEach(s => {
       octRows.push([
         s.store,
@@ -5399,7 +5484,7 @@ window.exportOctSheetsToExcel = function() {
 
     // Sheet 2: OCT Vol (Volume)
     const vol = _octSheetsCacheData.oct_vol;
-    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", "JAS", "DIF"]];
+    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
     (vol.stores || []).forEach(s => {
       volRows.push([
         s.store,

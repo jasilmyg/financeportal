@@ -1101,7 +1101,7 @@
             <!-- Store Search -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted);">Search Store</label>
-              <input type="text" id="oct-store-search" placeholder="Search 144 stores..." oninput="renderOctSheetsUI()"
+              <input type="text" id="oct-store-search" placeholder="Search stores..." oninput="renderOctSheetsUI()"
                 class="date-select" style="width:170px; padding:4px 10px; height:32px; font-size:12px;" />
             </div>
 
@@ -1139,12 +1139,36 @@
             </div>
 
             <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+              <button type="button" onclick="toggleOctTargetsPanel()" class="btn" style="padding:5px 11px; font-size:12px; height:32px;">
+                Set Targets
+              </button>
               <button type="button" onclick="resetOctSheetFilters()" class="btn" style="padding:5px 11px; font-size:12px; height:32px;">
                 Reset Filters
               </button>
               <button type="button" onclick="exportOctSheetsToExcel()" style="padding:6px 14px; height:32px; border-radius:6px; border:1.5px solid rgba(16,185,129,0.45); background:rgba(16,185,129,0.1); color:#059669; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px;">
                 &#128196; Export Sheet
               </button>
+            </div>
+          </div>
+
+          <!-- Data notices (benchmark / card upload status) -->
+          <div id="oct-notice" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; border:1px solid rgba(217,119,6,0.45); background:rgba(245,158,11,0.10); color:#b45309; font-size:12.5px; line-height:1.5;"></div>
+
+          <!-- TM Targets editor (stored in ClickHouse table tm_fin_targets) -->
+          <div id="oct-targets-panel" class="data-card" style="display:none; margin-bottom:14px; padding:14px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+              <strong id="oct-targets-title" style="font-size:13px;">TM Targets</strong>
+              <span style="font-size:11px; color:var(--text-muted);">Amounts in &#8377;. Saved per month in ClickHouse. Leave 0 / blank for no target.</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead><tr><th>TM</th><th class="num-align">Value Target (&#8377;)</th><th class="num-align">Card Slab 1 (&#8377;)</th><th class="num-align">Card Slab 2 (&#8377;)</th></tr></thead>
+                <tbody id="oct-targets-body"></tbody>
+              </table>
+            </div>
+            <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end;">
+              <button type="button" class="btn" onclick="toggleOctTargetsPanel()" style="padding:5px 12px; font-size:12px;">Close</button>
+              <button type="button" onclick="saveOctTargets()" style="padding:6px 14px; border-radius:6px; border:1.5px solid rgba(37,99,235,0.45); background:rgba(37,99,235,0.1); color:#2563eb; font-size:12px; font-weight:600; cursor:pointer;">Save Targets</button>
             </div>
           </div>
 
@@ -1158,7 +1182,7 @@
             <div class="kpi-card" style="padding:14px 16px;">
               <div class="kpi-header" style="margin-bottom:4px;"><span id="oct-kpi-tot-label">Total Sales (Total)</span></div>
               <div class="kpi-value" id="oct-kpi-tot" style="font-size:20px;">—</div>
-              <div class="kpi-footer"><span id="oct-kpi-tot-sub">144 Kerala Retail Stores</span></div>
+              <div class="kpi-footer"><span id="oct-kpi-tot-sub">ERP retail stores</span></div>
             </div>
             <div class="kpi-card" style="padding:14px 16px;">
               <div class="kpi-header" style="margin-bottom:4px;"><span>Overall FIN SHARE</span></div>
@@ -1168,12 +1192,12 @@
             <div class="kpi-card" style="padding:14px 16px;">
               <div class="kpi-header" style="margin-bottom:4px;"><span>North vs South Share</span></div>
               <div class="kpi-value" id="oct-kpi-north-south" style="font-size:17px;">—</div>
-              <div class="kpi-footer"><span id="oct-kpi-ns-sub">North (4 TMs) · South (4 TMs)</span></div>
+              <div class="kpi-footer"><span id="oct-kpi-ns-sub">North vs South TMs</span></div>
             </div>
             <div class="kpi-card" style="padding:14px 16px;">
               <div class="kpi-header" style="margin-bottom:4px;"><span>Card EMI Achievement</span></div>
               <div class="kpi-value" id="oct-kpi-card-ach" style="font-size:19px; color:#2563eb;">—</div>
-              <div class="kpi-footer"><span id="oct-kpi-card-sub">vs Card Slab 2 (&#8377;40.50 Cr)</span></div>
+              <div class="kpi-footer"><span id="oct-kpi-card-sub">vs Card Slab 2</span></div>
             </div>
           </div>
 
@@ -2085,7 +2109,7 @@
   <script src="/static/js/chart.min.js"></script>
   <!-- SheetJS for Excel export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="/static/js/main.js?v=20261109_card_fin_cols"></script>
+  <script src="/static/js/main.js?v=20261109_derived_logic"></script>
   <script src="/static/js/drill_down.js?v=20261103_emi_gate"></script>
 
   <!-- Data Plexus Network Animation (Light Theme) -->

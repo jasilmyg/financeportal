@@ -558,10 +558,27 @@ def api_oct_sheets_data():
     timeframe = request.args.get('timeframe', 'monthly')
     period_mode = request.args.get('period_mode', 'reference')
     try:
-        from clickhouse_aggregator import get_oct_sheets_data
-        return jsonify(get_oct_sheets_data(date_str, timeframe=timeframe, end_date_str=end_date_str, period_mode=period_mode))
+        from store_fin_share import get_store_fin_share_data
+        return jsonify(get_store_fin_share_data(date_str, timeframe=timeframe, end_date_str=end_date_str, period_mode=period_mode))
     except Exception as exc:
         app.logger.error('api_oct_sheets_data failed: %s', exc, exc_info=True)
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/tm-targets', methods=['GET', 'POST'])
+def api_tm_targets():
+    """Monthly TM targets (value target, card slab 1/2) stored in ClickHouse table tm_fin_targets."""
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'error': 'ClickHouse not available.'}), 503
+    try:
+        from store_fin_share import load_targets, save_targets
+        if request.method == 'POST':
+            body = request.get_json(force=True) or {}
+            n = save_targets(str(body.get('month', '')), body.get('rows') or [])
+            return jsonify({'status': 'success', 'saved': n})
+        return jsonify(load_targets(request.args.get('month', '')))
+    except Exception as exc:
+        app.logger.error('api_tm_targets failed: %s', exc, exc_info=True)
         return jsonify({'error': str(exc)}), 500
 
 @app.route('/api/review/<date>', methods=['GET', 'POST'])
