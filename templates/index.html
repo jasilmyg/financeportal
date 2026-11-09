@@ -382,7 +382,7 @@
         </li>
         <li class="nav-item" data-tab="oct-sheets">
           <i data-lucide="file-spreadsheet"></i>
-          <span>OCT &amp; OCT Vol</span>
+          <span>Store Fin Share</span>
         </li>
         <li class="nav-item" data-tab="team">
           <i data-lucide="users"></i>
@@ -1088,13 +1088,13 @@
             <div style="display:flex; align-items:center; background:rgba(15,23,42,0.08); padding:4px; border-radius:8px; border:1px solid var(--card-border); gap:4px;">
               <button type="button" id="btn-oct-sheet-val" onclick="switchOctSubSheet('oct')"
                 style="padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;">
-                <span>OCT</span>
-                <span style="font-size:10px; font-weight:600; opacity:0.8;">(Value &#8377;)</span>
+                <span>Value</span>
+                <span style="font-size:10px; font-weight:600; opacity:0.8;">(&#8377;)</span>
               </button>
               <button type="button" id="btn-oct-sheet-vol" onclick="switchOctSubSheet('oct_vol')"
                 style="padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;">
-                <span>OCT Vol</span>
-                <span style="font-size:10px; font-weight:500; opacity:0.8;">(Volume Qty)</span>
+                <span>Volume</span>
+                <span style="font-size:10px; font-weight:500; opacity:0.8;">(Qty)</span>
               </button>
             </div>
 
@@ -1196,7 +1196,7 @@
                     <!-- Populated by JS -->
                   </thead>
                   <tbody id="oct-stores-tbody">
-                    <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading OCT sheet data...</td></tr>
+                    <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -2085,7 +2085,7 @@
   <script src="/static/js/chart.min.js"></script>
   <!-- SheetJS for Excel export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="/static/js/main.js?v=20261106_state_filter"></script>
+  <script src="/static/js/main.js?v=20261109_store_fin_share"></script>
   <script src="/static/js/drill_down.js?v=20261103_emi_gate"></script>
 
   <!-- Data Plexus Network Animation (Light Theme) -->

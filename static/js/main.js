@@ -4964,7 +4964,7 @@ window.loadOctSheetsData = function(forceReload) {
 
   const tbody = document.getElementById("oct-stores-tbody");
   if (tbody) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading OCT &amp; OCT Vol data...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>`;
   }
 
   _cachedFetch(url)
@@ -4979,8 +4979,8 @@ window.loadOctSheetsData = function(forceReload) {
       renderOctSheetsUI();
     })
     .catch(err => {
-      console.error("Failed to load OCT sheets data:", err);
-      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load OCT sheets data</td></tr>`;
+      console.error("Failed to load Store Fin Share data:", err);
+      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load Store Fin Share data</td></tr>`;
     });
 };
 
@@ -5092,8 +5092,8 @@ window.renderOctSheetsUI = function() {
   const storeBadge = document.getElementById("oct-store-count-badge");
   if (storeTitle) {
     storeTitle.innerHTML = isVal
-      ? "OCT &mdash; Store-wise Value Finance Share (&#8377;)"
-      : "OCT Vol &mdash; Store-wise Volume Finance Share (Qty)";
+      ? "Store Fin Share &mdash; Value (&#8377;)"
+      : "Store Fin Share &mdash; Volume (Qty)";
   }
   if (storeBadge) {
     storeBadge.textContent = `${filteredStores.length} of ${allStores.length} Stores`;
@@ -5383,7 +5383,7 @@ window.exportOctSheetsToExcel = function() {
     (oct.bdms || []).forEach(b => {
       octRows.push([b.bdm, Math.round(b.fin || 0), Math.round(b.total || 0), ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(octRows), "OCT");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(octRows), "Value");
 
     // Sheet 2: OCT Vol (Volume)
     const vol = _octSheetsCacheData.oct_vol;
@@ -5416,10 +5416,10 @@ window.exportOctSheetsToExcel = function() {
     (vol.bdms || []).forEach(b => {
       volRows.push([b.bdm, b.fin || 0, b.total || 0, ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(volRows), "OCT Vol");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(volRows), "Volume");
 
-    XLSX.writeFile(wb, `OCT_and_OCT_Vol_${activeDate || "2026-10"}.xlsx`);
-    showToast("✅ Exported OCT & OCT Vol sheets to Excel", "success");
+    XLSX.writeFile(wb, `Store_Fin_Share_${activeDate || "data"}.xlsx`);
+    showToast("✅ Exported Store Fin Share to Excel", "success");
   } catch (e) {
     showToast("Export failed: " + e.message, "error");
   }
