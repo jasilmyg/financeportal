@@ -1490,12 +1490,16 @@ def get_oct_sheets_data(
         })
 
     # 2. Build TM (Fin BDM) Summary & Target/Card Slab Tables for OCT and OCT Vol
-    # Formula constants in OCT sheet: O2=31, O5=88, O7=-57
-    o2_days = 31.0
-    o5_val = 88.0
-    o7_val = -57.0
-    n5_vol = 300.0
-    n7_vol = -269.0
+    # Day counters used by the OCT sheet formulas:
+    #   O2 = days in month, O7 = remaining days (month end - last data day), O5 = elapsed days (O2 - O7).
+    # The Excel's O3 (month-end) cell was stale (31-Aug), which made O5/O7 = 88/-57.
+    # Here they are computed from the selected period so CRR / DRR / Trend are meaningful.
+    import calendar as _cal
+    _p_start = datetime.strptime(str(eff_start)[:10], "%Y-%m-%d").date()
+    _p_end = datetime.strptime(str(eff_end)[:10], "%Y-%m-%d").date()
+    o2_days = float(_cal.monthrange(_p_end.year, _p_end.month)[1])
+    o7_val = float(max(o2_days - _p_end.day, 0))
+    o5_val = float(max((_p_end - _p_start).days + 1, 1))
 
     oct_tms = []
     vol_tms = []
