@@ -1098,6 +1098,16 @@
               </button>
             </div>
 
+            <!-- Filter by State (shared, synced with the other tabs) -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Filter by State</label>
+              <div id="oct-filter-state-wrap" style="position:relative; width:140px;">
+                <button type="button" id="oct-filter-state-btn" class="date-select" style="width:140px; padding:4px 8px; height:32px; font-size:12px; text-align:left; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer;">All States</button>
+                <div id="oct-filter-state-panel" style="display:none; position:absolute; top:36px; left:0; z-index:1000; min-width:170px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:6px; box-shadow:0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="oct-filter-state" value="">
+              </div>
+            </div>
+
             <!-- Store Search -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted);">Search Store</label>

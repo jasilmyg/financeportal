@@ -100,7 +100,7 @@ def _erp_by_store(q_date: str, q_tf: str, q_end: str):
     tmp["_P"] = tmp["Financier"].astype(str).str.strip().isin(PAPER_FINS)
     tot = tmp.groupby("_S").agg(tv=("Sold Price", "sum"), tq=("QTY", "sum"))
     fin = tmp[tmp["_P"]].groupby("_S").agg(fv=("Sold Price", "sum"), fq=("QTY", "sum"))
-    meta_df = tmp.groupby("_S")[["RBM", "BDM", "Fin BDM"]].agg(_mode_text)
+    meta_df = tmp.groupby("_S")[["RBM", "BDM", "Fin BDM", "State"]].agg(_mode_text)
     totals, meta = {}, {}
     for s in tot.index:
         totals[s] = (
@@ -110,7 +110,7 @@ def _erp_by_store(q_date: str, q_tf: str, q_end: str):
             float(fin.fq.get(s, 0.0)),
         )
         m = meta_df.loc[s]
-        meta[s] = {"rbm": m["RBM"], "bdm": m["BDM"], "fin_bdm": m["Fin BDM"]}
+        meta[s] = {"rbm": m["RBM"], "bdm": m["BDM"], "fin_bdm": m["Fin BDM"], "state": m["State"] or "OTHERS"}
     return totals, meta
 
 
@@ -321,7 +321,9 @@ def get_store_fin_share_data(
     timeframe: str = "monthly",
     end_date_str: str = "",
     period_mode: str = "reference",
+    state: str = "",
 ) -> dict:
+    sel_states = sorted({x.strip().upper() for x in str(state or "").split(",") if x.strip()})
     # ---- period ----
     if period_mode == "reference" and str(date_str or "").startswith("2026-10") and timeframe == "monthly":
         q_date, q_tf, q_end = "2026-10-01", "custom", "2026-10-27"
@@ -331,7 +333,7 @@ def get_store_fin_share_data(
         s_dt, e_dt = emi_state.range_of(date_str, timeframe, end_date_str or None)
         eff_start, eff_end = s_dt.isoformat(), e_dt.isoformat()
 
-    cache_key = (eff_start, eff_end, emi_state.signature())
+    cache_key = (eff_start, eff_end, tuple(sel_states), emi_state.signature())
     if cache_key in _MEM_CACHE:
         return _MEM_CACHE[cache_key]
 
@@ -350,30 +352,41 @@ def get_store_fin_share_data(
     card, card_info = _card_by_store(s_dt2, e_dt2, filtered=True)
     bench, bench_info = _benchmark(p_start)
 
-    # Only regional retail stores: drop the catch-all RBM buckets (OTHERS / KARNATAKA RBM / blank)
-    stores_set = {s for s in erp if meta.get(s, {}).get("rbm") and meta[s]["rbm"] not in CATCHALL_RBMS}
+    # Known retail stores only (a store must exist in branch_master by name; this drops unmapped
+    # internal codes such as corporate / warehouse billing branches) with a real RBM bucket.
+    known = set(_branch_names().values())
+    stores_set = {s for s in erp if s in known and meta.get(s, {}).get("rbm")}
 
     # Tracked stores (have a Fin BDM assigned) that had no sales in the period still appear, with 0
     try:
         from sales_cleaner import STORE_FIN_BDM_MAP as _FIN_BDM_MAP
-        regional = {meta[s]["rbm"] for s in stores_set}
+        regional = {meta[s]["rbm"] for s in stores_set} - CATCHALL_RBMS
+        rbm_state = {}
+        for s in stores_set:
+            rbm_state.setdefault(meta[s]["rbm"], []).append(meta[s]["state"])
+        rbm_state = {k: max(set(v), key=v.count) for k, v in rbm_state.items()}
         bm = query_df(
             "SELECT upperUTF8(trim(branch_name)) AS name, upperUTF8(trim(rbm)) AS rbm, upperUTF8(trim(bdm)) AS bdm "
             "FROM branch_master WHERE upperUTF8(store_type) = 'BRANCH'", {},
         )
         for _, r in bm.iterrows():
             name = str(r["name"]).strip().upper()
-            if name and name not in erp and str(r["rbm"]).strip().upper() in regional and name in _FIN_BDM_MAP:
+            rb = str(r["rbm"]).strip().upper()
+            if name and name not in erp and rb in regional and name in _FIN_BDM_MAP:
                 erp[name] = (0.0, 0.0, 0.0, 0.0)
                 meta[name] = {
-                    "rbm": str(r["rbm"]).strip().upper(),
+                    "rbm": rb,
                     "bdm": str(r["bdm"]).strip().upper(),
                     "fin_bdm": str(_FIN_BDM_MAP[name]).strip().upper(),
+                    "state": rbm_state.get(rb, "KERALA"),
                 }
                 stores_set.add(name)
     except Exception as exc:
         logger.warning("zero-sales stores lookup skipped: %s", exc)
 
+    all_states = sorted({meta[s]["state"] for s in stores_set})
+    if sel_states:
+        stores_set = {s for s in stores_set if meta[s]["state"] in sel_states}
     stores = sorted(stores_set)
     oct_rows, vol_rows = [], []
     for i, s in enumerate(stores, start=1):
@@ -388,7 +401,7 @@ def get_store_fin_share_data(
             "row": i, "store": s,
             "fin": round(fin_v, 2), "paper_fin": round(fv, 2), "card_fin": round(cv, 2),
             "total": round(tv, 2), "fin_share": share_v,
-            "fin_bdm": m["fin_bdm"], "bdm": m["bdm"], "rbm": m["rbm"],
+            "fin_bdm": m["fin_bdm"], "bdm": m["bdm"], "rbm": m["rbm"], "state": m["state"],
             "amj": b_val, "dif_mode": "subtract",
             "dif": (share_v - b_val) if b_val is not None else None,
         })
@@ -400,7 +413,7 @@ def get_store_fin_share_data(
             "row": i, "store": s,
             "fin": fin_q, "paper_fin": int(round(fq)), "card_fin": int(cq),
             "total": tot_q, "fin_share": share_q,
-            "fin_bdm": m["fin_bdm"], "bdm": m["bdm"], "rbm": m["rbm"],
+            "fin_bdm": m["fin_bdm"], "bdm": m["bdm"], "rbm": m["rbm"], "state": m["state"],
             "jas": b_qty,
             "dif": (share_q - b_qty) if b_qty is not None else None,
         })
@@ -446,18 +459,18 @@ def get_store_fin_share_data(
         return out
 
     def roll_oct(label, names):
-        sub = [r for r in oct_rows if r["fin_bdm"] in names]
+        sub = [r for r in oct_rows if names is None or r["fin_bdm"] in names]
         return _tm_metrics(
             label,
             sum(r["fin"] for r in sub), sum(r["total"] for r in sub), sum(r["card_fin"] for r in sub),
-            sum_targets(names), days,
+            sum_targets(all_tm if names is None else names), days,
         )
 
     def roll_vol(label, names):
-        sub = [r for r in vol_rows if r["fin_bdm"] in names]
-        rows_v = [r for r in oct_rows if r["fin_bdm"] in names]
+        sub = [r for r in vol_rows if names is None or r["fin_bdm"] in names]
+        rows_v = [r for r in oct_rows if names is None or r["fin_bdm"] in names]
         fin_q, tot_q = sum(r["fin"] for r in sub), sum(r["total"] for r in sub)
-        t = sum_targets(names)
+        t = sum_targets(all_tm if names is None else names)
         card_v = sum(r["card_fin"] for r in rows_v)
         return {
             "tm": label, "fin": fin_q, "total": tot_q,
@@ -489,16 +502,18 @@ def get_store_fin_share_data(
             "elapsed_days": int(days[0]), "remaining_days": int(days[1]), "days_in_month": int(days[2]),
         },
         "benchmark": bench_info,
+        "states": all_states,
+        "selected_states": sel_states,
         "card_status": card_info,
         "targets": {"month": month_key, "set": bool(targets)},
         "oct": {
             "stores": oct_rows, "tms": oct_tms,
-            "tm_total": roll_oct("Total", all_tm), "tm_north": roll_oct("North", north), "tm_south": roll_oct("South", south),
+            "tm_total": roll_oct("Total", None), "tm_north": roll_oct("North", north), "tm_south": roll_oct("South", south),
             "rbms": group(oct_rows, "rbm", "rbm"), "bdms": group(oct_rows, "bdm", "bdm"),
         },
         "oct_vol": {
             "stores": vol_rows, "tms": vol_tms,
-            "tm_total": roll_vol("Total", all_tm), "tm_north": roll_vol("North", north), "tm_south": roll_vol("South", south),
+            "tm_total": roll_vol("Total", None), "tm_north": roll_vol("North", north), "tm_south": roll_vol("South", south),
             "rbms": group(vol_rows, "rbm", "rbm"), "bdms": group(vol_rows, "bdm", "bdm"),
         },
     }

@@ -1309,7 +1309,7 @@ Promise.all([
 });
 
 // ---- Multi-select State filter (shared across Category, Zone, Price, Brand, Store tabs) ----
-const _STATE_FILTER_PREFIXES = ["cat", "zone", "price", "brand", "store"];
+const _STATE_FILTER_PREFIXES = ["cat", "zone", "price", "brand", "store", "oct"];
 
 function _selectedStates(prefix = "cat") {
   const el = document.getElementById(`${prefix}-filter-state`) || document.getElementById("cat-filter-state");
@@ -1372,6 +1372,7 @@ function renderStateMulti(states) {
       if (prefix === "price" || document.getElementById("tab-price")?.classList.contains("active")) loadPriceRangeData();
       if (prefix === "brand" || document.getElementById("tab-brand")?.classList.contains("active")) loadBrandData();
       if (prefix === "store" || document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
+      if (prefix === "oct" || document.getElementById("tab-oct-sheets")?.classList.contains("active")) loadOctSheetsData(true);
     };
 
     const allRow = document.createElement("label");
@@ -4955,7 +4956,8 @@ window.loadOctSheetsData = function(forceReload) {
   const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
   const periodMode = (document.getElementById("oct-period-mode") || {}).value || "reference";
   const endDate = _endDate();
-  const url = `/api/oct-sheets-data?date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}`;
+  const stateSel = ((document.getElementById("oct-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
+  const url = `/api/oct-sheets-data?date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}&state=${encodeURIComponent(stateSel)}`;
 
   if (!forceReload && _octSheetsCacheData && _octSheetsCacheData._url === url) {
     renderOctSheetsUI();

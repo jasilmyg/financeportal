@@ -557,9 +557,10 @@ def api_oct_sheets_data():
     end_date_str = request.args.get('end_date', '')
     timeframe = request.args.get('timeframe', 'monthly')
     period_mode = request.args.get('period_mode', 'reference')
+    state = request.args.get('state', '')
     try:
         from store_fin_share import get_store_fin_share_data
-        return jsonify(get_store_fin_share_data(date_str, timeframe=timeframe, end_date_str=end_date_str, period_mode=period_mode))
+        return jsonify(get_store_fin_share_data(date_str, timeframe=timeframe, end_date_str=end_date_str, period_mode=period_mode, state=state))
     except Exception as exc:
         app.logger.error('api_oct_sheets_data failed: %s', exc, exc_info=True)
         return jsonify({'error': str(exc)}), 500
