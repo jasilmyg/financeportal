@@ -1113,8 +1113,19 @@ def load_pine_lab_file(file_storage) -> pd.DataFrame:
         df = pd.read_csv(file_storage)
         log.info(f'Pine Lab: loaded {len(df)} rows from CSV')
 
+    elif filename.endswith(('.xlsx', '.xls')):
+        raw_bytes = file_storage.read()
+        try:
+            df = pd.read_excel(io.BytesIO(raw_bytes), sheet_name='Dump Filtered', engine='calamine')
+        except Exception:
+            try:
+                df = pd.read_excel(io.BytesIO(raw_bytes), sheet_name='Dump', engine='calamine')
+            except Exception:
+                df = pd.read_excel(io.BytesIO(raw_bytes), engine='calamine')
+        log.info(f'Pine Lab: loaded {len(df)} rows from Excel')
+
     else:
-        raise ValueError('Unsupported file type. Please upload a .csv or .zip file.')
+        raise ValueError('Unsupported file type. Please upload a .csv, .xlsx, .xls, or .zip file.')
 
     # Validate required columns
     required = [COL_TXN_STATUS, COL_TXN_TYPE, COL_TXN_ID, COL_SERIAL, COL_ORIG_AMT, COL_DATE]

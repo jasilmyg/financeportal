@@ -887,21 +887,8 @@ def api_clean_sales_report():
         
         clean_sales_report(input_tmp, output_tmp)
         
-        # Reset PineLab manual uploads so they don't persist automatically
         if _CLICKHOUSE_AVAILABLE:
-            from clickhouse_client import get_client
-            try:
-                ch_client = get_client()
-                ch_client.command("TRUNCATE TABLE IF EXISTS benow_pine_financier")
-                ch_client.command("TRUNCATE TABLE IF EXISTS pine_lab_transactions")
-                ch_client.command("TRUNCATE TABLE IF EXISTS paytm_transactions")
-                ch_client.command("TRUNCATE TABLE IF EXISTS benow_transactions")
-                app.logger.info("Truncated PineLab manual upload tables upon new sales upload.")
-                emi_state.clear()      # PineLab / PAYTM hidden until their files are uploaded again
-                _clear_pinelab_cache()
-                ch_cache_clear()
-            except Exception as e:
-                app.logger.warning(f"Failed to truncate PineLab tables: {e}")
+            ch_cache_clear()
         
         # Delete old temp file if one existed
         if _latest_cleaned_report_path and os.path.exists(_latest_cleaned_report_path):
@@ -963,8 +950,8 @@ def api_upload_pinelab():
         return jsonify({'status': 'error', 'message': 'No file selected.'}), 400
 
     fname = file.filename.lower()
-    if not (fname.endswith('.csv') or fname.endswith('.zip')):
-        return jsonify({'status': 'error', 'message': 'Please upload a .csv or .zip file.'}), 400
+    if not (fname.endswith('.csv') or fname.endswith('.xlsx') or fname.endswith('.xls') or fname.endswith('.zip')):
+        return jsonify({'status': 'error', 'message': 'Please upload a .csv, .xlsx or .zip file.'}), 400
 
     try:
         # Step 1: Load file (handles CSV and ZIP)
@@ -1028,8 +1015,8 @@ def api_upload_pinelab():
             'date_to':        df_combined['_date'].max().strftime('%Y-%m-%d') if '_date' in df_combined.columns and not df_combined.empty else slot_stats.get('date_to', ''),
             'total_orig_amt': float(df_combined[COL_ORIG_AMT].sum()) if COL_ORIG_AMT in df_combined.columns else 0.0,
         }
-        emi_state.clear(emi_state.PINE_FIN)
         stats = pine_upload_to_ch(df_combined, stats)
+        emi_state.sync_from_clickhouse(force=True)
         _latest_pinelab_slots['combined'] = dict(stats)
         _save_pinelab_slots()
         ch_cache_clear()
@@ -1083,19 +1070,25 @@ def api_pinelab_status():
 
 @app.route('/api/reset-pinelab', methods=['POST'])
 def api_reset_pinelab():
-    """Clear uploaded Pine Labs data (Main + Angamaly) from memory and ClickHouse."""
+    """Clear the current session's uploaded Pine Labs months from memory and ClickHouse (preserving historical archive)."""
+    _load_pinelab_cache_if_needed()
+    months_to_clear = set()
+    if _latest_pinelab_cleaned_df is not None and not _latest_pinelab_cleaned_df.empty and '_date' in _latest_pinelab_cleaned_df.columns:
+        months_to_clear.update(_latest_pinelab_cleaned_df['_date'].dropna().dt.strftime('%Y-%m').unique().tolist())
     _clear_pinelab_cache()
-    emi_state.clear(emi_state.PINE_FIN)
     if _CLICKHOUSE_AVAILABLE:
         try:
             from clickhouse_client import get_client
             ch_client = get_client()
-            ch_client.command("TRUNCATE TABLE IF EXISTS pine_lab_transactions")
-            ch_client.command("ALTER TABLE benow_pine_financier DELETE WHERE financier = 'Pine Lab EMI'")
+            if months_to_clear:
+                m_in = ", ".join(f"'{m}'" for m in sorted(months_to_clear))
+                ch_client.command(f"ALTER TABLE pine_lab_transactions DELETE WHERE data_month IN ({m_in})")
+                ch_client.command(f"ALTER TABLE benow_pine_financier DELETE WHERE financier = 'Pine Lab EMI' AND data_month IN ({m_in})")
+            emi_state.sync_from_clickhouse(force=True)
             ch_cache_clear()
         except Exception as e:
             app.logger.warning(f"Failed to reset PineLab ClickHouse tables: {e}")
-    return jsonify({'status': 'success', 'message': 'Pine Labs uploads cleared.'})
+    return jsonify({'status': 'success', 'message': 'Pine Labs current upload cleared.'})
 
 @app.route('/api/download-pinelab-cleaned', methods=['GET'])
 @app.route('/api/files/PineLab_Cleaned.xlsx', methods=['GET'])
@@ -1177,11 +1170,16 @@ def api_filter_pinelab_by_date():
 
         client = get_client()
 
-        # Rows of the same month are replaced inside the upload (insert first, then delete older)
-        emi_state.clear(emi_state.PINE_FIN)
+        # Replace only the month(s) covered by this cached upload so historical archive stays intact
+        full_months = sorted(pd.to_datetime(df[COL_DATE], dayfirst=True, format='mixed', errors='coerce').dropna().dt.strftime('%Y-%m').unique().tolist())
+        if full_months:
+            m_in = ", ".join(f"'{m}'" for m in full_months)
+            client.command(f"ALTER TABLE pine_lab_transactions DELETE WHERE data_month IN ({m_in})")
+            client.command(f"ALTER TABLE benow_pine_financier DELETE WHERE financier = 'Pine Lab EMI' AND data_month IN ({m_in})")
 
         # Use invoice_no-based upload logic (solves dummy IMEI problem)
         stats = _upload_to_ch(df_filtered, {})
+        emi_state.sync_from_clickhouse(force=True)
         ch_cache_clear()
 
         matched_invoices = stats.get('phase1_invoice', 0)
@@ -1239,8 +1237,8 @@ def api_upload_paytm():
             })
 
         _latest_paytm_cleaned_df = df_clean.copy()   # cache for download / date filter
-        emi_state.clear(emi_state.PAYTM_FIN)
         stats = paytm_upload_to_ch(df_clean, stats)
+        emi_state.sync_from_clickhouse(force=True)
         ch_cache_clear()
 
         return jsonify({
@@ -1297,8 +1295,8 @@ def api_upload_benow():
             })
 
         _latest_benow_cleaned_df = df_clean.copy()
-        emi_state.clear(emi_state.BENOW_FIN)
         stats = benow_upload_to_ch(df_clean, stats)
+        emi_state.sync_from_clickhouse(force=True)
         ch_cache_clear()
 
         return jsonify({
@@ -1385,10 +1383,14 @@ def api_filter_paytm_by_date():
             })
 
         client = get_client()
-        # Rows of the same month are replaced inside the upload (insert first, then delete older)
-        emi_state.clear(emi_state.PAYTM_FIN)
+        full_months = sorted(pd.to_datetime(df[_PAYTM_DATE], errors='coerce').dropna().dt.strftime('%Y-%m').unique().tolist())
+        if full_months:
+            m_in = ", ".join(f"'{m}'" for m in full_months)
+            client.command(f"ALTER TABLE paytm_transactions DELETE WHERE data_month IN ({m_in})")
+            client.command(f"ALTER TABLE benow_pine_financier DELETE WHERE financier = '{_PAYTM_FIN}' AND data_month IN ({m_in})")
 
         stats = paytm_upload_to_ch(df_filtered, {})
+        emi_state.sync_from_clickhouse(force=True)
         ch_cache_clear()
         matched = stats.get('phase1_invoice', 0)
         return jsonify({
@@ -1470,10 +1472,14 @@ def api_filter_benow_by_date():
             })
 
         client = get_client()
-        # Rows of the same month are replaced inside the upload (insert first, then delete older)
-        emi_state.clear(emi_state.BENOW_FIN)
+        full_months = sorted(pd.to_datetime(df['_date'], errors='coerce').dropna().dt.strftime('%Y-%m').unique().tolist())
+        if full_months:
+            m_in = ", ".join(f"'{m}'" for m in full_months)
+            client.command(f"ALTER TABLE benow_transactions DELETE WHERE data_month IN ({m_in})")
+            client.command(f"ALTER TABLE benow_pine_financier DELETE WHERE financier = '{_BENOW_FIN}' AND data_month IN ({m_in})")
 
         stats = benow_upload_to_ch(df_filtered, {})
+        emi_state.sync_from_clickhouse(force=True)
         ch_cache_clear()
         matched = stats.get('phase1_invoice', 0)
         return jsonify({

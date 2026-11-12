@@ -22,6 +22,7 @@ data/*.pkl
 data/_pinelab_slots_meta.json
 data/oct_sheets_reference_cache.json
 data/_fin_share_erp_*.json
+data/_bulk_card_ingested.json
 
 # Diagnostic / debug dumps
 data/diag*.txt

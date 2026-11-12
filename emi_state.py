@@ -29,6 +29,13 @@ _DATE_MAX = date(2999, 12, 31)
 _lock = threading.Lock()
 _uploaded: dict[str, set] = {PINE_FIN: set(), PAYTM_FIN: set(), BENOW_FIN: set()}   # data_month tags
 _spans: dict[str, list] = {PINE_FIN: [], PAYTM_FIN: [], BENOW_FIN: []}              # (first_date, last_date)
+_ch_synced: bool = False
+
+_FIN_TABLES = (
+    (PINE_FIN, 'pine_lab_transactions'),
+    (PAYTM_FIN, 'paytm_transactions'),
+    (BENOW_FIN, 'benow_transactions'),
+)
 
 
 def _save_locked() -> None:
@@ -122,17 +129,71 @@ def mark_uploaded(financier: str, data_month, date_from=None, date_to=None) -> N
         _save_locked()
 
 
+def sync_from_clickhouse(force: bool = False) -> bool:
+    """
+    Sync uploaded month tags and date spans from ClickHouse card tables so
+    historical and pre-loaded data is always visible (including on Render / restarts).
+    When force=True, rebuilds the in-memory state cleanly from ClickHouse.
+    """
+    global _ch_synced
+    if _ch_synced and not force:
+        return True
+    try:
+        from clickhouse_client import get_client
+        client = get_client()
+        found_months: dict[str, set] = {f: set() for f in _ALL_FINS}
+        found_spans: dict[str, list] = {f: [] for f in _ALL_FINS}
+        for fin, tbl in _FIN_TABLES:
+            try:
+                res = client.query(
+                    f"SELECT data_month, min(toDate(txn_date)), max(toDate(txn_date)) "
+                    f"FROM {tbl} WHERE data_month != '' GROUP BY data_month"
+                )
+                for dm, dmin, dmax in res.result_rows:
+                    dm_str = str(dm or '').strip()
+                    lo = _to_date(dmin)
+                    hi = _to_date(dmax)
+                    if dm_str and lo and hi:
+                        found_months[fin].add(dm_str)
+                        found_spans[fin].append((lo, hi))
+            except Exception:
+                continue
+
+        with _lock:
+            if force:
+                for fin in _ALL_FINS:
+                    _uploaded[fin] = set()
+                    _spans[fin] = []
+            for fin in _ALL_FINS:
+                _uploaded.setdefault(fin, set()).update(found_months[fin])
+                for lo, hi in found_spans[fin]:
+                    _merge_span_locked(fin, lo, hi)
+            _ch_synced = True
+            _save_locked()
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_synced() -> None:
+    if not _ch_synced:
+        sync_from_clickhouse(force=False)
+
+
 def clear(financier: str = None) -> None:
     """Forget uploads for one financier, or for all of them when None."""
+    global _ch_synced
     with _lock:
         for k in ([financier] if financier else list(_uploaded)):
             _uploaded.setdefault(k, set()).clear()
             _spans.setdefault(k, []).clear()
+        _ch_synced = True
         _save_locked()
 
 
 def is_uploaded(financier: str, data_month: str = None) -> bool:
     """True if a file was uploaded for `data_month` (or for any month when None)."""
+    _ensure_synced()
     with _lock:
         months = _uploaded.get(financier, ())
         return bool(months) if data_month is None else data_month in months
@@ -170,6 +231,7 @@ def range_of(date_str: str, timeframe: str, end_date_str: str = None):
 
 def overlapping_spans(financier: str, start: date, end: date) -> list:
     """Uploaded date spans of `financier` clipped to [start, end] (empty if none overlap)."""
+    _ensure_synced()
     with _lock:
         spans = list(_spans.get(financier, ()))
     return [(max(lo, start), min(hi, end)) for lo, hi in spans if lo <= end and hi >= start]
@@ -189,15 +251,21 @@ def date_filter_sql(financier: str, start: date, end: date, column: str = 'txn_d
 def bpf_filter_sql(start: date, end: date) -> str:
     """
     'AND ...' fragment for benow_pine_financier subqueries: keeps non-EMI financiers, and
-    each EMI financier only if a file overlapping [start, end] was uploaded this session
-    (restricted to the month tags that upload used).
+    each EMI financier only if data overlapping [start, end] exists in ClickHouse
+    (scoped strictly to the month tags overlapping [start, end]).
     """
+    _ensure_synced()
+    start_ym = start.strftime('%Y-%m') if start > _DATE_MIN else '0000-00'
+    end_ym = end.strftime('%Y-%m') if end < _DATE_MAX else '9999-99'
     allowed = []
     with _lock:
         tags = {f: sorted(_uploaded.get(f, ())) for f in _ALL_FINS}
     for fin in _ALL_FINS:
         if tags[fin] and overlapping_spans(fin, start, end):
-            months = ", ".join(f"'{m}'" for m in tags[fin])
+            scoped = [m for m in tags[fin] if start_ym <= m <= end_ym]
+            if not scoped:
+                scoped = tags[fin]
+            months = ", ".join(f"'{m}'" for m in scoped)
             allowed.append(f"(financier = '{fin}' AND data_month IN ({months}))")
     if not allowed:
         return "AND 1 = 0"
@@ -206,6 +274,7 @@ def bpf_filter_sql(start: date, end: date) -> str:
 
 def signature() -> tuple:
     """Hashable snapshot of the state, for use in cache keys."""
+    _ensure_synced()
     with _lock:
         return (
             tuple(sorted((k, tuple(sorted(v))) for k, v in _uploaded.items())),
