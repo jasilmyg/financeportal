@@ -246,20 +246,20 @@ def _build_date_filter(date_str: str, timeframe: str, end_date_str: str = None) 
     return sql, params
 
 
-def _emi_totals(table: str, financier: str, date_str: str, timeframe: str, end_date_str: str = None, state_cond: str = "") -> dict:
+def _emi_both_totals(table: str, financier: str, date_str: str, timeframe: str, end_date_str: str = None, state_cond: str = "") -> tuple[dict, dict]:
     """
-    {erp_category: qty} straight from an uploaded EMI file table, for the dashboard's
-    selected period. Rows are selected purely by transaction date, limited to the dates the
-    file(s) uploaded in this session actually cover - so changing the date picker (daily,
-    monthly, quarterly or custom, even across month boundaries) always follows the file.
+    ({erp_category: qty}, {erp_category: value_in_cr}) straight from an uploaded EMI file table
+    in a single SQL round-trip (cached via query_df).
     """
     start, end = emi_state.range_of(date_str, timeframe, end_date_str)
     date_cond = emi_state.date_filter_sql(financier, start, end)
-    if date_cond is None:      # no file uploaded for this period -> column stays empty
-        return {}
+    if date_cond is None:      # no file uploaded for this period -> columns stay empty
+        return {}, {}
     extra = f" AND {state_cond}" if state_cond else ""
     sql = f"""
-        SELECT erp_category, sum(qty) AS total_qty
+        SELECT erp_category,
+               sum(qty) AS total_qty,
+               sum(toFloat64(original_amount)) / 10000000.0 AS total_val_cr
         FROM {table}
         WHERE erp_category != ''
           AND {date_cond}{extra}
@@ -267,8 +267,22 @@ def _emi_totals(table: str, financier: str, date_str: str, timeframe: str, end_d
     """
     res = query_df(sql, {})
     if res.empty:
-        return {}
-    return dict(zip(res['erp_category'].astype(str), res['total_qty'].astype(int)))
+        return {}, {}
+    cats = res['erp_category'].astype(str)
+    return (
+        dict(zip(cats, res['total_qty'].astype(int))),
+        dict(zip(cats, res['total_val_cr'].astype(float))),
+    )
+
+
+def _emi_totals(table: str, financier: str, date_str: str, timeframe: str, end_date_str: str = None, state_cond: str = "") -> dict:
+    """
+    {erp_category: qty} straight from an uploaded EMI file table, for the dashboard's
+    selected period. Rows are selected purely by transaction date, limited to the dates the
+    file(s) uploaded in this session actually cover - so changing the date picker (daily,
+    monthly, quarterly or custom, even across month boundaries) always follows the file.
+    """
+    return _emi_both_totals(table, financier, date_str, timeframe, end_date_str, state_cond=state_cond)[0]
 
 
 def get_pine_lab_totals(
@@ -532,11 +546,17 @@ def get_card_overrides(
         pt_cond = ""
         bn_cond = ""
 
-    raw = {
-        'PineLab': get_pine_lab_totals(date_str, timeframe, end_date_str, state_cond=pl_cond),
-        'PAYTM': get_paytm_totals(date_str, timeframe, end_date_str, state_cond=pt_cond),
-        'Benow': get_benow_totals(date_str, timeframe, end_date_str, state_cond=bn_cond),
-    }
+    emi_state._ensure_synced()
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_pine = pool.submit(get_pine_lab_totals, date_str, timeframe, end_date_str, pl_cond)
+        f_paytm = pool.submit(get_paytm_totals, date_str, timeframe, end_date_str, pt_cond)
+        f_benow = pool.submit(get_benow_totals, date_str, timeframe, end_date_str, bn_cond)
+        raw = {
+            'PineLab': f_pine.result(),
+            'PAYTM': f_paytm.result(),
+            'Benow': f_benow.result(),
+        }
     out = {}
     for fin, cats in raw.items():
         merged = {}
@@ -566,22 +586,7 @@ def _emi_value_totals(table: str, financier: str, date_str: str, timeframe: str,
     {erp_category: value_in_cr} straight from an uploaded EMI file table, for the dashboard's
     selected period.
     """
-    start, end = emi_state.range_of(date_str, timeframe, end_date_str)
-    date_cond = emi_state.date_filter_sql(financier, start, end)
-    if date_cond is None:
-        return {}
-    extra = f" AND {state_cond}" if state_cond else ""
-    sql = f"""
-        SELECT erp_category, sum(toFloat64(original_amount)) / 10000000.0 AS total_val_cr
-        FROM {table}
-        WHERE erp_category != ''
-          AND {date_cond}{extra}
-        GROUP BY erp_category
-    """
-    res = query_df(sql, {})
-    if res.empty:
-        return {}
-    return dict(zip(res['erp_category'].astype(str), res['total_val_cr'].astype(float)))
+    return _emi_both_totals(table, financier, date_str, timeframe, end_date_str, state_cond=state_cond)[1]
 
 
 def get_card_value_overrides(
@@ -632,11 +637,17 @@ def get_card_value_overrides(
             logger.warning("_emi_value_totals(%s) failed: %s", table, e)
             return {}
 
-    raw = {
-        'PineLab': _safe_val('pine_lab_transactions', emi_state.PINE_FIN, pl_cond),
-        'PAYTM': _safe_val('paytm_transactions', emi_state.PAYTM_FIN, pt_cond),
-        'Benow': _safe_val('benow_transactions', emi_state.BENOW_FIN, bn_cond),
-    }
+    emi_state._ensure_synced()
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_pine = pool.submit(_safe_val, 'pine_lab_transactions', emi_state.PINE_FIN, pl_cond)
+        f_paytm = pool.submit(_safe_val, 'paytm_transactions', emi_state.PAYTM_FIN, pt_cond)
+        f_benow = pool.submit(_safe_val, 'benow_transactions', emi_state.BENOW_FIN, bn_cond)
+        raw = {
+            'PineLab': f_pine.result(),
+            'PAYTM': f_paytm.result(),
+            'Benow': f_benow.result(),
+        }
     out = {}
     for fin, cats in raw.items():
         merged = {}
@@ -677,6 +688,50 @@ _STATE_SQL = f"""CASE
         ELSE 'OTHERS'
     END"""
 _IS_OTHERS_STATE_SQL = f"(({_STATE_SQL}) = 'OTHERS')"
+
+_RBM_FIN_BDM_DASH: dict = {
+    'ALFAS':   'Aswin',
+    'SAMEER':  'Siraj',
+    'SAMEEM':  'Sreeju',
+    'MAHESH':  'Jackson',
+    'RENJITH': 'Arun',
+    'VAISAKH': 'Ashik',
+}
+
+
+def _assign_fin_bdm(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute 'Fin BDM' from store name / RBM and drop helper column '_StoreName'."""
+    try:
+        from sales_cleaner import STORE_FIN_BDM_MAP as _STORE_FIN_BDM
+    except ImportError:
+        _STORE_FIN_BDM = {}
+
+    store_col = '_StoreName' if '_StoreName' in df.columns else ('Branch' if 'Branch' in df.columns else None)
+    if store_col:
+        branch_upper = df[store_col].astype(str).str.strip().str.upper()
+        mapped_fin = branch_upper.map(_STORE_FIN_BDM)
+
+        def _fuzzy_fin_bdm(s):
+            for k, v in _STORE_FIN_BDM.items():
+                if s == k or s in k or k in s:
+                    return v
+            return None
+
+        still_miss = mapped_fin.isna()
+        if still_miss.any():
+            mapped_fin[still_miss] = branch_upper[still_miss].apply(_fuzzy_fin_bdm)
+        if 'RBM' in df.columns:
+            rbm_upper = df['RBM'].astype(str).str.strip().str.upper()
+            still_miss = mapped_fin.isna()
+            if still_miss.any():
+                mapped_fin[still_miss] = rbm_upper[still_miss].map(_RBM_FIN_BDM_DASH)
+        df['Fin BDM'] = mapped_fin.fillna('')
+    else:
+        df['Fin BDM'] = ''
+
+    if '_StoreName' in df.columns:
+        df = df.drop(columns=['_StoreName'])
+    return df
 
 
 def get_clickhouse_df(
@@ -775,6 +830,7 @@ def get_clickhouse_df(
     # that an uploaded file covers - works for daily/monthly/quarterly/custom, across months.
     _rng_start, _rng_end = emi_state.range_of(date_str, timeframe, end_date_str)
     bpf_range_sql = emi_state.bpf_filter_sql(_rng_start, _rng_end)
+    sd_date_filter = date_filter.replace("s.date", "s2.date")
 
     # Build SQL with all mapping done in ClickHouse (mirrors Workbook5 / get_raw_export_df base rules)
     sql = f"""
@@ -871,6 +927,12 @@ LEFT JOIN (
            any(financier) AS financier,
            any(staff) AS staff
     FROM sales_data
+    WHERE invoice_number IN (
+        SELECT s2.invoice_no
+        FROM azure_sales_report s2
+        WHERE {sd_date_filter}
+          AND abs(toFloat64(s2.sold_price)) > {_MIN_PRICE}
+    )
     GROUP BY invoice_number
 ) sd                               ON s.invoice_no = sd.invoice_number
 LEFT JOIN (
@@ -930,45 +992,7 @@ GROUP BY Date, Branch, _StoreName, RBM, BDM, Staff, State, District, Financier, 
     df["Sold Price"] = pd.to_numeric(df["Sold Price"], errors="coerce").fillna(0.0)
 
     # 3. Compute Fin BDM from store name (mirrors raw export logic)
-    try:
-        from sales_cleaner import STORE_FIN_BDM_MAP as _STORE_FIN_BDM
-    except ImportError:
-        _STORE_FIN_BDM = {}
-
-    _RBM_FIN_BDM_DASH: dict = {
-        'ALFAS':   'Aswin',
-        'SAMEER':  'Siraj',
-        'SAMEEM':  'Sreeju',
-        'MAHESH':  'Jackson',
-        'RENJITH': 'Arun',
-        'VAISAKH': 'Ashik',
-    }
-
-    store_col = '_StoreName' if '_StoreName' in df.columns else ('Branch' if 'Branch' in df.columns else None)
-    if store_col:
-        branch_upper = df[store_col].astype(str).str.strip().str.upper()
-        mapped_fin = branch_upper.map(_STORE_FIN_BDM)
-
-        def _fuzzy_fin_bdm(s):
-            for k, v in _STORE_FIN_BDM.items():
-                if s == k or s in k or k in s:
-                    return v
-            return None
-
-        still_miss = mapped_fin.isna()
-        if still_miss.any():
-            mapped_fin[still_miss] = branch_upper[still_miss].apply(_fuzzy_fin_bdm)
-        if 'RBM' in df.columns:
-            rbm_upper = df['RBM'].astype(str).str.strip().str.upper()
-            still_miss = mapped_fin.isna()
-            if still_miss.any():
-                mapped_fin[still_miss] = rbm_upper[still_miss].map(_RBM_FIN_BDM_DASH)
-        df['Fin BDM'] = mapped_fin.fillna('')
-    else:
-        df['Fin BDM'] = ''
-
-    if '_StoreName' in df.columns:
-        df = df.drop(columns=['_StoreName'])
+    df = _assign_fin_bdm(df)
 
     # 4. Apply Fin BDM filter (post-query, since it's computed in Python)
     if fin_bdm:
@@ -978,6 +1002,102 @@ GROUP BY Date, Branch, _StoreName, RBM, BDM, Staff, State, District, Financier, 
             return df
 
     logger.info("ClickHouse DataFrame (cleaned): %d rows, columns: %s", len(df), list(df.columns))
+    return df
+
+
+def get_store_erp_summary(
+    date_str: str,
+    timeframe: str = "monthly",
+    end_date_str: str = None,
+) -> pd.DataFrame:
+    """
+    Fast SQL-side store aggregation mirroring get_clickhouse_df + PAPER_FINS sum.
+    Groups directly by (Branch, _StoreName, RBM, BDM, State) in ClickHouse instead of
+    pulling 60k-180k staff/product/brand rows into pandas.
+    """
+    date_filter, params = _build_date_filter(date_str, timeframe, end_date_str)
+    sd_date_filter = date_filter.replace("s.date", "s2.date")
+
+    junk_sql = ", ".join(f"'{p}'" for p in _JUNK_PRODUCTS)
+    junk_nospace_sql = ", ".join(f"'{p.replace(' ', '')}'" for p in _JUNK_PRODUCTS)
+    excluded_cats_sql = ", ".join(f"'{c}'" for c in _EXCLUDED_CH_CATEGORIES)
+
+    qty_expr = """toInt64(CASE
+        WHEN toFloat64(s.sold_price) < 0
+            THEN toInt64(-1) * toInt64(abs(toInt64(coalesce(s.qty, 0))))
+        ELSE toInt64(abs(toInt64(coalesce(s.qty, 0))))
+    END) * if((s.invoice_no = '26-I-TDF-86108' AND s.item_code = 'SMA00165') OR (s.invoice_no = '26-I-TDF-86109' AND s.item_code = 'AC02814'), 2, 1)"""
+    val_expr = """round(toFloat64(coalesce(s.sold_price, 0)), 2) * if((s.invoice_no = '26-I-TDF-86108' AND s.item_code = 'SMA00165') OR (s.invoice_no = '26-I-TDF-86109' AND s.item_code = 'AC02814'), 2, 1)"""
+
+    is_paper_sql = f"""(
+        s.invoice_no IN ('26-I-CHSY-13671', '26-I-RAM-5618')
+        OR {_RAW_HAS_DO_OVERRIDE}
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%BAJAJ%'
+        OR upper(coalesce(inv.financier_code, ''))  LIKE 'BAJAJ%'
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%HDB%'
+        OR upper(coalesce(inv.financier_code, ''))  LIKE 'HDB%'
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%DMI%'
+        OR upper(coalesce(inv.financier_code, ''))  LIKE 'SAMSUNG%'
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%IDFC%'
+        OR upper(coalesce(inv.financier_code, ''))  LIKE 'IDFC%'
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%TVS%'
+        OR upper(coalesce(inv.financier_code, ''))  LIKE 'TVSC%'
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%POONAWALLA%'
+        OR upper(coalesce(inv.financier_name, '')) LIKE '%PFL%'
+        OR upper(coalesce(inv.financier_code, ''))  LIKE 'POONA%'
+    )"""
+
+    sql = f"""
+SELECT
+    upper(trim(s.branch))                                           AS Branch,
+    upper(trim(coalesce(nullIf(bm.branch_name, ''), s.branch)))     AS _StoreName,
+    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.rbm, inv.rbm, '')))) AS RBM,
+    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.bdm, inv.bdm, '')))) AS BDM,
+    {_STATE_SQL}                                                    AS State,
+    count()                                                         AS row_cnt,
+    sum({qty_expr})                                                 AS tot_qty,
+    sum({val_expr})                                                 AS tot_val,
+    sumIf({qty_expr}, {is_paper_sql})                               AS fin_qty,
+    sumIf({val_expr}, {is_paper_sql})                               AS fin_val
+FROM azure_sales_report s
+LEFT JOIN item_master i            ON s.item_code  = i.item_code
+LEFT JOIN azure_invoice_report inv ON s.invoice_no = inv.invoice_no
+LEFT JOIN branch_master bm         ON upper(trim(s.branch)) = upper(trim(bm.code))
+LEFT JOIN (
+    SELECT invoice_number,
+           any(delivery_order_no) AS delivery_order_no,
+           any(financier) AS financier,
+           any(staff) AS staff
+    FROM sales_data
+    WHERE invoice_number IN (
+        SELECT s2.invoice_no
+        FROM azure_sales_report s2
+        WHERE {sd_date_filter}
+          AND abs(toFloat64(s2.sold_price)) > {_MIN_PRICE}
+    )
+    GROUP BY invoice_number
+) sd                               ON s.invoice_no = sd.invoice_number
+WHERE {date_filter}
+  AND abs(toFloat64(s.sold_price)) > {_MIN_PRICE}
+  AND upper(coalesce(inv.customer_type, '')) != 'CORPORATE'
+  AND upper(coalesce(inv.financier_name, '')) NOT LIKE '%ECOMMERCE%'
+  AND upper(coalesce(inv.financier_name, '')) NOT LIKE '%E-COMMERCE%'
+  AND upper(coalesce(inv.financier_code, '')) NOT LIKE '%ECOMMERCE%'
+  AND {_RAW_ALLOWED_RETAIL_FIN}
+  AND (i.category IS NULL OR i.category NOT IN ({excluded_cats_sql}))
+  AND ({_RAW_PROD_EXPR}) != ''
+  AND ({_RAW_PROD_EXPR}) NOT IN ({junk_sql})
+  AND replaceAll(({_RAW_PROD_EXPR}), ' ', '') NOT IN ({junk_nospace_sql})
+GROUP BY Branch, _StoreName, RBM, BDM, State
+"""
+    df = query_df(sql, params)
+    if df.empty:
+        return pd.DataFrame(columns=["Branch", "RBM", "BDM", "Fin BDM", "State", "row_cnt", "tot_qty", "tot_val", "fin_qty", "fin_val"])
+    for col in ("row_cnt", "tot_qty", "fin_qty"):
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    for col in ("tot_val", "fin_val"):
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    df = _assign_fin_bdm(df)
     return df
 
 

@@ -27,6 +27,7 @@ _DATE_MIN = date(1900, 1, 1)
 _DATE_MAX = date(2999, 12, 31)
 
 _lock = threading.Lock()
+_sync_lock = threading.Lock()
 _uploaded: dict[str, set] = {PINE_FIN: set(), PAYTM_FIN: set(), BENOW_FIN: set()}   # data_month tags
 _spans: dict[str, list] = {PINE_FIN: [], PAYTM_FIN: [], BENOW_FIN: []}              # (first_date, last_date)
 _ch_synced: bool = False
@@ -138,41 +139,66 @@ def sync_from_clickhouse(force: bool = False) -> bool:
     global _ch_synced
     if _ch_synced and not force:
         return True
-    try:
-        from clickhouse_client import get_client
-        client = get_client()
-        found_months: dict[str, set] = {f: set() for f in _ALL_FINS}
-        found_spans: dict[str, list] = {f: [] for f in _ALL_FINS}
-        for fin, tbl in _FIN_TABLES:
+    with _sync_lock:
+        if _ch_synced and not force:
+            return True
+        try:
+            from clickhouse_client import get_client
+            client = get_client()
+            found_months: dict[str, set] = {f: set() for f in _ALL_FINS}
+            found_spans: dict[str, list] = {f: [] for f in _ALL_FINS}
+
+            union_ok = False
             try:
-                res = client.query(
-                    f"SELECT data_month, min(toDate(txn_date)), max(toDate(txn_date)) "
+                union_sql = " UNION ALL ".join(
+                    f"SELECT '{fin}' AS fin, data_month, min(toDate(txn_date)) AS dmin, max(toDate(txn_date)) AS dmax "
                     f"FROM {tbl} WHERE data_month != '' GROUP BY data_month"
+                    for fin, tbl in _FIN_TABLES
                 )
-                for dm, dmin, dmax in res.result_rows:
+                res = client.query(union_sql)
+                for fin, dm, dmin, dmax in res.result_rows:
+                    fin_str = str(fin or '').strip()
                     dm_str = str(dm or '').strip()
                     lo = _to_date(dmin)
                     hi = _to_date(dmax)
-                    if dm_str and lo and hi:
-                        found_months[fin].add(dm_str)
-                        found_spans[fin].append((lo, hi))
+                    if fin_str in found_months and dm_str and lo and hi:
+                        found_months[fin_str].add(dm_str)
+                        found_spans[fin_str].append((lo, hi))
+                union_ok = True
             except Exception:
-                continue
+                union_ok = False
 
-        with _lock:
-            if force:
+            if not union_ok:
+                for fin, tbl in _FIN_TABLES:
+                    try:
+                        res = client.query(
+                            f"SELECT data_month, min(toDate(txn_date)), max(toDate(txn_date)) "
+                            f"FROM {tbl} WHERE data_month != '' GROUP BY data_month"
+                        )
+                        for dm, dmin, dmax in res.result_rows:
+                            dm_str = str(dm or '').strip()
+                            lo = _to_date(dmin)
+                            hi = _to_date(dmax)
+                            if dm_str and lo and hi:
+                                found_months[fin].add(dm_str)
+                                found_spans[fin].append((lo, hi))
+                    except Exception:
+                        continue
+
+            with _lock:
+                if force:
+                    for fin in _ALL_FINS:
+                        _uploaded[fin] = set()
+                        _spans[fin] = []
                 for fin in _ALL_FINS:
-                    _uploaded[fin] = set()
-                    _spans[fin] = []
-            for fin in _ALL_FINS:
-                _uploaded.setdefault(fin, set()).update(found_months[fin])
-                for lo, hi in found_spans[fin]:
-                    _merge_span_locked(fin, lo, hi)
-            _ch_synced = True
-            _save_locked()
-        return True
-    except Exception:
-        return False
+                    _uploaded.setdefault(fin, set()).update(found_months[fin])
+                    for lo, hi in found_spans[fin]:
+                        _merge_span_locked(fin, lo, hi)
+                _ch_synced = True
+                _save_locked()
+            return True
+        except Exception:
+            return False
 
 
 def _ensure_synced() -> None:
@@ -191,9 +217,10 @@ def clear(financier: str = None) -> None:
         _save_locked()
 
 
-def is_uploaded(financier: str, data_month: str = None) -> bool:
+def is_uploaded(financier: str, data_month: str = None, sync: bool = True) -> bool:
     """True if a file was uploaded for `data_month` (or for any month when None)."""
-    _ensure_synced()
+    if sync:
+        _ensure_synced()
     with _lock:
         months = _uploaded.get(financier, ())
         return bool(months) if data_month is None else data_month in months
@@ -272,9 +299,10 @@ def bpf_filter_sql(start: date, end: date) -> str:
     return "AND (" + " OR ".join(allowed) + ")"
 
 
-def signature() -> tuple:
+def signature(sync: bool = True) -> tuple:
     """Hashable snapshot of the state, for use in cache keys."""
-    _ensure_synced()
+    if sync:
+        _ensure_synced()
     with _lock:
         return (
             tuple(sorted((k, tuple(sorted(v))) for k, v in _uploaded.items())),

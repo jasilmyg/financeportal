@@ -148,10 +148,16 @@ window.refreshCurrentTab = function() {
 
 
 let _emiVersion = null;
+let _chWakeupRetries = 0;
+let _chRetryTimer = null;
 /** Poll /api/clickhouse/status and update the badge */
 function _pollClickHouseStatus() {
+  clearTimeout(_chRetryTimer);
   fetch('/api/clickhouse/status')
-    .then(r => r.json())
+    .then(async r => {
+      const txt = await r.text();
+      try { return JSON.parse(txt); } catch (e) { throw new Error('Non-JSON status response'); }
+    })
     .then(data => {
       if (data.emi_version !== undefined) {
         if (_emiVersion !== null && _emiVersion !== data.emi_version) {
@@ -162,10 +168,10 @@ function _pollClickHouseStatus() {
         _emiVersion = data.emi_version;
       }
       const badge = document.getElementById('chStatusBadge');
-      const dot   = document.getElementById('chStatusDot');
       const text  = document.getElementById('chStatusText');
       if (!badge) return;
       if (data.connected) {
+        _chWakeupRetries = 0;
         badge.className = 'ch-status-badge online';
         const rows = data.row_counts && data.row_counts.azure_sales_report
           ? (data.row_counts.azure_sales_report / 1e6).toFixed(1) + 'M rows'
@@ -174,16 +180,31 @@ function _pollClickHouseStatus() {
         badge.title = `ClickHouse connected\nCache entries: ${data.cache_entries || 0}\n` +
           Object.entries(data.row_counts || {}).map(([k,v]) => `${k}: ${v.toLocaleString()}`).join('\n');
       } else {
-        badge.className = 'ch-status-badge offline';
-        text.textContent = 'Offline';
-        badge.title = data.error || 'ClickHouse not reachable';
+        if (_chWakeupRetries < 6) {
+          _chWakeupRetries++;
+          badge.className = 'ch-status-badge';
+          if (text) text.textContent = 'Connecting\u2026';
+          badge.title = 'Waking ClickHouse Cloud\u2026';
+          _chRetryTimer = setTimeout(_pollClickHouseStatus, 4000);
+        } else {
+          badge.className = 'ch-status-badge offline';
+          if (text) text.textContent = 'Offline';
+          badge.title = data.error || 'ClickHouse not reachable';
+        }
       }
     })
     .catch(() => {
       const badge = document.getElementById('chStatusBadge');
-      if (badge) { badge.className = 'ch-status-badge offline'; }
-      const text = document.getElementById('chStatusText');
-      if (text) text.textContent = 'Offline';
+      const text  = document.getElementById('chStatusText');
+      if (_chWakeupRetries < 6) {
+        _chWakeupRetries++;
+        if (badge) badge.className = 'ch-status-badge';
+        if (text) text.textContent = 'Connecting\u2026';
+        _chRetryTimer = setTimeout(_pollClickHouseStatus, 4000);
+      } else {
+        if (badge) badge.className = 'ch-status-badge offline';
+        if (text) text.textContent = 'Offline';
+      }
     });
 }
 
@@ -213,7 +234,7 @@ function _apiCacheClearDate(date) {
 // Global data-loading indicator: top progress bar + floating status pill with a live
 // elapsed-time counter, and the page content is dimmed while any request is in flight.
 // ---------------------------------------------------------------------------
-let _loadingCount = 0, _loadingStart = 0, _loadingTick = null, _loadingHideT = null;
+let _loadingCount = 0, _loadingStart = 0, _loadingTick = null, _loadingHideT = null, _loadingWakeup = false;
 function _loadingEls() {
   let pill = document.getElementById('global-loading-pill');
   if (!pill) {
@@ -227,24 +248,29 @@ function _loadingEls() {
   }
   return { bar: document.getElementById('global-loading-bar'), pill, text: pill.querySelector('.gl-text') };
 }
+function _loadingLabel(secs) {
+  return _loadingWakeup ? `Connecting to live database\u2026 ${secs}s` : `Loading data\u2026 ${secs}s`;
+}
 function _loadingBegin() {
   const el = _loadingEls();
   clearTimeout(_loadingHideT);
   if (_loadingCount++ === 0) {
+    _loadingWakeup = false;
     _loadingStart = Date.now();
     document.body.classList.add('data-loading');
     el.pill.className = 'visible';
     el.bar.className = 'active';
-    el.text.textContent = 'Loading data\u2026 0s';
+    el.text.textContent = _loadingLabel(0);
     clearInterval(_loadingTick);
     _loadingTick = setInterval(() => {
-      el.text.textContent = `Loading data\u2026 ${Math.floor((Date.now() - _loadingStart) / 1000)}s`;
+      el.text.textContent = _loadingLabel(Math.floor((Date.now() - _loadingStart) / 1000));
     }, 500);
   }
 }
 function _loadingEnd(ok) {
   _loadingCount = Math.max(0, _loadingCount - 1);
   if (_loadingCount > 0) return;
+  _loadingWakeup = false;
   const el = _loadingEls();
   clearInterval(_loadingTick);
   document.body.classList.remove('data-loading');
@@ -257,8 +283,61 @@ function _loadingEnd(ok) {
 
 // Monotonic id so a slow, older response can never overwrite a newer date/filter selection.
 let _dashReqSeq = 0; let _catFilterReqSeq = 0;
+const _inFlightFetches = new Map();  // url -> Promise
 
-/** Fetch with JS-side cache. Returns a Promise<data>. */
+function _isTransientErrorMsg(msg) {
+  const m = String(msg || '').toLowerCase();
+  return /timed? ?out|connect|reset|broken pipe|eof|502|503|504|temporarily|clickhouse|starting|network|failed to fetch/.test(m);
+}
+
+function _fetchJsonWithRetry(url, opts) {
+  const silent = !!(opts && opts.silent);
+  const delays = [2000, 4000];
+
+  function attempt(idx) {
+    return fetch(url)
+      .then(async res => {
+        const text = await res.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          if (res.status >= 500 || res.status === 0) {
+            const err = new Error(`HTTP ${res.status} non-JSON response`);
+            err.retryable = true;
+            throw err;
+          }
+          throw new Error(`Invalid JSON (${res.status})`);
+        }
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          const err = new Error((data && data.error) || `HTTP ${res.status}`);
+          err.retryable = true;
+          throw err;
+        }
+        if (res.status >= 500 && data && (data.error || data.message) && _isTransientErrorMsg(data.error || data.message)) {
+          const err = new Error(data.error || data.message);
+          err.retryable = true;
+          throw err;
+        }
+        return data;
+      })
+      .catch(err => {
+        const isNet = err instanceof TypeError;
+        if ((err.retryable || isNet) && idx < delays.length) {
+          if (!silent) {
+            _loadingWakeup = true;
+            const el = _loadingEls();
+            el.text.textContent = _loadingLabel(Math.floor((Date.now() - _loadingStart) / 1000));
+          }
+          return new Promise(resolve => setTimeout(resolve, delays[idx])).then(() => attempt(idx + 1));
+        }
+        throw err;
+      });
+  }
+  return attempt(0);
+}
+
+/** Fetch with JS-side cache + in-flight deduplication + cold-start retry. Returns a Promise<data>. */
 function _cachedFetch(url, opts) {
   const silent = !!(opts && opts.silent);
   const cached = _apiCacheGet(url);
@@ -266,24 +345,34 @@ function _cachedFetch(url, opts) {
     console.debug('[cache HIT]', url);
     return Promise.resolve(cached);
   }
+  if (_inFlightFetches.has(url)) {
+    return _inFlightFetches.get(url);
+  }
   if (!silent) _loadingBegin();
-  return fetch(url)
-    .then(r => r.json())
+  const p = _fetchJsonWithRetry(url, opts)
     .then(data => {
-      if (!data.error) _apiCacheSet(url, data);  // only cache successful responses
-      if (!silent) _loadingEnd(!data.error);
+      _inFlightFetches.delete(url);
+      if (data && !data.error) _apiCacheSet(url, data);  // only cache successful responses
+      if (!silent) _loadingEnd(!(data && data.error));
       return data;
     })
-    .catch(err => { if (!silent) _loadingEnd(false); throw err; });
+    .catch(err => {
+      _inFlightFetches.delete(url);
+      if (!silent) _loadingEnd(false);
+      throw err;
+    });
+  _inFlightFetches.set(url, p);
+  return p;
 }
 
-/** Fire background prewarm for all 3 timeframes for a date. */
-function _prewarmClickHouse(date) {
+/** Fire polite debounced background prewarm for a date + current timeframe. */
+function _prewarmClickHouse(date, timeframe) {
   if (_dataSource !== 'clickhouse' || !date) return;
+  const tf = timeframe || ((document.getElementById('timeframeSelect') || {}).value || 'monthly');
   fetch('/api/clickhouse/prewarm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date })
+    body: JSON.stringify({ date, timeframe: tf })
   }).catch(() => {});  // fire-and-forget
 }
 
@@ -714,6 +803,10 @@ function initSidebar() {
       if (tab === "dashboard") {
         setTimeout(renderChart, 100);
       }
+
+      if (tab === "exec" && activeDate) {
+        setTimeout(() => loadMonthwisePerformance(activeDate), 50);
+      }
       
       // Load price range data on tab switch
       if (tab === "price") {
@@ -813,13 +906,13 @@ function initDateSelector() {
   // --- Trigger full reload ---
   function reloadAll(tf) {
     _apiCacheClearDate(activeDate);
-    loadData(activeDate);
+    loadData(activeDate, { skipDashboard: true });
     loadDashboardData(activeDate, tf);
     if (document.getElementById("tab-price")?.classList.contains("active")) loadPriceRangeData();
     if (document.getElementById("tab-brand")?.classList.contains("active")) loadBrandData();
     if (document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
     if (document.getElementById("tab-oct-sheets")?.classList.contains("active") && typeof loadOctSheetsData === "function") loadOctSheetsData(false);
-    _prewarmClickHouse(activeDate);
+    _prewarmClickHouse(activeDate, tf);
   }
 
   // --- Initialise year input from current activeDate ---
@@ -832,11 +925,10 @@ function initDateSelector() {
   // ----------------------------------------------------------------
   // Bootstrap: fetch saved review dates and set defaults
   // ----------------------------------------------------------------
-  fetch("/api/reviews")
-    .then(res => res.json())
+  _fetchJsonWithRetry("/api/reviews", { silent: true })
     .then(dates => {
       const tf = tfSelect.value;
-      if (dates.length === 0) {
+      if (!Array.isArray(dates) || dates.length === 0) {
         // No saved reviews — default to current month in monthly mode
         const today = new Date();
         const monthStart = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
@@ -861,7 +953,7 @@ function initDateSelector() {
       syncYearInput();
       applyPickerMode(activeTf);
       highlightPills(activeTf);
-      loadData(activeDate);
+      loadData(activeDate, { skipDashboard: true });
       loadDashboardData(activeDate, activeTf);
     })
     .catch(err => {
@@ -942,13 +1034,22 @@ function initDateSelector() {
   tfSelect.addEventListener("change", (e) => {
     const tf = e.target.value;
     applyPickerMode(tf);
+    if (activeDate) {
+      const d = new Date(activeDate + 'T00:00:00');
+      const yr = d.getFullYear();
+      const mo = d.getMonth() + 1;
+      if (tf === 'monthly') {
+        activeDate = makeDate(yr, mo);
+      } else if (tf === 'quarterly') {
+        const q = Math.ceil(mo / 3);
+        activeDate = makeDate(yr, Q_START_MO[q]);
+      } else if (tf === 'daily') {
+        dateInput.value = activeDate || '';
+      }
+    }
     syncYearInput();
     highlightPills(tf);
-    if (tf === 'daily') {
-      // Restore the date input value from activeDate
-      dateInput.value = activeDate || '';
-    }
-    loadDashboardData(activeDate, tf);
+    reloadAll(tf);
   });
 }
 
@@ -959,6 +1060,9 @@ window.refreshDashboardAfterEmi = function () {
   const tf = (document.getElementById('timeframeSelect') || {}).value || 'daily';
   if (activeDate) loadDashboardData(activeDate, tf);
 };
+
+let _monthwiseTimer = null;
+let _monthwiseLastKey = '';
 
 function loadDashboardData(date, timeframe) {
   if (!date) return;
@@ -1001,8 +1105,13 @@ function loadDashboardData(date, timeframe) {
         
         recalculateAll();
         renderExecSummary();
-        // Auto-fill monthwise table from live monthly data
-        loadMonthwisePerformance(activeDate);
+        // Auto-fill monthwise table: run right away if Exec Summary is active, else defer softly
+        clearTimeout(_monthwiseTimer);
+        if (document.getElementById("tab-exec")?.classList.contains("active")) {
+          loadMonthwisePerformance(activeDate);
+        } else {
+          _monthwiseTimer = setTimeout(() => loadMonthwisePerformance(activeDate), 2500);
+        }
       }
       
       // Always update category performance if available (re-run active filter if one is selected)
@@ -1623,18 +1732,15 @@ function triggerCategoryFilterLoad() {
 }
 
 // Load Global Targets & Review Data
-function loadData(date) {
-  // First load targets config
-  fetch("/api/targets")
-    .then(res => res.json())
+function loadData(date, opts) {
+  const skipDashboard = !!(opts && opts.skipDashboard);
+  // Load targets config & review data with automatic cold-start retry
+  _fetchJsonWithRetry("/api/targets", { silent: true })
     .then(targets => {
       globalTargets = targets;
       populateTargetsForm();
-      
-      // Then load review data
-      return fetch(`/api/review/${date}`);
+      return _fetchJsonWithRetry(`/api/review/${date}`, { silent: true });
     })
-    .then(res => res.json())
     .then(data => {
       const _keepCat = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === date) ? reviewData.category_performance : null;
       const _keepBrand = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === date) ? reviewData.brand_performance : null;
@@ -1647,8 +1753,10 @@ function loadData(date) {
       renderChart();
       lucide.createIcons();
       
-      // Also load dashboard data for new timeframes
-      loadDashboardData(activeDate, document.getElementById("timeframeSelect").value);
+      // Load dashboard data only if not already triggered by caller
+      if (!skipDashboard) {
+        loadDashboardData(activeDate, document.getElementById("timeframeSelect").value);
+      }
     })
     .catch(err => {
       showToast("Error loading review data", "error");
@@ -1877,6 +1985,8 @@ function loadMonthwisePerformance(dateStr) {
   // Determine quarter months (0-based indices)
   const quarterStart = Math.floor(month / 3) * 3;
   const months = [quarterStart, quarterStart + 1, quarterStart + 2];
+  const qKey = `${year}-Q${Math.floor(month / 3) + 1}|${_emiVersion || ''}|${_dataSource}`;
+  if (_monthwiseLastKey === qKey) return;
 
   // Month labels for the table headers
   const monthNames = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -1898,14 +2008,17 @@ function loadMonthwisePerformance(dateStr) {
     const d = new Date(year, m, 10); // day 10 is safe for any month
     const dateParam = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-10`;
     return _cachedFetch(`/api/dashboard-data?date=${dateParam}&end_date=&timeframe=monthly${_src()}`, { silent: true })
+      .catch(() => null);
   });
 
   Promise.all(promises).then(results => {
-    const mw = reviewData.exec_summary.monthwise_performance;
+    const mw = reviewData.exec_summary && reviewData.exec_summary.monthwise_performance;
     if (!mw) return;
 
+    let anyLoaded = false;
     results.forEach((data, idx) => {
       if (!data || data.error || !data.kpis) return;
+      anyLoaded = true;
       const k = data.kpis;
       mw.fin_value_pct[idx]  = parseFloat((k.finance_penetration_value_pct || 0).toFixed(1));
       mw.fin_vol_pct[idx]    = parseFloat((k.finance_penetration_volume_pct || 0).toFixed(1));
@@ -1913,6 +2026,7 @@ function loadMonthwisePerformance(dateStr) {
       mw.fin_value_cr[idx]   = parseFloat((k.fin_value_cr || 0).toFixed(2));
       mw.card_value_cr[idx]  = parseFloat((k.card_value_cr || 0).toFixed(2));
     });
+    if (anyLoaded) _monthwiseLastKey = qKey;
 
     renderExecSummary();
   });
@@ -4951,6 +5065,26 @@ window.filterOctSheetBy = function(field, val) {
   renderOctSheetsUI();
 };
 
+function _syncOctWindowModeUI(periodObj, date, timeframe) {
+  const isOctMonthly = (timeframe === "monthly" && String(date || "").startsWith("2026-10"));
+  const modeWrap = document.getElementById("oct-period-mode-wrap");
+  const liveWrap = document.getElementById("oct-live-window-wrap");
+  const liveBadge = document.getElementById("oct-live-window-badge");
+  if (modeWrap) modeWrap.style.display = isOctMonthly ? "flex" : "none";
+  if (liveWrap) liveWrap.style.display = isOctMonthly ? "none" : "flex";
+  if (liveBadge && !isOctMonthly) {
+    if (periodObj && periodObj.start_date && periodObj.end_date) {
+      const fmtD = iso => {
+        const dt = new Date(iso.slice(0, 10) + "T00:00:00");
+        return isNaN(dt) ? iso : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+      };
+      liveBadge.textContent = `${fmtD(periodObj.start_date)} \u2013 ${fmtD(periodObj.end_date)}`;
+    } else {
+      liveBadge.textContent = `${timeframe.charAt(0).toUpperCase() + timeframe.slice(1)} (${date})`;
+    }
+  }
+}
+
 window.loadOctSheetsData = function(forceReload) {
   const date = activeDate || "2026-10-01";
   const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
@@ -4959,31 +5093,35 @@ window.loadOctSheetsData = function(forceReload) {
   const stateSel = ((document.getElementById("oct-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
   const url = `/api/oct-sheets-data?date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}&state=${encodeURIComponent(stateSel)}`;
 
+  _syncOctWindowModeUI(null, date, timeframe);
+
   if (!forceReload && _octSheetsCacheData && _octSheetsCacheData._url === url) {
+    _syncOctWindowModeUI(_octSheetsCacheData.period, date, timeframe);
     renderOctSheetsUI();
     return;
   }
 
   const tbody = document.getElementById("oct-stores-tbody");
   if (tbody) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>`;
   }
 
   _cachedFetch(url)
     .then(data => {
       if (data.error) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--color-danger);">${data.error}</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--color-danger);">${data.error}</td></tr>`;
         return;
       }
       data._url = url;
       _octSheetsCacheData = data;
+      _syncOctWindowModeUI(data.period, date, timeframe);
       populateOctFilterDropdowns(data);
       renderOctNotice(data);
       renderOctSheetsUI();
     })
     .catch(err => {
       console.error("Failed to load Store Fin Share data:", err);
-      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load Store Fin Share data</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load Store Fin Share data</td></tr>`;
     });
 };
 

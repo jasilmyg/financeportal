@@ -1,7 +1,10 @@
 import os
 import json
+import time
+import hashlib
 import logging
 import tempfile
+import threading
 from flask import Flask, jsonify, request, send_file, render_template, make_response
 from datetime import datetime, timedelta
 
@@ -164,11 +167,12 @@ def api_clickhouse_status():
         connected = ch_is_connected()
         counts = ch_get_row_counts() if connected else {}
         cache_entries = len(_ch_cache) if _CLICKHOUSE_AVAILABLE else 0
+        emi_sig = repr(emi_state.signature(sync=connected))
         return jsonify({
             'connected': connected,
             'row_counts': counts,
             'cache_entries': cache_entries,
-            'emi_version': str(hash(str(emi_state.signature()))),
+            'emi_version': hashlib.md5(emi_sig.encode()).hexdigest()[:12],
         })
     except Exception as exc:
         app.logger.error('ClickHouse status check failed: %s', exc)
@@ -181,41 +185,60 @@ def api_clickhouse_cache_clear():
     if not _CLICKHOUSE_AVAILABLE:
         return jsonify({'error': 'ClickHouse not available.'}), 503
     cleared = ch_cache_clear()
+    try:
+        import store_fin_share
+        store_fin_share.invalidate_cache()
+    except Exception:
+        pass
     return jsonify({'status': 'success', 'cleared': cleared})
+
+
+_prewarm_lock = threading.Lock()
+_prewarm_seq = 0
 
 
 @app.route('/api/clickhouse/prewarm', methods=['POST'])
 def api_clickhouse_prewarm():
     """
-    Fire-and-forget background fetch for all 3 timeframes for a given date.
-    Call this when the user selects a date so daily/monthly/quarterly are
-    all cached before they click the timeframe selector.
+    Polite debounced background cache warm for a selected date.
+    Waits briefly so the user's active request finishes first, aborts if superseded
+    by a newer click, and avoids unprompted heavy quarterly scans.
 
-    Body: { "date": "YYYY-MM-DD" }
+    Body: { "date": "YYYY-MM-DD", "timeframe": "daily|monthly|quarterly|custom" }
     """
+    global _prewarm_seq
     if not _CLICKHOUSE_AVAILABLE:
         return jsonify({'status': 'skipped', 'reason': 'ClickHouse not available'}), 200
 
     data = request.get_json(silent=True) or {}
     date_str = data.get('date')
-    end_date_str = request.args.get('end_date') or (request.is_json and request.get_json(silent=True).get('end_date')) or request.args.get('date')
+    active_tf = str(data.get('timeframe') or '').strip().lower()
+    end_date_str = request.args.get('end_date') or data.get('end_date') or request.args.get('date')
     if not date_str:
         return jsonify({'error': 'date is required'}), 400
 
-    import threading
+    targets = [tf for tf in ('monthly', 'daily') if tf != active_tf]
+    if not targets:
+        return jsonify({'status': 'skipped', 'reason': 'already warming active timeframe'}), 200
 
-    def _warm(d, tf):
-        try:
-            get_clickhouse_df(d, tf, end_date_str=end_date_str)
-            app.logger.info('Prewarm complete: %s / %s', d, tf)
-        except Exception as exc:
-            app.logger.warning('Prewarm failed %s/%s: %s', d, tf, exc)
+    with _prewarm_lock:
+        _prewarm_seq += 1
+        my_seq = _prewarm_seq
 
-    for tf in ('daily', 'monthly', 'quarterly'):
-        t = threading.Thread(target=_warm, args=(date_str, tf), daemon=True)
-        t.start()
+    def _warm_seq(d, end_d, seq_id, tfs):
+        time.sleep(2.5)
+        for tf in tfs:
+            if seq_id != _prewarm_seq:
+                return
+            try:
+                get_clickhouse_df(d, tf, end_date_str=end_d)
+                app.logger.info('Prewarm complete: %s / %s', d, tf)
+            except Exception as exc:
+                app.logger.warning('Prewarm failed %s/%s: %s', d, tf, exc)
 
-    return jsonify({'status': 'warming', 'date': date_str, 'timeframes': ['daily', 'monthly', 'quarterly']})
+    threading.Thread(target=_warm_seq, args=(date_str, end_date_str, my_seq, targets), daemon=True).start()
+
+    return jsonify({'status': 'warming', 'date': date_str, 'timeframes': targets})
 
 
 @app.route('/api/targets', methods=['GET', 'POST'])
@@ -363,7 +386,7 @@ def api_dashboard_data():
             if isinstance(data, dict) and 'error' not in data:
                 _cache_set(_ckey, data)
             for _fk, _ek in (('PineLab', emi_state.PINE_FIN), ('PAYTM', emi_state.PAYTM_FIN), ('Benow', emi_state.BENOW_FIN)):
-                if not emi_state.is_uploaded(_ek) and "category_performance" in data:
+                if not emi_state.is_uploaded(_ek, sync=emi_state._ch_synced) and "category_performance" in data:
                     _cp = data["category_performance"]
                     for _c, _row in (_cp.get("qty") or {}).items():
                         if isinstance(_row, dict) and _row.get(_fk):
@@ -627,7 +650,7 @@ def api_review(date):
                             }
                         
             for _fk, _ek in (('PineLab', emi_state.PINE_FIN), ('PAYTM', emi_state.PAYTM_FIN), ('Benow', emi_state.BENOW_FIN)):
-                if not emi_state.is_uploaded(_ek) and "category_performance" in data:
+                if not emi_state.is_uploaded(_ek, sync=emi_state._ch_synced) and "category_performance" in data:
                     _cp = data["category_performance"]
                     for _c, _row in (_cp.get("qty") or {}).items():
                         if isinstance(_row, dict) and _row.get(_fk):
@@ -1944,26 +1967,37 @@ def api_clickhouse_aggregate_review():
         return jsonify({'status': 'error', 'message': str(exc)}), 500
 
 # ---------------------------------------------------------------------------
-# Startup: pre-warm ClickHouse cache so first user doesn't wait 40s
+# Startup: pre-warm ClickHouse connection + cache sequentially on boot
 # ---------------------------------------------------------------------------
 def _prewarm_clickhouse_cache():
-    """Run on startup (background thread) to pre-load the most common query."""
+    """Run on startup (background thread) to wake ClickHouse and pre-load key caches."""
     if not _CLICKHOUSE_AVAILABLE:
         return
     try:
         from datetime import date
         from clickhouse_aggregator import get_clickhouse_df
+        import store_fin_share
+
+        app.logger.info("Cache pre-warm: syncing EMI state & waking ClickHouse...")
+        emi_state.sync_from_clickhouse()
+        ch_get_row_counts()
+
         today = date.today()
         month_start = today.replace(day=1).isoformat()
-        app.logger.info("Cache pre-warm: querying current month (%s)…", month_start)
+        app.logger.info("Cache pre-warm: querying current month (%s)...", month_start)
         get_clickhouse_df(month_start, "monthly")
+
+        app.logger.info("Cache pre-warm: warming Store Fin Share (2026-10 reference)...")
+        store_fin_share.get_store_fin_share_data("2026-10-01", "monthly", period_mode="reference")
         app.logger.info("Cache pre-warm complete.")
     except Exception as e:
         app.logger.warning("Cache pre-warm failed (non-fatal): %s", e)
 
-# Run pre-warm in background thread when the module loads (works with --preload)
-import threading as _threading
-_threading.Thread(target=_prewarm_clickhouse_cache, daemon=True).start()
+
+# Run pre-warm in background thread when the module loads (works with gunicorn --preload;
+# under Flask debug reloader, run only in the worker child process).
+if __name__ != '__main__' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    threading.Thread(target=_prewarm_clickhouse_cache, daemon=True).start()
 
 
 if __name__ == '__main__':

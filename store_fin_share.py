@@ -19,10 +19,12 @@ Logic (same as the client's OCT / OCT Vol Excel sheets, but nothing is copied fr
   Targets (value target, card slab 1/2) are management inputs, kept in ClickHouse table `tm_fin_targets`.
 """
 import calendar
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import date, datetime
 
@@ -45,7 +47,18 @@ CARD_TABLES = (
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _MEM_CACHE: dict = {}
 _ERP_Q_CACHE: dict = {}
+_MEM_CACHE_LOCK = threading.Lock()
 _NAMES_CACHE = {"t": 0.0, "v": {}}
+_BRANCH_META_CACHE = {"t": 0.0, "v": []}
+
+
+def invalidate_cache() -> None:
+    """Clear in-memory caches held by store_fin_share."""
+    with _MEM_CACHE_LOCK:
+        _MEM_CACHE.clear()
+        _ERP_Q_CACHE.clear()
+    _NAMES_CACHE.update(t=0.0, v={})
+    _BRANCH_META_CACHE.update(t=0.0, v=[])
 
 TARGETS_DDL = """
 CREATE TABLE IF NOT EXISTS tm_fin_targets (
@@ -62,8 +75,8 @@ ORDER BY (month, tm)
 
 # --------------------------------------------------------------------------- helpers
 def _branch_names() -> dict:
-    """branch code -> store name from ClickHouse branch_master (10 minute cache)."""
-    if time.time() - _NAMES_CACHE["t"] < 600 and _NAMES_CACHE["v"]:
+    """branch code -> store name from ClickHouse branch_master (30 minute cache)."""
+    if time.time() - _NAMES_CACHE["t"] < 1800 and _NAMES_CACHE["v"]:
         return _NAMES_CACHE["v"]
     names = {}
     try:
@@ -81,42 +94,103 @@ def _branch_names() -> dict:
     return names
 
 
-def _mode_text(series) -> str:
-    s = series.astype(str).str.strip()
-    s = s[(s != "") & (s.str.upper() != "NAN")]
-    return s.mode().iat[0].upper() if len(s) else ""
+def _branch_meta_rows() -> list:
+    """Cached list of (name, rbm, bdm) tuples for BRANCH rows in branch_master (30 minute cache)."""
+    if time.time() - _BRANCH_META_CACHE["t"] < 1800 and _BRANCH_META_CACHE["v"]:
+        return _BRANCH_META_CACHE["v"]
+    rows = []
+    try:
+        bm = query_df(
+            "SELECT upperUTF8(trim(branch_name)) AS name, upperUTF8(trim(rbm)) AS rbm, upperUTF8(trim(bdm)) AS bdm "
+            "FROM branch_master WHERE upperUTF8(store_type) = 'BRANCH'", {},
+        )
+        rows = [
+            (
+                str(r["name"]).strip().upper(),
+                str(r["rbm"]).strip().upper(),
+                str(r["bdm"]).strip().upper(),
+            )
+            for _, r in bm.iterrows()
+        ]
+    except Exception as exc:
+        logger.warning("branch_master meta lookup failed: %s", exc)
+    _BRANCH_META_CACHE.update(t=time.time(), v=rows)
+    return rows
+
+
+def _pick_mode(counts: dict, default: str = "") -> str:
+    if not counts:
+        return default
+    return min((-cnt, val) for val, cnt in counts.items())[1]
 
 
 def _erp_by_store(q_date: str, q_tf: str, q_end: str):
-    """ERP totals per store: ({store: (tot_val, tot_qty, fin_val, fin_qty)}, {store: {rbm, bdm, fin_bdm}})."""
+    """ERP totals per store: ({store: (tot_val, tot_qty, fin_val, fin_qty)}, {store: {rbm, bdm, fin_bdm, state}})."""
     import clickhouse_aggregator as ca
 
-    df = ca.get_clickhouse_df(q_date, q_tf, end_date_str=q_end)
+    df = ca.get_store_erp_summary(q_date, q_tf, end_date_str=q_end)
     if df is None or df.empty:
         return {}, {}
     names = _branch_names()
-    tmp = df.copy()
-    tmp["_S"] = tmp["Branch"].astype(str).str.strip().str.upper().map(lambda c: names.get(c, c))
-    tmp["_P"] = tmp["Financier"].astype(str).str.strip().isin(PAPER_FINS)
-    tot = tmp.groupby("_S").agg(tv=("Sold Price", "sum"), tq=("QTY", "sum"))
-    fin = tmp[tmp["_P"]].groupby("_S").agg(fv=("Sold Price", "sum"), fq=("QTY", "sum"))
-    meta_df = tmp.groupby("_S")[["RBM", "BDM", "Fin BDM", "State"]].agg(_mode_text)
-    totals, meta = {}, {}
-    for s in tot.index:
-        totals[s] = (
-            float(tot.tv[s]),
-            float(tot.tq[s]),
-            float(fin.fv.get(s, 0.0)),
-            float(fin.fq.get(s, 0.0)),
-        )
-        m = meta_df.loc[s]
-        meta[s] = {"rbm": m["RBM"], "bdm": m["BDM"], "fin_bdm": m["Fin BDM"], "state": m["State"] or "OTHERS"}
+
+    sums = {}       # store -> [tot_val, tot_qty, fin_val, fin_qty]
+    meta_votes = {} # store -> {"rbm": {}, "bdm": {}, "fin_bdm": {}, "state": {}}
+
+    for code_raw, rbm_v, bdm_v, fin_bdm_v, state_v, tv_v, tq_v, fv_v, fq_v, wt_v in zip(
+        df["Branch"].tolist(),
+        df["RBM"].tolist(),
+        df["BDM"].tolist(),
+        df["Fin BDM"].tolist(),
+        df["State"].tolist(),
+        df["tot_val"].tolist(),
+        df["tot_qty"].tolist(),
+        df["fin_val"].tolist(),
+        df["fin_qty"].tolist(),
+        df["row_cnt"].tolist(),
+    ):
+        code = str(code_raw or "").strip().upper()
+        if not code:
+            continue
+        s = names.get(code, code)
+        acc = sums.get(s)
+        if acc is None:
+            acc = [0.0, 0.0, 0.0, 0.0]
+            sums[s] = acc
+            meta_votes[s] = {"rbm": {}, "bdm": {}, "fin_bdm": {}, "state": {}}
+        acc[0] += float(tv_v or 0.0)
+        acc[1] += float(tq_v or 0.0)
+        acc[2] += float(fv_v or 0.0)
+        acc[3] += float(fq_v or 0.0)
+
+        wt = max(int(wt_v or 1), 1)
+        mv = meta_votes[s]
+        for dst_k, raw_v in (
+            ("rbm", rbm_v),
+            ("bdm", bdm_v),
+            ("fin_bdm", fin_bdm_v),
+            ("state", state_v),
+        ):
+            val = str(raw_v or "").strip().upper()
+            if val and val != "NAN":
+                mv[dst_k][val] = mv[dst_k].get(val, 0) + wt
+
+    totals = {s: tuple(v) for s, v in sums.items()}
+    meta = {
+        s: {
+            "rbm": _pick_mode(mv["rbm"]),
+            "bdm": _pick_mode(mv["bdm"]),
+            "fin_bdm": _pick_mode(mv["fin_bdm"]),
+            "state": _pick_mode(mv["state"], default="OTHERS") or "OTHERS",
+        }
+        for s, mv in meta_votes.items()
+    }
     return totals, meta
 
 
 def _card_by_store(start, end, filtered: bool):
-    """Card EMI per store from the uploaded-file tables. Returns ({store: [val, qty]}, {partner: info})."""
+    """Card EMI per store from the uploaded-file tables via single UNION ALL SQL."""
     out, info = {}, {}
+    active = []
     for table, fin_key, label in CARD_TABLES:
         if filtered:
             cond = emi_state.date_filter_sql(fin_key, start, end)
@@ -125,6 +199,35 @@ def _card_by_store(start, end, filtered: bool):
         if cond is None:
             info[label] = {"uploaded": False, "stores": 0}
             continue
+        active.append((table, label, cond))
+        info[label] = {"uploaded": False, "stores": 0}
+
+    if not active:
+        return out, info
+
+    union_sql = "\nUNION ALL\n".join(
+        f"SELECT '{label}' AS partner, upperUTF8(trim(branch)) AS br, "
+        f"toFloat64(sum(original_amount)) AS val, toInt64(sum(qty)) AS qty "
+        f"FROM {table} WHERE {cond} GROUP BY br"
+        for table, label, cond in active
+    )
+    try:
+        res = query_df(union_sql, {})
+        for _, r in res.iterrows():
+            partner = str(r["partner"])
+            br = str(r["br"]).strip().upper()
+            if not br:
+                continue
+            info[partner]["stores"] += 1
+            info[partner]["uploaded"] = True
+            d = out.setdefault(br, [0.0, 0])
+            d[0] += float(r["val"] or 0.0)
+            d[1] += int(r["qty"] or 0)
+        return out, info
+    except Exception as exc:
+        logger.warning("combined card UNION ALL failed (%s); falling back per-table", exc)
+
+    for table, label, cond in active:
         sql = f"""
             SELECT upperUTF8(trim(branch)) AS br,
                    toFloat64(sum(original_amount)) AS val,
@@ -144,8 +247,8 @@ def _card_by_store(start, end, filtered: bool):
                 d = out.setdefault(br, [0.0, 0])
                 d[0] += float(r["val"] or 0.0)
                 d[1] += int(r["qty"] or 0)
-        except Exception as exc:
-            logger.warning("card query %s failed: %s", table, exc)
+        except Exception as exc2:
+            logger.warning("card query %s failed: %s", table, exc2)
         info[label] = {"uploaded": n_stores > 0, "stores": n_stores}
     return out, info
 
@@ -270,7 +373,8 @@ def save_targets(month: str, rows: list) -> int:
             "tm_fin_targets", data,
             column_names=["month", "tm", "value_target", "card_slab_1", "card_slab_2"],
         )
-    _MEM_CACHE.clear()
+    with _MEM_CACHE_LOCK:
+        _MEM_CACHE.clear()
     return len(data)
 
 
@@ -323,6 +427,7 @@ def get_store_fin_share_data(
     period_mode: str = "reference",
     state: str = "",
 ) -> dict:
+    emi_state._ensure_synced()
     sel_states = sorted({x.strip().upper() for x in str(state or "").split(",") if x.strip()})
     # ---- period ----
     if period_mode == "reference" and str(date_str or "").startswith("2026-10") and timeframe == "monthly":
@@ -333,9 +438,11 @@ def get_store_fin_share_data(
         s_dt, e_dt = emi_state.range_of(date_str, timeframe, end_date_str or None)
         eff_start, eff_end = s_dt.isoformat(), e_dt.isoformat()
 
-    cache_key = (eff_start, eff_end, tuple(sel_states), emi_state.signature())
-    if cache_key in _MEM_CACHE:
-        return _MEM_CACHE[cache_key]
+    cache_key = (eff_start, eff_end, tuple(sel_states), emi_state.signature(sync=False))
+    with _MEM_CACHE_LOCK:
+        cached = _MEM_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
     p_start = datetime.strptime(eff_start[:10], "%Y-%m-%d").date()
     p_end = datetime.strptime(eff_end[:10], "%Y-%m-%d").date()
@@ -345,12 +452,21 @@ def get_store_fin_share_data(
         float(max(month_days - p_end.day, 0)),         # remaining
         float(month_days),                             # days in month
     )
-
-    # ---- data ----
-    erp, meta = _erp_by_store(q_date, q_tf, q_end)
+    month_key = f"{p_end.year:04d}-{p_end.month:02d}"
     s_dt2, e_dt2 = emi_state.range_of(q_date, q_tf, q_end or None)
-    card, card_info = _card_by_store(s_dt2, e_dt2, filtered=True)
-    bench, bench_info = _benchmark(p_start)
+
+    # ---- data (parallel ClickHouse execution) ----
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_erp = pool.submit(_erp_by_store, q_date, q_tf, q_end)
+        f_card = pool.submit(_card_by_store, s_dt2, e_dt2, True)
+        f_bench = pool.submit(_benchmark, p_start)
+        f_tgt = pool.submit(load_targets, month_key)
+        f_bm = pool.submit(_branch_meta_rows)
+        erp, meta = f_erp.result()
+        card, card_info = f_card.result()
+        bench, bench_info = f_bench.result()
+        targets = f_tgt.result()
+        bm_rows = f_bm.result()
 
     # Known retail stores only (a store must exist in branch_master by name; this drops unmapped
     # internal codes such as corporate / warehouse billing branches) with a real RBM bucket.
@@ -365,18 +481,12 @@ def get_store_fin_share_data(
         for s in stores_set:
             rbm_state.setdefault(meta[s]["rbm"], []).append(meta[s]["state"])
         rbm_state = {k: max(set(v), key=v.count) for k, v in rbm_state.items()}
-        bm = query_df(
-            "SELECT upperUTF8(trim(branch_name)) AS name, upperUTF8(trim(rbm)) AS rbm, upperUTF8(trim(bdm)) AS bdm "
-            "FROM branch_master WHERE upperUTF8(store_type) = 'BRANCH'", {},
-        )
-        for _, r in bm.iterrows():
-            name = str(r["name"]).strip().upper()
-            rb = str(r["rbm"]).strip().upper()
+        for name, rb, bd in bm_rows:
             if name and name not in erp and rb in regional and name in _FIN_BDM_MAP:
                 erp[name] = (0.0, 0.0, 0.0, 0.0)
                 meta[name] = {
                     "rbm": rb,
-                    "bdm": str(r["bdm"]).strip().upper(),
+                    "bdm": bd,
                     "fin_bdm": str(_FIN_BDM_MAP[name]).strip().upper(),
                     "state": rbm_state.get(rb, "KERALA"),
                 }
@@ -420,7 +530,6 @@ def get_store_fin_share_data(
 
     # ---- TM / RBM / BDM roll-ups ----
     month_key = f"{p_end.year:04d}-{p_end.month:02d}"
-    targets = load_targets(month_key)
     tm_names = sorted({r["fin_bdm"] for r in oct_rows if r["fin_bdm"]})
 
     def tm_zone(tm):
@@ -517,5 +626,6 @@ def get_store_fin_share_data(
             "rbms": group(vol_rows, "rbm", "rbm"), "bdms": group(vol_rows, "bdm", "bdm"),
         },
     }
-    _MEM_CACHE[cache_key] = result
+    with _MEM_CACHE_LOCK:
+        _MEM_CACHE[cache_key] = result
     return result

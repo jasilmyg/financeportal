@@ -1139,13 +1139,17 @@
               </select>
             </div>
 
-            <!-- Period Window Mode -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <!-- Period Window Mode (Oct 2026 monthly only) + Active Window badge -->
+            <div id="oct-period-mode-wrap" style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted);">Data Window</label>
               <select id="oct-period-mode" onchange="loadOctSheetsData(true)" class="date-select" style="width:195px; padding:4px 8px; height:32px; font-size:12px;">
                 <option value="reference" selected>OCT 2026 Sheet (01–27 Oct)</option>
                 <option value="live">Live Period (Top Date Picker)</option>
               </select>
+            </div>
+            <div id="oct-live-window-wrap" style="display:none; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Active Window</label>
+              <span id="oct-live-window-badge" class="date-select" style="display:inline-flex; align-items:center; padding:4px 10px; height:32px; font-size:12px; font-weight:600; color:var(--text-main);">—</span>
             </div>
 
             <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
@@ -1217,8 +1221,8 @@
             <div class="data-card" style="margin-bottom:0;">
               <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <div>
-                  <h2 id="oct-store-table-title">OCT &mdash; Store-wise Value Finance Share (&#8377;)</h2>
-                  <span class="badge" id="oct-store-count-badge">144 Stores</span>
+                  <h2 id="oct-store-table-title">Store Fin Share &mdash; Value (&#8377;)</h2>
+                  <span class="badge" id="oct-store-count-badge">Loading...</span>
                 </div>
                 <span style="font-size:11px; color:var(--text-muted);" id="oct-formula-hint">
                   FIN = Paper Finance + PineLab + PAYTM + Benow
@@ -1230,7 +1234,7 @@
                     <!-- Populated by JS -->
                   </thead>
                   <tbody id="oct-stores-tbody">
-                    <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
+                    <tr><td colspan="11" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
                   </tbody>
                 </table>
               </div>
