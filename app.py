@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import hashlib
@@ -41,11 +42,21 @@ except ImportError:
 try:
     from clickhouse_client import (
         is_connected as ch_is_connected,
+        quick_is_connected as ch_quick_is_connected,
+        is_warming as ch_is_warming,
+        set_warming as ch_set_warming,
         get_row_counts as ch_get_row_counts,
         cache_clear as ch_cache_clear,
         _QUERY_CACHE as _ch_cache,
     )
-    from clickhouse_aggregator import get_clickhouse_df, get_pine_lab_totals
+    from clickhouse_aggregator import (
+        get_clickhouse_df,
+        get_clickhouse_dashboard_rollups,
+        get_clickhouse_brand_df,
+        get_clickhouse_store_df,
+        get_card_both_overrides,
+        get_pine_lab_totals,
+    )
     _CLICKHOUSE_AVAILABLE = True
 except ImportError:
     _CLICKHOUSE_AVAILABLE = False
@@ -164,12 +175,17 @@ def api_clickhouse_status():
             'error': 'clickhouse-connect or python-dotenv not installed.'
         }), 503
     try:
-        connected = ch_is_connected()
+        connected = ch_quick_is_connected()
+        warming = ch_is_warming()
+        if not connected and not warming:
+            start_background_prewarm()
+            warming = ch_is_warming()
         counts = ch_get_row_counts() if connected else {}
         cache_entries = len(_ch_cache) if _CLICKHOUSE_AVAILABLE else 0
         emi_sig = repr(emi_state.signature(sync=connected))
         return jsonify({
             'connected': connected,
+            'warming': bool(not connected and warming),
             'row_counts': counts,
             'cache_entries': cache_entries,
             'emi_version': hashlib.md5(emi_sig.encode()).hexdigest()[:12],
@@ -231,7 +247,7 @@ def api_clickhouse_prewarm():
             if seq_id != _prewarm_seq:
                 return
             try:
-                get_clickhouse_df(d, tf, end_date_str=end_d)
+                get_clickhouse_dashboard_rollups(d, tf, end_date_str=end_d)
                 app.logger.info('Prewarm complete: %s / %s', d, tf)
             except Exception as exc:
                 app.logger.warning('Prewarm failed %s/%s: %s', d, tf, exc)
@@ -317,8 +333,8 @@ def api_dashboard_data():
             _hit = _cache_get(_ckey)
             if _hit is not None:
                 return jsonify(_hit)
-            ch_df = get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district)
-            if ch_df.empty:
+            rollups = get_clickhouse_dashboard_rollups(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district)
+            if not rollups or rollups[0].empty:
                 return jsonify({'error': 'No data found in ClickHouse for the selected timeframe.'}), 404
             # Load zone_map for RBM→Zone grouping
             zone_map = {}
@@ -340,40 +356,22 @@ def api_dashboard_data():
             benow_val_override = None
             if not staff:
                 try:
-                    from clickhouse_aggregator import get_card_overrides, get_card_value_overrides
-                    _ov = get_card_overrides(
+                    _ov, _vov = get_card_both_overrides(
                         date_str, timeframe, end_date_str,
                         state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
                     )
                     pine_lab_override = _ov.get('PineLab')
                     paytm_override = _ov.get('PAYTM')
                     benow_override = _ov.get('Benow')
-                    _vov = get_card_value_overrides(
-                        date_str, timeframe, end_date_str,
-                        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
-                    )
                     pine_lab_val_override = _vov.get('PineLab')
                     paytm_val_override = _vov.get('PAYTM')
                     benow_val_override = _vov.get('Benow')
                 except Exception as _ov_exc:
                     app.logger.warning('Card EMI override failed: %s', _ov_exc)
-            if False:
-                try:
-                    from clickhouse_aggregator import get_card_overrides, get_card_value_overrides
-                    _ov = get_card_overrides(date_str, timeframe, end_date_str, state)
-                    pine_lab_override = _ov.get('PineLab', {})
-                    paytm_override = _ov.get('PAYTM', {})
-                    benow_override = _ov.get('Benow', {})
-                    _vov = get_card_value_overrides(date_str, timeframe, end_date_str, state)
-                    pine_lab_val_override = _vov.get('PineLab', {})
-                    paytm_val_override = _vov.get('PAYTM', {})
-                    benow_val_override = _vov.get('Benow', {})
-                except Exception as _ov_exc:
-                    app.logger.warning('Card EMI override failed: %s', _ov_exc)
-            # Reuse existing aggregation logic, passing the ClickHouse DataFrame
+            # Reuse existing aggregation logic, passing ClickHouse grouped rollups
             data = get_dashboard_data(
                 raw_file_path=None, target_date_str=date_str, timeframe=timeframe,
-                rbm=rbm, bdm=bdm, store=store, staff=staff, zone_map=zone_map, df=ch_df,
+                rbm=rbm, bdm=bdm, store=store, staff=staff, zone_map=zone_map, df=None,
                 end_date_str=end_date_str,
                 pine_lab_override=pine_lab_override,
                 paytm_override=paytm_override,
@@ -381,10 +379,9 @@ def api_dashboard_data():
                 pine_lab_val_override=pine_lab_val_override,
                 paytm_val_override=paytm_val_override,
                 benow_val_override=benow_val_override,
-                state=state, district=district
+                state=state, district=district,
+                ch_rollups=rollups
             )
-            if isinstance(data, dict) and 'error' not in data:
-                _cache_set(_ckey, data)
             for _fk, _ek in (('PineLab', emi_state.PINE_FIN), ('PAYTM', emi_state.PAYTM_FIN), ('Benow', emi_state.BENOW_FIN)):
                 if not emi_state.is_uploaded(_ek, sync=emi_state._ch_synced) and "category_performance" in data:
                     _cp = data["category_performance"]
@@ -404,6 +401,8 @@ def api_dashboard_data():
                         for _c, _prods in _vobj.items():
                             for _p, _pr in (_prods or {}).items():
                                 if isinstance(_pr, dict): _pr[_fk] = 0.0
+            if isinstance(data, dict) and 'error' not in data:
+                _cache_set(_ckey, data)
             return jsonify(data)
         except Exception as exc:
             app.logger.error('ClickHouse dashboard query failed: %s', exc, exc_info=True)
@@ -511,10 +510,18 @@ def api_brand_data():
         if not _CLICKHOUSE_AVAILABLE:
             return jsonify({'error': 'ClickHouse not available.'}), 503
         try:
-            ch_df = get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district)
+            from clickhouse_client import _cache_get, _cache_set
+            _bkey = 'brand|' + repr((date_str, timeframe, end_date_str, category, product, rbm, bdm, store, staff, fin_bdm, state, district))
+            _bhit = _cache_get(_bkey)
+            if _bhit is not None:
+                return jsonify(_bhit)
+            ch_df = get_clickhouse_brand_df(date_str, timeframe, rbm, bdm, store, staff, end_date_str=end_date_str, fin_bdm=fin_bdm, state=state, district=district, category=category, product=product)
             if ch_df.empty:
                 return jsonify({'error': 'No ClickHouse data for this timeframe.'}), 404
-            return jsonify(get_brand_data(None, date_str, timeframe, category, product, df=ch_df, end_date_str=end_date_str, state=state))
+            bdata = get_brand_data(None, date_str, timeframe, category, product, df=ch_df, end_date_str=end_date_str, state=state)
+            if isinstance(bdata, dict) and 'error' not in bdata:
+                _cache_set(_bkey, bdata)
+            return jsonify(bdata)
         except Exception as exc:
             app.logger.error('ClickHouse brand query failed: %s', exc, exc_info=True)
             return jsonify({'error': str(exc)}), 500
@@ -540,7 +547,14 @@ def api_store_data():
         if not _CLICKHOUSE_AVAILABLE:
             return jsonify({'error': 'ClickHouse not available.'}), 503
         try:
-            ch_df = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str, state=state)
+            from clickhouse_client import _cache_get, _cache_set
+            _tf = os.path.join(DATA_DIR, 'targets.json')
+            _tf_mtime = os.path.getmtime(_tf) if os.path.exists(_tf) else 0
+            _skey = 'store|' + repr((date_str, timeframe, end_date_str, zone, state, _tf_mtime))
+            _shit = _cache_get(_skey)
+            if _shit is not None:
+                return jsonify(_shit)
+            ch_df = get_clickhouse_store_df(date_str, timeframe, end_date_str=end_date_str, state=state)
             if ch_df.empty:
                 return jsonify({'error': 'No ClickHouse data for this timeframe.'}), 404
             # Load zone_map
@@ -552,7 +566,10 @@ def api_store_data():
                         zone_map = json.load(tf).get('zone_map', {})
                 except Exception:
                     pass
-            return jsonify(get_store_data(None, date_str, timeframe, zone, zone_map, df=ch_df, end_date_str=end_date_str, state=state))
+            sdata = get_store_data(None, date_str, timeframe, zone, zone_map, df=ch_df, end_date_str=end_date_str, state=state)
+            if isinstance(sdata, dict) and 'error' not in sdata:
+                _cache_set(_skey, sdata)
+            return jsonify(sdata)
         except Exception as exc:
             app.logger.error('ClickHouse store query failed: %s', exc, exc_info=True)
             return jsonify({'error': str(exc)}), 500
@@ -1969,13 +1986,18 @@ def api_clickhouse_aggregate_review():
 # ---------------------------------------------------------------------------
 # Startup: pre-warm ClickHouse connection + cache sequentially on boot
 # ---------------------------------------------------------------------------
+_startup_prewarm_lock = threading.Lock()
+_startup_prewarm_running = False
+
+
 def _prewarm_clickhouse_cache():
-    """Run on startup (background thread) to wake ClickHouse and pre-load key caches."""
+    """Run in background thread to wake ClickHouse and pre-load key caches."""
+    global _startup_prewarm_running
     if not _CLICKHOUSE_AVAILABLE:
         return
+    ch_set_warming(True)
     try:
         from datetime import date
-        from clickhouse_aggregator import get_clickhouse_df
         import store_fin_share
 
         app.logger.info("Cache pre-warm: syncing EMI state & waking ClickHouse...")
@@ -1984,20 +2006,42 @@ def _prewarm_clickhouse_cache():
 
         today = date.today()
         month_start = today.replace(day=1).isoformat()
-        app.logger.info("Cache pre-warm: querying current month (%s)...", month_start)
-        get_clickhouse_df(month_start, "monthly")
+        app.logger.info("Cache pre-warm: querying current month rollups (%s)...", month_start)
+        get_clickhouse_dashboard_rollups(month_start, "monthly")
 
         app.logger.info("Cache pre-warm: warming Store Fin Share (2026-10 reference)...")
         store_fin_share.get_store_fin_share_data("2026-10-01", "monthly", period_mode="reference")
         app.logger.info("Cache pre-warm complete.")
     except Exception as e:
         app.logger.warning("Cache pre-warm failed (non-fatal): %s", e)
+    finally:
+        ch_set_warming(False)
+        with _startup_prewarm_lock:
+            _startup_prewarm_running = False
 
 
-# Run pre-warm in background thread when the module loads (works with gunicorn --preload;
-# under Flask debug reloader, run only in the worker child process).
-if __name__ != '__main__' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+def start_background_prewarm():
+    """Idempotently launch background warm-up thread if not already running."""
+    global _startup_prewarm_running
+    if not _CLICKHOUSE_AVAILABLE:
+        return False
+    with _startup_prewarm_lock:
+        if _startup_prewarm_running:
+            return False
+        _startup_prewarm_running = True
+        ch_set_warming(True)
     threading.Thread(target=_prewarm_clickhouse_cache, daemon=True).start()
+    return True
+
+
+# Auto-start pre-warm under direct Flask/dev execution; under Gunicorn, gunicorn.conf.py
+# triggers start_background_prewarm() in post_worker_init after worker fork.
+_running_under_gunicorn = (
+    "gunicorn" in sys.modules
+    or "gunicorn" in os.environ.get("SERVER_SOFTWARE", "").lower()
+)
+if (not _running_under_gunicorn) and (__name__ != '__main__' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true'):
+    start_background_prewarm()
 
 
 if __name__ == '__main__':

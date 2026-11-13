@@ -42,8 +42,22 @@ _INFLIGHT_LOCK = _threading.Lock()
 _INFLIGHT_LOCKS: dict[str, _threading.Lock] = {}
 _QUERY_CACHE: dict[str, tuple[float, object]] = {}  # key -> (timestamp, result)
 _CACHE_TTL_SECONDS = 1800  # 30 minutes — data doesn't change during a review session
+_MAX_CACHE_ENTRIES = 32
+_MAX_DF_CACHE_ROWS = 25000
 _LAST_PING_OK_TS = 0.0
+_WARMING = False
 _ROW_COUNTS_CACHE: dict[str, object] = {"ts": 0.0, "counts": {}}
+
+
+def set_warming(flag: bool) -> None:
+    """Record whether background startup warm-up is currently running."""
+    global _WARMING
+    _WARMING = bool(flag)
+
+
+def is_warming() -> bool:
+    """Return True if background startup warm-up is currently running."""
+    return _WARMING
 
 
 def _get_inflight_lock(key: str) -> _threading.Lock:
@@ -72,8 +86,18 @@ def _cache_get(key: str):
 
 
 def _cache_set(key: str, value) -> None:
+    if isinstance(value, pd.DataFrame) and len(value) > _MAX_DF_CACHE_ROWS:
+        logger.debug("Skipping cache for oversized DataFrame (%s, %d rows)", key[:8], len(value))
+        return
+    now = time.time()
     with _CACHE_LOCK:
-        _QUERY_CACHE[key] = (time.time(), value)
+        expired = [k for k, (ts, _) in _QUERY_CACHE.items() if now - ts >= _CACHE_TTL_SECONDS]
+        for k in expired:
+            del _QUERY_CACHE[k]
+        while len(_QUERY_CACHE) >= _MAX_CACHE_ENTRIES and key not in _QUERY_CACHE:
+            oldest_key = min(_QUERY_CACHE, key=lambda k: _QUERY_CACHE[k][0])
+            del _QUERY_CACHE[oldest_key]
+        _QUERY_CACHE[key] = (now, value)
 
 
 def cache_clear() -> int:
@@ -129,6 +153,7 @@ def _is_non_transient_query_error(exc: Exception) -> bool:
 
 def get_client():
     """Return (and lazily create) a per-thread ClickHouse client with cold-start retry."""
+    global _LAST_PING_OK_TS
     if getattr(_thread_local, 'client', None) is not None:
         return _thread_local.client
 
@@ -150,6 +175,7 @@ def get_client():
                 send_receive_timeout=180,
             )
             _thread_local.client = client
+            _LAST_PING_OK_TS = time.time()
             logger.info("ClickHouse client connected to %s:%s (thread=%s)", _HOST, _PORT, _threading.current_thread().name)
             return client
         except Exception as exc:
@@ -199,6 +225,8 @@ def query_df(sql: str, params: dict | None = None, cache: bool = True):
             client = get_client()
             try:
                 result = client.query_df(sql, parameters=params or {})
+                global _LAST_PING_OK_TS
+                _LAST_PING_OK_TS = time.time()
                 if cache:
                     _cache_set(key, result.copy())  # store a copy so callers can mutate freely
                     logger.debug("ClickHouse cache SET (%s, %d rows)", key[:8], len(result))
@@ -263,6 +291,50 @@ def is_connected() -> bool:
             _reset_thread_client()
             if attempt == 0:
                 time.sleep(1.0)
+    return False
+
+
+def quick_is_connected(timeout: int = 8) -> bool:
+    """Fast non-blocking health probe for /api/clickhouse/status."""
+    global _LAST_PING_OK_TS
+    if time.time() - _LAST_PING_OK_TS < 120:
+        return True
+    if _WARMING:
+        return False
+    client = getattr(_thread_local, 'client', None)
+    if client is not None:
+        try:
+            if client.ping():
+                _LAST_PING_OK_TS = time.time()
+                return True
+        except Exception:
+            _reset_thread_client()
+        return False
+    tmp_client = None
+    try:
+        import clickhouse_connect  # type: ignore
+        tmp_client = clickhouse_connect.get_client(
+            host=_HOST,
+            port=_PORT,
+            username=_USER,
+            password=_PASSWORD,
+            database=_DB,
+            secure=True,
+            compress=True,
+            connect_timeout=timeout,
+            send_receive_timeout=timeout,
+        )
+        ok = bool(tmp_client.ping())
+        tmp_client.close()
+        if ok:
+            _LAST_PING_OK_TS = time.time()
+            return True
+    except Exception:
+        if tmp_client is not None:
+            try:
+                tmp_client.close()
+            except Exception:
+                pass
     return False
 
 

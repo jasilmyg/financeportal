@@ -100,7 +100,7 @@ window.refreshCurrentTab = function() {
         loadDashboardData(activeDate, timeframe);
         setTimeout(done, 800);
         break;
-      case 'exec':
+      case 'exec-summary':
         loadDashboardData(activeDate, timeframe);
         setTimeout(() => { renderExecSummary(); done(); }, 900);
         break;
@@ -150,6 +150,18 @@ window.refreshCurrentTab = function() {
 let _emiVersion = null;
 let _chWakeupRetries = 0;
 let _chRetryTimer = null;
+let _lastChRowsLabel = 'Live';
+
+function _markClickHouseOnline(rowCountLabel) {
+  if (rowCountLabel) _lastChRowsLabel = rowCountLabel;
+  _chWakeupRetries = 0;
+  clearTimeout(_chRetryTimer);
+  const badge = document.getElementById('chStatusBadge');
+  const text  = document.getElementById('chStatusText');
+  if (badge) badge.className = 'ch-status-badge online';
+  if (text) text.textContent = _lastChRowsLabel || 'Live';
+}
+
 /** Poll /api/clickhouse/status and update the badge */
 function _pollClickHouseStatus() {
   clearTimeout(_chRetryTimer);
@@ -171,20 +183,18 @@ function _pollClickHouseStatus() {
       const text  = document.getElementById('chStatusText');
       if (!badge) return;
       if (data.connected) {
-        _chWakeupRetries = 0;
-        badge.className = 'ch-status-badge online';
         const rows = data.row_counts && data.row_counts.azure_sales_report
           ? (data.row_counts.azure_sales_report / 1e6).toFixed(1) + 'M rows'
           : 'Live';
-        text.textContent = rows;
+        _markClickHouseOnline(rows);
         badge.title = `ClickHouse connected\nCache entries: ${data.cache_entries || 0}\n` +
           Object.entries(data.row_counts || {}).map(([k,v]) => `${k}: ${v.toLocaleString()}`).join('\n');
       } else {
-        if (_chWakeupRetries < 6) {
+        if (data.warming || _chWakeupRetries < 25) {
           _chWakeupRetries++;
           badge.className = 'ch-status-badge';
-          if (text) text.textContent = 'Connecting\u2026';
-          badge.title = 'Waking ClickHouse Cloud\u2026';
+          if (text) text.textContent = data.warming ? 'Warming up\u2026' : 'Connecting\u2026';
+          badge.title = data.warming ? 'Warming ClickHouse Cloud cache\u2026' : 'Waking ClickHouse Cloud\u2026';
           _chRetryTimer = setTimeout(_pollClickHouseStatus, 4000);
         } else {
           badge.className = 'ch-status-badge offline';
@@ -196,7 +206,7 @@ function _pollClickHouseStatus() {
     .catch(() => {
       const badge = document.getElementById('chStatusBadge');
       const text  = document.getElementById('chStatusText');
-      if (_chWakeupRetries < 6) {
+      if (_chWakeupRetries < 25) {
         _chWakeupRetries++;
         if (badge) badge.className = 'ch-status-badge';
         if (text) text.textContent = 'Connecting\u2026';
@@ -282,8 +292,19 @@ function _loadingEnd(ok) {
 }
 
 // Monotonic id so a slow, older response can never overwrite a newer date/filter selection.
-let _dashReqSeq = 0; let _catFilterReqSeq = 0;
+let _dashReqSeq = 0; let _catFilterReqSeq = 0; let _reviewReqSeq = 0;
 const _inFlightFetches = new Map();  // url -> Promise
+
+function _livePeriodKey(date, tf, endD) {
+  return `${date || ''}|${tf || 'daily'}|${tf === 'custom' ? (endD || '') : ''}`;
+}
+
+function _setCategoryTableStatus(html) {
+  ['#table-cat-qty tbody', '#table-cat-val tbody'].forEach(sel => {
+    const tb = document.querySelector(sel);
+    if (tb) tb.innerHTML = html;
+  });
+}
 
 function _isTransientErrorMsg(msg) {
   const m = String(msg || '').toLowerCase();
@@ -292,7 +313,7 @@ function _isTransientErrorMsg(msg) {
 
 function _fetchJsonWithRetry(url, opts) {
   const silent = !!(opts && opts.silent);
-  const delays = [2000, 4000];
+  const delays = [2000, 4000, 6000, 8000];
 
   function attempt(idx) {
     return fetch(url)
@@ -343,6 +364,7 @@ function _cachedFetch(url, opts) {
   const cached = _apiCacheGet(url);
   if (cached) {
     console.debug('[cache HIT]', url);
+    if (url.includes('source=clickhouse')) _markClickHouseOnline();
     return Promise.resolve(cached);
   }
   if (_inFlightFetches.has(url)) {
@@ -352,7 +374,10 @@ function _cachedFetch(url, opts) {
   const p = _fetchJsonWithRetry(url, opts)
     .then(data => {
       _inFlightFetches.delete(url);
-      if (data && !data.error) _apiCacheSet(url, data);  // only cache successful responses
+      if (data && !data.error) {
+        _apiCacheSet(url, data);  // only cache successful responses
+        if (url.includes('source=clickhouse')) _markClickHouseOnline();
+      }
       if (!silent) _loadingEnd(!(data && data.error));
       return data;
     })
@@ -804,7 +829,7 @@ function initSidebar() {
         setTimeout(renderChart, 100);
       }
 
-      if (tab === "exec" && activeDate) {
+      if (tab === "exec-summary" && activeDate) {
         setTimeout(() => loadMonthwisePerformance(activeDate), 50);
       }
       
@@ -1068,6 +1093,12 @@ function loadDashboardData(date, timeframe) {
   if (!date) return;
   const endDate = (timeframe === 'custom' && activeEndDate) ? activeEndDate : '';
   const url = `/api/dashboard-data?date=${date}&end_date=${endDate}&timeframe=${timeframe}${_src()}`;
+  const _pkey = _livePeriodKey(date, timeframe, endDate);
+  if (window._catDrillState) window._catDrillState = { level: 0, category: null, product: null };
+  if (_dataSource === 'clickhouse' && !_apiCacheGet(url) && reviewData && reviewData._fromLiveDb !== _pkey) {
+    reviewData._fromLiveDb = null;
+    _setCategoryTableStatus("<tr><td colspan='16' style='text-align:center; color: var(--text-muted); padding: 28px;'>Loading ClickHouse data\u2026</td></tr>");
+  }
   const _seq = ++_dashReqSeq;
   _cachedFetch(url)
     .then(data => {
@@ -1075,7 +1106,9 @@ function loadDashboardData(date, timeframe) {
       const tbody = document.querySelector("#table-team-perf tbody");
       if (data.error) {
         console.warn("Dashboard data error:", data.error);
+        if (reviewData) reviewData._fromLiveDb = null;
         if (tbody) tbody.innerHTML = `<tr><td colspan='5' style='text-align:center; color: var(--color-warning); padding: 20px;'>${data.error}</td></tr>`;
+        _setCategoryTableStatus(`<tr><td colspan='16' style='text-align:center; color: var(--color-warning); padding: 20px;'>${data.error}</td></tr>`);
         return;
       }
       
@@ -1105,12 +1138,10 @@ function loadDashboardData(date, timeframe) {
         
         recalculateAll();
         renderExecSummary();
-        // Auto-fill monthwise table: run right away if Exec Summary is active, else defer softly
+        // Auto-fill monthwise table only when Exec Summary tab is active
         clearTimeout(_monthwiseTimer);
-        if (document.getElementById("tab-exec")?.classList.contains("active")) {
+        if (document.getElementById("tab-exec-summary")?.classList.contains("active")) {
           loadMonthwisePerformance(activeDate);
-        } else {
-          _monthwiseTimer = setTimeout(() => loadMonthwisePerformance(activeDate), 2500);
         }
       }
       
@@ -1128,7 +1159,7 @@ function loadDashboardData(date, timeframe) {
         triggerCategoryFilterLoad();
       } else if (data.category_performance) {
         reviewData.category_performance = data.category_performance;
-        reviewData._fromLiveDb = (typeof date !== 'undefined' ? date : activeDate);
+        reviewData._fromLiveDb = _pkey;
         reviewData.brand_performance = data.brand_performance || {};
         populateBrandFilter();
         renderCategoryPerformance();
@@ -1159,9 +1190,12 @@ function loadDashboardData(date, timeframe) {
       }
     })
     .catch(err => {
+      if (_seq !== _dashReqSeq) return;
       console.error("Error loading dashboard data:", err);
+      if (reviewData) reviewData._fromLiveDb = null;
       const tbody = document.querySelector("#table-team-perf tbody");
       if (tbody) tbody.innerHTML = `<tr><td colspan='5' style='text-align:center; color: var(--color-danger); padding: 20px;'>Failed to load data</td></tr>`;
+      _setCategoryTableStatus("<tr><td colspan='16' style='text-align:center; color: var(--color-danger); padding: 20px;'>Failed to load data \u2014 click Refresh to retry</td></tr>");
     });
 }
 
@@ -1703,20 +1737,27 @@ function triggerCategoryFilterLoad() {
     const districtElement = document.getElementById("cat-filter-district");
     const district = districtElement ? encodeURIComponent(districtElement.value) : '';
     
-    const url = `/api/dashboard-data?date=${activeDate}&end_date=${_endDate()}&timeframe=${timeframe}&state=${state}&district=${district}&rbm=${rbm}&fin_bdm=${finBdm}&bdm=${bdm}&store=${store}&staff=${staff}${_src()}`;
+    const endD = _endDate();
+    const _pkey = _livePeriodKey(activeDate, timeframe, endD);
+    const url = `/api/dashboard-data?date=${activeDate}&end_date=${endD}&timeframe=${timeframe}&state=${state}&district=${district}&rbm=${rbm}&fin_bdm=${finBdm}&bdm=${bdm}&store=${store}&staff=${staff}${_src()}`;
     
+    if (_dataSource === 'clickhouse' && !_apiCacheGet(url)) {
+      _setCategoryTableStatus("<tr><td colspan='16' style='text-align:center; color: var(--text-muted); padding: 28px;'>Filtering ClickHouse data\u2026</td></tr>");
+    }
     const _seq = ++_catFilterReqSeq;
     _cachedFetch(url)
       .then(data => {
         if (_seq !== _catFilterReqSeq) return;   // superseded by a newer request
         if (data.error) {
           console.warn("Dashboard filter error:", data.error);
+          if (reviewData) reviewData._fromLiveDb = null;
+          _setCategoryTableStatus(`<tr><td colspan='16' style='text-align:center; color: var(--color-warning); padding: 20px;'>${data.error}</td></tr>`);
           return;
         }
         if (data.category_performance) {
           // IMPORTANT: update the module-level `reviewData`, not window.reviewData
           reviewData.category_performance = data.category_performance;
-        reviewData._fromLiveDb = (typeof date !== 'undefined' ? date : activeDate);
+          reviewData._fromLiveDb = _pkey;
           reviewData.brand_performance = data.brand_performance || {};
           
           populateBrandFilter();
@@ -1728,12 +1769,21 @@ function triggerCategoryFilterLoad() {
           renderZonePerformance(data.zone_performance);
         }
       })
-      .catch(err => console.error("Error loading filtered category data:", err));
+      .catch(err => {
+        if (_seq !== _catFilterReqSeq) return;
+        console.error("Error loading filtered category data:", err);
+        _setCategoryTableStatus("<tr><td colspan='16' style='text-align:center; color: var(--color-danger); padding: 20px;'>Failed to load filtered data</td></tr>");
+      });
 }
 
 // Load Global Targets & Review Data
 function loadData(date, opts) {
   const skipDashboard = !!(opts && opts.skipDashboard);
+  const _revSeq = ++_reviewReqSeq;
+  const tfEl = document.getElementById("timeframeSelect");
+  const tfVal = tfEl ? tfEl.value : "daily";
+  const endD = (tfVal === "custom" && typeof activeEndDate !== "undefined" && activeEndDate) ? activeEndDate : "";
+  const _pkey = _livePeriodKey(date, tfVal, endD);
   // Load targets config & review data with automatic cold-start retry
   _fetchJsonWithRetry("/api/targets", { silent: true })
     .then(targets => {
@@ -1742,13 +1792,15 @@ function loadData(date, opts) {
       return _fetchJsonWithRetry(`/api/review/${date}`, { silent: true });
     })
     .then(data => {
-      const _keepCat = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === date) ? reviewData.category_performance : null;
-      const _keepBrand = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === date) ? reviewData.brand_performance : null;
+      if (_revSeq !== _reviewReqSeq) return;
+      const _keepCat = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === _pkey) ? reviewData.category_performance : null;
+      const _keepBrand = (_dataSource === 'clickhouse' && reviewData && reviewData._fromLiveDb === _pkey) ? reviewData.brand_performance : null;
       reviewData = data;
-      if (_keepCat) { reviewData.category_performance = _keepCat; reviewData.brand_performance = _keepBrand || {}; reviewData._fromLiveDb = date; }
+      if (_keepCat) { reviewData.category_performance = _keepCat; reviewData.brand_performance = _keepBrand || {}; reviewData._fromLiveDb = _pkey; }
       recalculateAll();
       populateBrandFilter();
-      renderAllTables();
+      const _skipCatRender = (skipDashboard && _dataSource === 'clickhouse' && !_keepCat);
+      renderAllTables({ skipCategory: _skipCatRender });
       updateDashboardKPIs();
       renderChart();
       lucide.createIcons();
@@ -1965,10 +2017,11 @@ function recalculateAll() {
 }
 
 // Render all data tables
-function renderAllTables() {
+function renderAllTables(opts) {
+  const skipCategory = !!(opts && opts.skipCategory);
   renderExecSummary();
   renderDisbursement();
-  renderCategoryPerformance();
+  if (!skipCategory) renderCategoryPerformance();
   renderContest();
   renderManpower();
 }

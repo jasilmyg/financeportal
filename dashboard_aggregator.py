@@ -26,69 +26,28 @@ def _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str=None):
 _cached_df = None
 _cached_mtime = 0
 
-def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district='', pine_lab_val_override=None, paytm_val_override=None, benow_val_override=None):
+def _prepare_finance_flags(frame, unup_raw):
+    """Standardize numeric/Financier columns and compute Is_Finance/Is_Card/Fin_* flags in place."""
+    for col in ['Sold Price', 'QTY']:
+        if col in frame.columns:
+            frame[col] = pd.to_numeric(frame[col], errors='coerce').fillna(0)
+    if 'Financier' in frame.columns:
+        frame['Financier'] = frame['Financier'].fillna('').astype(str).str.strip().str.upper()
+    else:
+        frame['Financier'] = ''
+    if unup_raw:
+        frame.loc[frame['Financier'].isin(unup_raw), 'Financier'] = 'ACASH'
+    frame['Is_Finance'] = (frame['Financier'] != '') & (frame['Financier'] != 'NAN') & (frame['Financier'].str.lower() != 'acash')
+    frame['Is_Card'] = frame['Financier'].isin(CARD_FINS)
+    frame['Fin_QTY'] = np.where(frame['Is_Finance'], frame['QTY'], 0)
+    frame['Fin_Value'] = np.where(frame['Is_Finance'], frame['Sold Price'], 0.0)
+    return frame
+
+
+def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district='', pine_lab_val_override=None, paytm_val_override=None, benow_val_override=None, ch_rollups=None):
     global _cached_df, _cached_mtime
     try:
-        # 1. Read data (with caching) — or use a pre-loaded DataFrame (e.g. from ClickHouse)
-        if df is not None:
-            # Caller supplied the DataFrame directly; skip file I/O
-            pass
-        else:
-            current_mtime = os.path.getmtime(raw_file_path) if os.path.exists(raw_file_path) else 0
-            if _cached_df is not None and _cached_mtime == current_mtime:
-                df = _cached_df.copy()
-            else:
-                df = pd.read_excel(raw_file_path, engine='calamine')
-                df = _normalize_columns(df)
-                if 'Date' in df.columns:
-                    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-                    df = df.dropna(subset=['Date'])
-                _cached_df = df.copy()
-                _cached_mtime = current_mtime
-            
-        # 3. Handle Dates
-        if 'Date' not in df.columns:
-            return {"error": "Date column not found in data"}
-        
-        target_date = pd.to_datetime(target_date_str)
-        
-        # 4. Filter by timeframe
-        if timeframe == 'daily':
-            mask = (df['Date'].dt.date == target_date.date())
-        elif timeframe == 'monthly':
-            mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.month == target_date.month)
-        elif timeframe == 'quarterly':
-            mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.quarter == target_date.quarter)
-        elif timeframe == 'custom':
-            end_date = pd.to_datetime(end_date_str) if end_date_str else target_date
-            mask = (df['Date'].dt.date >= target_date.date()) & (df['Date'].dt.date <= end_date.date())
-        else:
-            mask = pd.Series(True, index=df.index) # all data fallback
-            
-        df_filtered = df[mask].copy()
-        
-        if df_filtered.empty:
-            return {"error": "No data found for the selected timeframe"}
-            
-        # Standardize necessary columns
-        for col in ['Sold Price', 'QTY']:
-            if col in df_filtered.columns:
-                df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0)
-                
-        if 'Financier' in df_filtered.columns:
-            df_filtered['Financier'] = df_filtered['Financier'].fillna('').astype(str).str.strip().str.upper()
-        else:
-            df_filtered['Financier'] = ''
-            
-        if 'Category' not in df_filtered.columns and 'Product' in df_filtered.columns:
-            # Try to map product to category if missing
-            df_filtered['Product_upper'] = df_filtered['Product'].fillna('').astype(str).str.strip().str.upper()
-            df_filtered['Category'] = df_filtered['Product_upper'].map(PRODUCT_CATEGORY_MAP).fillna('BANK EMI')
-            
-        # Is Finance boolean
         _unup_raw, _unup_std = _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str)
-        if _unup_raw:
-            df_filtered.loc[df_filtered['Financier'].isin(_unup_raw), 'Financier'] = 'ACASH'
         if 'PineLab' in _unup_std:
             pine_lab_override = None
             pine_lab_val_override = None
@@ -98,8 +57,64 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         if 'Benow' in _unup_std:
             benow_override = None
             benow_val_override = None
-        df_filtered['Is_Finance'] = (df_filtered['Financier'] != '') & (df_filtered['Financier'] != 'NAN') & (df_filtered['Financier'].str.lower() != 'acash')
-        df_filtered['Is_Card'] = df_filtered['Financier'].isin(CARD_FINS)
+
+        if ch_rollups is not None:
+            df_cat_in, df_brand_in, df_hier_in = ch_rollups
+            if df_cat_in is None or df_cat_in.empty:
+                return {"error": "No data found for the selected timeframe"}
+            df_filtered = _prepare_finance_flags(df_cat_in.copy(), _unup_raw)
+            df_brand_src = _prepare_finance_flags(df_brand_in.copy(), _unup_raw) if (df_brand_in is not None and not df_brand_in.empty) else pd.DataFrame()
+            df_hier_src = _prepare_finance_flags(df_hier_in.copy(), _unup_raw) if (df_hier_in is not None and not df_hier_in.empty) else pd.DataFrame()
+        else:
+            # 1. Read data (with caching) — or use a pre-loaded DataFrame (e.g. from ClickHouse)
+            if df is not None:
+                # Caller supplied the DataFrame directly; skip file I/O
+                pass
+            else:
+                current_mtime = os.path.getmtime(raw_file_path) if os.path.exists(raw_file_path) else 0
+                if _cached_df is not None and _cached_mtime == current_mtime:
+                    df = _cached_df.copy()
+                else:
+                    df = pd.read_excel(raw_file_path, engine='calamine')
+                    df = _normalize_columns(df)
+                    if 'Date' in df.columns:
+                        df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+                        df = df.dropna(subset=['Date'])
+                    _cached_df = df.copy()
+                    _cached_mtime = current_mtime
+
+            # 3. Handle Dates
+            if 'Date' not in df.columns:
+                return {"error": "Date column not found in data"}
+
+            target_date = pd.to_datetime(target_date_str)
+
+            # 4. Filter by timeframe
+            if timeframe == 'daily':
+                mask = (df['Date'].dt.date == target_date.date())
+            elif timeframe == 'monthly':
+                mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.month == target_date.month)
+            elif timeframe == 'quarterly':
+                mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.quarter == target_date.quarter)
+            elif timeframe == 'custom':
+                end_date = pd.to_datetime(end_date_str) if end_date_str else target_date
+                mask = (df['Date'].dt.date >= target_date.date()) & (df['Date'].dt.date <= end_date.date())
+            else:
+                mask = pd.Series(True, index=df.index) # all data fallback
+
+            df_filtered = df[mask].copy()
+
+            if df_filtered.empty:
+                return {"error": "No data found for the selected timeframe"}
+
+            if 'Category' not in df_filtered.columns and 'Product' in df_filtered.columns:
+                # Try to map product to category if missing
+                df_filtered['Product_upper'] = df_filtered['Product'].fillna('').astype(str).str.strip().str.upper()
+                df_filtered['Category'] = df_filtered['Product_upper'].map(PRODUCT_CATEGORY_MAP).fillna('BANK EMI')
+
+            df_filtered = _prepare_finance_flags(df_filtered, _unup_raw)
+            df_brand_src = None
+            df_hier_src = df_filtered
         
         # --- CALCULATE KPIs ---
         total_value = df_filtered['Sold Price'].sum()
@@ -123,10 +138,6 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             "fin_value_cr": float(fin_value / 10000000),
             "card_value_cr": float(card_value / 10000000)
         }
-        
-        # Add fast computation columns for finance
-        df_filtered['Fin_QTY'] = np.where(df_filtered['Is_Finance'], df_filtered['QTY'], 0)
-        df_filtered['Fin_Value'] = np.where(df_filtered['Is_Finance'], df_filtered['Sold Price'], 0.0)
 
         # --- CATEGORY & BRAND PERFORMANCE ---
         # Apply filters just for category performance
@@ -134,6 +145,8 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         
         for col in ['RBM', 'BDM', 'Branch', 'Staff', 'State', 'District']:
             if col not in df_cat.columns:
+                if col == 'Staff' and ch_rollups is not None:
+                    continue
                 df_cat[col] = 'Unknown'
             else:
                 df_cat[col] = df_cat[col].fillna('Unknown').astype(str)
@@ -141,7 +154,8 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         if rbm:   df_cat = df_cat[df_cat['RBM'].str.upper().str.strip()   == rbm.upper().strip()]
         if bdm:   df_cat = df_cat[df_cat['BDM'].str.upper().str.strip()   == bdm.upper().strip()]
         if store: df_cat = df_cat[df_cat['Branch'].str.upper().str.strip() == store.upper().strip()]
-        if staff: df_cat = df_cat[df_cat['Staff'].str.upper().str.strip()  == staff.upper().strip()]
+        if staff and 'Staff' in df_cat.columns:
+            df_cat = df_cat[df_cat['Staff'].str.upper().str.strip() == staff.upper().strip()]
         if state:
             _sts = [x.strip().upper() for x in str(state).split(',') if x.strip()]
             if _sts: df_cat = df_cat[df_cat['State'].str.upper().str.strip().isin(_sts)]
@@ -364,13 +378,18 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         }
         
         brands_performance = {}
-        if 'Brand' in df_cat.columns:
-            df_cat['Brand'] = df_cat['Brand'].fillna('UNKNOWN').astype(str).str.strip().str.upper()
-            df_cat['Brand'] = df_cat['Brand'].replace('', 'UNKNOWN')
-            
-            _bg = df_cat.groupby(['Brand', 'Category', 'Fin_Mapped'])[['QTY', 'Sold Price']].sum().reset_index()
+        _df_b = df_brand_src if df_brand_src is not None else df_cat
+        if not _df_b.empty and 'Brand' in _df_b.columns:
+            _df_b['Brand'] = _df_b['Brand'].fillna('UNKNOWN').astype(str).str.strip().str.upper()
+            _df_b['Brand'] = _df_b['Brand'].replace('', 'UNKNOWN')
+            _df_b['Category'] = _df_b['Category'].astype(object).fillna('BANK EMI').apply(str).str.strip().str.upper()
+            _df_b['Category'] = _df_b['Category'].replace({'': 'BANK EMI', 'NAN': 'BANK EMI'})
+            _df_b['Financier'] = _df_b['Financier'].astype(object).fillna('').apply(str).str.strip().str.upper()
+            _df_b['Fin_Mapped'] = _df_b['Financier'].map(fin_map).fillna(_df_b['Financier'])
+
+            _bg = _df_b.groupby(['Brand', 'Category', 'Fin_Mapped'])[['QTY', 'Sold Price']].sum().reset_index()
             _brand_acc = {}
-            for brand_ in sorted(df_cat['Brand'].unique().tolist()):
+            for brand_ in sorted(_df_b['Brand'].unique().tolist()):
                 _brand_acc[str(brand_)] = _empty_perf()
             for b_, c_, f_, q_, p_ in zip(_bg['Brand'].astype(str), _bg['Category'].astype(str),
                                           _bg['Fin_Mapped'].astype(str),
@@ -395,17 +414,17 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         # Group by RBM -> BDM -> Branch -> Staff
         # If columns don't exist, fill with 'Unknown'
         for col in ['RBM', 'BDM', 'Branch', 'Staff', 'Fin BDM']:
-            if col not in df_filtered.columns:
-                df_filtered[col] = 'Unknown'
+            if col not in df_hier_src.columns:
+                df_hier_src[col] = 'Unknown'
             else:
-                df_filtered[col] = df_filtered[col].fillna('').astype(str)
+                df_hier_src[col] = df_hier_src[col].fillna('').astype(str)
         # Treat 'Unknown' in non-mandatory cols as empty
         for col in ['RBM', 'BDM', 'Branch', 'Staff']:
-            df_filtered[col] = df_filtered[col].replace('', 'Unknown')
+            df_hier_src[col] = df_hier_src[col].replace('', 'Unknown')
                 
         hierarchy = {}
         
-        grouped_hierarchy = df_filtered.groupby(['RBM', 'BDM', 'Branch', 'Staff']).agg(
+        grouped_hierarchy = df_hier_src.groupby(['RBM', 'BDM', 'Branch', 'Staff']).agg(
             qty=('QTY', 'sum'),
             value=('Sold Price', 'sum'),
             fin_qty=('Fin_QTY', 'sum'),
@@ -867,7 +886,7 @@ def get_brand_data(raw_file_path, target_date_str, timeframe, category='ALL', pr
             row['asp'] = round(total_val / total_qty, 0) if total_qty > 0 else 0
             result.append(row)
 
-        result.sort(key=lambda x: x['total'], reverse=True)
+        result.sort(key=lambda x: (-x['total'], x['brand']))
         return {"status": "success", "brands": result}
 
     except Exception as e:
@@ -938,7 +957,7 @@ def get_store_data(raw_file_path, target_date_str, timeframe, zone='ALL', zone_m
                 row[fin] = int(sub['QTY'].sum())
             result.append(row)
 
-        result.sort(key=lambda x: x['total_qty'], reverse=True)
+        result.sort(key=lambda x: (-x['total_qty'], x['branch']))
 
         # All zones for filter dropdown
         all_zones = sorted(set(zone_map_upper.values()))

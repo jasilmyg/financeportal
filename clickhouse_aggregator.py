@@ -509,7 +509,60 @@ def _resolve_emi_branch_filter(
     return f"upper(trim(branch)) IN ({in_sql})"
 
 
-def get_card_overrides(
+def _get_erp_card_by_state_cat(
+    date_str: str,
+    timeframe: str = "monthly",
+    end_date_str: str = None,
+    excluded_states: list[str] | tuple[str, ...] = (),
+) -> dict[tuple[str, str], tuple[int, float]]:
+    """
+    Lightweight SQL rollup returning {(card_fin_key, CATEGORY): (qty, sold_price_sum)}
+    for excluded states (e.g. KARNATAKA/OTHERS when filtering by KERALA).
+    Replaces scanning full 100k+ row DataFrames inside get_card_overrides.
+    """
+    if not excluded_states:
+        return {}
+    joins_sql, where_clause, params, exprs = _build_sales_where_and_joins(
+        date_str, timeframe, end_date_str=end_date_str, include_staff=False
+    )
+    params["excl_states"] = [str(s).strip().upper() for s in excluded_states if str(s).strip()]
+    sql = f"""
+SELECT
+    Financier,
+    Category,
+    sum(_qty) AS QTY,
+    sum(_val) AS `Sold Price`
+FROM (
+    SELECT
+        {exprs['fin_expr']} AS Financier,
+        {exprs['cat_expr']} AS Category,
+        {exprs['qty_expr']} AS _qty,
+        {exprs['val_expr']} AS _val
+    FROM azure_sales_report s
+    {joins_sql}
+    WHERE {where_clause}
+      AND ({_STATE_SQL}) IN {{excl_states:Array(String)}}
+)
+WHERE upper(Financier) IN ('PAYTM', 'BENOW')
+GROUP BY Financier, Category
+"""
+    df = query_df(sql, params)
+    if df.empty:
+        return {}
+    out: dict[tuple[str, str], tuple[int, float]] = {}
+    card_keys_sub = {'PAYTM': 'PAYTM', 'BENOW': 'Benow'}
+    for _, row in df.iterrows():
+        f = card_keys_sub.get(str(row.get('Financier', '') or '').strip().upper())
+        c = str(row.get('Category', '') or '').strip().upper()
+        if f and c:
+            q = int(pd.to_numeric(row.get('QTY', 0), errors='coerce') or 0)
+            p = float(pd.to_numeric(row.get('Sold Price', 0.0), errors='coerce') or 0.0)
+            prev_q, prev_p = out.get((f, c), (0, 0.0))
+            out[(f, c)] = (prev_q + q, prev_p + p)
+    return out
+
+
+def get_card_both_overrides(
     date_str: str,
     timeframe: str = "monthly",
     end_date_str: str = None,
@@ -519,16 +572,15 @@ def get_card_overrides(
     store: str = "",
     fin_bdm: str = "",
     district: str = "",
-) -> dict:
+) -> tuple[dict, dict]:
     """
-    PineLab / PAYTM / Benow counts straight from the manually uploaded files, as
-    {'PineLab': {CATEGORY: qty}, 'PAYTM': {...}, 'Benow': {...}}.  These are the values that
-    the dashboard shows in the card columns and deducts from aCASH.
+    Fetch both QTY and Value (in Crores) card EMI overrides in ONE pass:
+    returns ({'PineLab': {CAT: qty}, ...}, {'PineLab': {CAT: val_cr}, ...}).
     """
     sel = [x.strip().upper() for x in str(state or '').split(',') if x.strip()]
     excluded = [s for s in _ALL_STATES if s not in sel] if sel else []
     if excluded and 'KERALA' not in sel:
-        return {}
+        return {}, {}
 
     branch_cond = _resolve_emi_branch_filter(state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district)
 
@@ -546,39 +598,76 @@ def get_card_overrides(
         pt_cond = ""
         bn_cond = ""
 
+    def _safe_both(table, fin, sc=""):
+        try:
+            return _emi_both_totals(table, fin, date_str, timeframe, end_date_str, state_cond=sc)
+        except Exception as e:
+            if sc:
+                try:
+                    return _emi_both_totals(table, fin, date_str, timeframe, end_date_str, state_cond="")
+                except Exception:
+                    pass
+            logger.warning("_emi_both_totals(%s) failed: %s", table, e)
+            return {}, {}
+
     emi_state._ensure_synced()
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=3) as pool:
-        f_pine = pool.submit(get_pine_lab_totals, date_str, timeframe, end_date_str, pl_cond)
-        f_paytm = pool.submit(get_paytm_totals, date_str, timeframe, end_date_str, pt_cond)
-        f_benow = pool.submit(get_benow_totals, date_str, timeframe, end_date_str, bn_cond)
-        raw = {
+        f_pine = pool.submit(_safe_both, 'pine_lab_transactions', emi_state.PINE_FIN, pl_cond)
+        f_paytm = pool.submit(_safe_both, 'paytm_transactions', emi_state.PAYTM_FIN, pt_cond)
+        f_benow = pool.submit(_safe_both, 'benow_transactions', emi_state.BENOW_FIN, bn_cond)
+        raw_pairs = {
             'PineLab': f_pine.result(),
             'PAYTM': f_paytm.result(),
             'Benow': f_benow.result(),
         }
-    out = {}
-    for fin, cats in raw.items():
-        merged = {}
-        for k, v in (cats or {}).items():           # file categories come in mixed case
+
+    out_qty = {}
+    out_val = {}
+    for fin, (q_cats, v_cats) in raw_pairs.items():
+        merged_q = {}
+        for k, v in (q_cats or {}).items():
             kk = str(k).strip().upper()
-            merged[kk] = merged.get(kk, 0) + int(v)
-        out[fin] = merged
+            merged_q[kk] = merged_q.get(kk, 0) + int(v)
+        out_qty[fin] = merged_q
+
+        merged_v = {}
+        for k, v in (v_cats or {}).items():
+            kk = str(k).strip().upper()
+            merged_v[kk] = merged_v.get(kk, 0.0) + float(v)
+        out_val[fin] = merged_v
 
     if excluded and not branch_cond:
-        full = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str)
-        if not full.empty:
-            fin_u = full['Financier'].astype(str).str.strip().str.upper()
-            card_keys_sub = {'PAYTM': 'PAYTM', 'BENOW': 'Benow'}
-            sub = full[full['State'].isin(excluded) & fin_u.isin(card_keys_sub)]
-            if not sub.empty:
-                g = sub.assign(_f=fin_u[sub.index].map(card_keys_sub),
-                               _c=sub['Category'].astype(str).str.strip().str.upper()
-                               ).groupby(['_f', '_c'])['QTY'].sum()
-                for (f, c), q in g.items():
-                    if c in out.get(f, {}):
-                        out[f][c] = max(0, out[f][c] - int(q))
-    return out
+        erp_excl = _get_erp_card_by_state_cat(date_str, timeframe, end_date_str, excluded)
+        for (f, c), (q, p) in erp_excl.items():
+            if c in out_qty.get(f, {}):
+                out_qty[f][c] = max(0, out_qty[f][c] - int(q))
+            if c in out_val.get(f, {}):
+                out_val[f][c] = max(0.0, out_val[f][c] - float(p) / 10000000.0)
+
+    return out_qty, out_val
+
+
+def get_card_overrides(
+    date_str: str,
+    timeframe: str = "monthly",
+    end_date_str: str = None,
+    state: str = "",
+    rbm: str = "",
+    bdm: str = "",
+    store: str = "",
+    fin_bdm: str = "",
+    district: str = "",
+) -> dict:
+    """
+    PineLab / PAYTM / Benow counts straight from the manually uploaded files, as
+    {'PineLab': {CATEGORY: qty}, 'PAYTM': {...}, 'Benow': {...}}.  These are the values that
+    the dashboard shows in the card columns and deducts from aCASH.
+    """
+    return get_card_both_overrides(
+        date_str, timeframe, end_date_str,
+        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district,
+    )[0]
 
 
 def _emi_value_totals(table: str, financier: str, date_str: str, timeframe: str, end_date_str: str = None, state_cond: str = "") -> dict:
@@ -604,72 +693,10 @@ def get_card_value_overrides(
     PineLab / PAYTM / Benow values (in Crores) straight from the manually uploaded files, as
     {'PineLab': {CATEGORY: val_cr}, 'PAYTM': {...}, 'Benow': {...}}.
     """
-    sel = [x.strip().upper() for x in str(state or '').split(',') if x.strip()]
-    excluded = [s for s in _ALL_STATES if s not in sel] if sel else []
-    if excluded and 'KERALA' not in sel:
-        return {}
-
-    branch_cond = _resolve_emi_branch_filter(state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district)
-
-    pl_state_cond = ""
-    if excluded:
-        sel_sql = ", ".join(f"'{s}'" for s in sel)
-        pl_state_cond = f"upper(coalesce(state, 'KERALA')) IN ({sel_sql})"
-
-    if branch_cond:
-        pl_cond = f"{pl_state_cond} AND {branch_cond}" if pl_state_cond else branch_cond
-        pt_cond = branch_cond
-        bn_cond = branch_cond
-    else:
-        pl_cond = pl_state_cond
-        pt_cond = ""
-        bn_cond = ""
-
-    def _safe_val(table, fin, sc=""):
-        try:
-            return _emi_value_totals(table, fin, date_str, timeframe, end_date_str, state_cond=sc)
-        except Exception as e:
-            if sc:
-                try:
-                    return _emi_value_totals(table, fin, date_str, timeframe, end_date_str, state_cond="")
-                except Exception:
-                    pass
-            logger.warning("_emi_value_totals(%s) failed: %s", table, e)
-            return {}
-
-    emi_state._ensure_synced()
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        f_pine = pool.submit(_safe_val, 'pine_lab_transactions', emi_state.PINE_FIN, pl_cond)
-        f_paytm = pool.submit(_safe_val, 'paytm_transactions', emi_state.PAYTM_FIN, pt_cond)
-        f_benow = pool.submit(_safe_val, 'benow_transactions', emi_state.BENOW_FIN, bn_cond)
-        raw = {
-            'PineLab': f_pine.result(),
-            'PAYTM': f_paytm.result(),
-            'Benow': f_benow.result(),
-        }
-    out = {}
-    for fin, cats in raw.items():
-        merged = {}
-        for k, v in (cats or {}).items():
-            kk = str(k).strip().upper()
-            merged[kk] = merged.get(kk, 0.0) + float(v)
-        out[fin] = merged
-
-    if excluded and not branch_cond:
-        full = get_clickhouse_df(date_str, timeframe, end_date_str=end_date_str)
-        if not full.empty:
-            fin_u = full['Financier'].astype(str).str.strip().str.upper()
-            card_keys_sub = {'PAYTM': 'PAYTM', 'BENOW': 'Benow'}
-            sub = full[full['State'].isin(excluded) & fin_u.isin(card_keys_sub)]
-            if not sub.empty:
-                g = sub.assign(_f=fin_u[sub.index].map(card_keys_sub),
-                               _c=sub['Category'].astype(str).str.strip().str.upper()
-                               ).groupby(['_f', '_c'])['Sold Price'].sum()
-                for (f, c), p in g.items():
-                    if c in out.get(f, {}):
-                        out[f][c] = max(0.0, out[f][c] - float(p) / 10000000.0)
-    return out
+    return get_card_both_overrides(
+        date_str, timeframe, end_date_str,
+        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district,
+    )[1]
 
 
 # Stores present in the reference file (Workbook5): the 6 Kerala retail RBMs, minus excluded
@@ -719,7 +746,9 @@ def _assign_fin_bdm(df: pd.DataFrame) -> pd.DataFrame:
 
         still_miss = mapped_fin.isna()
         if still_miss.any():
-            mapped_fin[still_miss] = branch_upper[still_miss].apply(_fuzzy_fin_bdm)
+            uniq_miss = branch_upper[still_miss].unique()
+            fuzzy_map = {s: _fuzzy_fin_bdm(s) for s in uniq_miss}
+            mapped_fin[still_miss] = branch_upper[still_miss].map(fuzzy_map)
         if 'RBM' in df.columns:
             rbm_upper = df['RBM'].astype(str).str.strip().str.upper()
             still_miss = mapped_fin.isna()
@@ -734,7 +763,7 @@ def _assign_fin_bdm(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_clickhouse_df(
+def _build_sales_where_and_joins(
     date_str: str,
     timeframe: str = "monthly",
     rbm: str = "",
@@ -742,113 +771,20 @@ def get_clickhouse_df(
     store: str = "",
     staff: str = "",
     end_date_str: str = None,
-    fin_bdm: str = "",
     state: str = "",
     district: str = "",
-) -> pd.DataFrame:
+    category: str = "ALL",
+    product: str = "ALL",
+    include_staff: bool = True,
+) -> tuple[str, str, dict, dict]:
     """
-    Fetch sales data from ClickHouse and return a DataFrame with columns:
-
-        Date, Branch, RBM, BDM, Financier, Category, Product, Brand, QTY, Sold Price
-
-    These column names exactly match what dashboard_aggregator.py expects,
-    so the existing aggregation logic can be reused without modification.
-
-    Parameters
-    ----------
-    date_str  : ISO date string, e.g. "2026-08-01"
-    timeframe : "daily" | "monthly" | "quarterly"
-    rbm       : Optional RBM filter (staff code string as stored in ClickHouse)
-    bdm       : Optional BDM filter
-    store     : Optional branch name filter
-    staff     : Optional staff name filter
-    state     : Optional state name filter
+    Shared ClickHouse FROM/JOIN/WHERE/expr builder mirroring get_clickhouse_df's
+    exact cleaning, financier mapping, category mapping, and filter semantics.
     """
     date_filter, params = _build_date_filter(date_str, timeframe, end_date_str)
 
-    # Additional WHERE clauses for hierarchy filters
-    extra_filters = []
-    if rbm:
-        extra_filters.append(
-            "CASE WHEN " + _IS_OTHERS_STATE_SQL + " THEN 'OTHERS' "
-            "ELSE upper(trim(coalesce(bm.rbm, inv.rbm, ''))) END = upper(trim({rbm:String}))"
-        )
-        params["rbm"] = rbm
-    if bdm:
-        extra_filters.append(
-            "CASE WHEN " + _IS_OTHERS_STATE_SQL + " THEN 'OTHERS' "
-            "ELSE upper(trim(coalesce(bm.bdm, inv.bdm, ''))) END = upper(trim({bdm:String}))"
-        )
-        params["bdm"] = bdm
-    if store:
-        # Branch column in SELECT is s.branch; filter must match exactly the same field
-        extra_filters.append("upper(trim(s.branch)) = upper(trim({store:String}))")
-        params["store"] = store
-    if staff:
-        extra_filters.append("upper(trim(coalesce(sd.staff, 'Unknown'))) = upper(trim({staff:String}))")
-        params["staff"] = staff
-    if state:
-        # Multiple states supported: comma-separated list (e.g. "KERALA,KARNATAKA")
-        _states = [x.strip().upper() for x in str(state).split(",") if x.strip()]
-        if _states:
-            extra_filters.append("(" + _STATE_SQL + ") IN {states:Array(String)}")
-            params["states"] = _states
-    if district:
-        extra_filters.append(
-            "CASE WHEN " + _IS_OTHERS_STATE_SQL + " THEN 'OTHERS' "
-            "ELSE upper(trim(coalesce(bm.district, ''))) END = upper(trim({district:String}))"
-        )
-        params["district"] = district
-
-    where_clause = " AND ".join([date_filter] + extra_filters) if extra_filters else date_filter
-
-    # Use coarser date granularity in GROUP BY to maximise pre-aggregation:
-    #   daily     → keep exact date   (~5K rows/day)
-    #   monthly   → truncate to month start  (~5K rows total)
-    #   quarterly → truncate to quarter start (~5K rows total)
-    #   custom    → use start_date as constant (collapses all days → ~5K rows)
-    #               Without this, a 16-day range returns 16×5K=80K rows → Render timeout.
-    #               dashboard_aggregator's custom mask (date >= start AND date <= end)
-    #               still works because all rows get Date=start_date which is always <= end_date.
-    if timeframe == 'custom':
-        date_expr = f"toDate('{date_str}')"   # constant: all rows → same date = range start
-    else:
-        date_expr = {
-            'daily':     'toDate(s.date)',
-            'monthly':   'toStartOfMonth(s.date)',
-            'quarterly': 'toStartOfQuarter(s.date)',
-        }.get(timeframe, 'toDate(s.date)')
-
-    # Junk products SQL exclusion (moved from Python to SQL for speed)
-    junk_sql         = ", ".join(f"'{p}'" for p in _JUNK_PRODUCTS)
-    junk_nospace_sql = ", ".join(f"'{p.replace(' ', '')}'" for p in _JUNK_PRODUCTS)
-
-    # Excluded CH categories SQL
-    excluded_cats_sql = ", ".join(f"'{c}'" for c in _EXCLUDED_CH_CATEGORIES)
-
-    # EMI files (Pine Lab / Paytm / Benow) only count for the part of the selected range
-    # that an uploaded file covers - works for daily/monthly/quarterly/custom, across months.
-    _rng_start, _rng_end = emi_state.range_of(date_str, timeframe, end_date_str)
-    bpf_range_sql = emi_state.bpf_filter_sql(_rng_start, _rng_end)
-    sd_date_filter = date_filter.replace("s.date", "s2.date")
-
-    # Build SQL with all mapping done in ClickHouse (mirrors Workbook5 / get_raw_export_df base rules)
-    sql = f"""
-SELECT
-    {date_expr}                                                     AS Date,
-    upper(trim(s.branch))                                           AS Branch,
-    upper(trim(coalesce(nullIf(bm.branch_name, ''), s.branch)))     AS _StoreName,
-    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.rbm, inv.rbm, '')))) AS RBM,
-    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.bdm, inv.bdm, '')))) AS BDM,
-    upper(trim(coalesce(sd.staff, 'Unknown')))                      AS Staff,
-    {_STATE_SQL}                                                    AS State,
-    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.district, '')))) AS District,
-
-    -- Financier: priority order (matches Workbook5 Paper Finance first, then Card EMI split from aCash):
-    --  1. Delivery Order No overrides (sales_data.delivery_order_no)
-    --  2. Standard Paper Financier name / code (azure_invoice_report)
-    --  3. Card EMI (benow_pine_financier) ONLY on remaining non-Paper-Finance (aCash) invoices
-    CASE
+    prod_expr = f"({_RAW_PROD_EXPR})"
+    fin_expr = f"""CASE
         -- 1. Delivery Order No overrides
         WHEN s.invoice_no IN ('26-I-CHSY-13671', '26-I-RAM-5618')                          THEN 'BAJAJ'
         WHEN match({_RAW_DO_CLEAN}, '^B[0-9]')                                             THEN 'BAJAJ'
@@ -888,10 +824,9 @@ SELECT
         WHEN bpf_imei.bpf_imei_financier = 'Benow'                                         THEN 'Benow'
         WHEN bpf_imei.bpf_imei_financier IS NOT NULL AND bpf_imei.bpf_imei_financier != '' THEN bpf_imei.bpf_imei_financier
         ELSE 'aCASH'
-    END AS Financier,
+    END"""
 
-    -- Category: product-level mapping (with Item Code prefix fallback) takes priority
-    CASE
+    cat_expr = f"""CASE
         WHEN ({_RAW_PROD_EXPR}) IN ('MOBILE','TABLET','TAB')                               THEN 'MOBILE'
         WHEN ({_RAW_PROD_EXPR}) IN ('LAPTOP','DESKTOP')                                    THEN 'LAPTOP'
         WHEN ({_RAW_PROD_EXPR}) LIKE '%SMALL APPLIANCE%'                                   THEN 'SA'
@@ -905,27 +840,87 @@ SELECT
         WHEN upper(coalesce(i.category,'')) IN ('CONSUMER ELECTRONICS','HOME SOLUTIONS')   THEN 'CD PRODUCTS'
         WHEN upper(coalesce(i.category,'')) = 'IT'                                         THEN 'LAPTOP'
         ELSE 'OTHERS'
-    END AS Category,
+    END"""
 
-    ({_RAW_PROD_EXPR})                                              AS Product,
-    upper(trim(coalesce(nullIf(i.brand,''), 'UNKNOWN')))            AS Brand,
-
-    sum(toInt64(CASE
+    qty_expr = """toInt64(CASE
         WHEN toFloat64(s.sold_price) < 0
             THEN toInt64(-1) * toInt64(abs(toInt64(coalesce(s.qty, 0))))
         ELSE toInt64(abs(toInt64(coalesce(s.qty, 0))))
-    END) * if((s.invoice_no = '26-I-TDF-86108' AND s.item_code = 'SMA00165') OR (s.invoice_no = '26-I-TDF-86109' AND s.item_code = 'AC02814'), 2, 1)) AS QTY,
-    sum(round(toFloat64(coalesce(s.sold_price, 0)), 2) * if((s.invoice_no = '26-I-TDF-86108' AND s.item_code = 'SMA00165') OR (s.invoice_no = '26-I-TDF-86109' AND s.item_code = 'AC02814'), 2, 1)) AS `Sold Price`
+    END) * if((s.invoice_no = '26-I-TDF-86108' AND s.item_code = 'SMA00165') OR (s.invoice_no = '26-I-TDF-86109' AND s.item_code = 'AC02814'), 2, 1)"""
+    val_expr = """round(toFloat64(coalesce(s.sold_price, 0)), 2) * if((s.invoice_no = '26-I-TDF-86108' AND s.item_code = 'SMA00165') OR (s.invoice_no = '26-I-TDF-86109' AND s.item_code = 'AC02814'), 2, 1)"""
 
-FROM azure_sales_report s
-LEFT JOIN item_master i            ON s.item_code  = i.item_code
+    extra_filters = []
+    if rbm:
+        extra_filters.append(
+            "CASE WHEN " + _IS_OTHERS_STATE_SQL + " THEN 'OTHERS' "
+            "ELSE upper(trim(coalesce(bm.rbm, inv.rbm, ''))) END = upper(trim({rbm:String}))"
+        )
+        params["rbm"] = rbm
+    if bdm:
+        extra_filters.append(
+            "CASE WHEN " + _IS_OTHERS_STATE_SQL + " THEN 'OTHERS' "
+            "ELSE upper(trim(coalesce(bm.bdm, inv.bdm, ''))) END = upper(trim({bdm:String}))"
+        )
+        params["bdm"] = bdm
+    if store:
+        extra_filters.append("upper(trim(s.branch)) = upper(trim({store:String}))")
+        params["store"] = store
+    if staff:
+        extra_filters.append("upper(trim(coalesce(sd.staff, 'Unknown'))) = upper(trim({staff:String}))")
+        params["staff"] = staff
+    if state:
+        _states = [x.strip().upper() for x in str(state).split(",") if x.strip()]
+        if _states:
+            extra_filters.append("(" + _STATE_SQL + ") IN {states:Array(String)}")
+            params["states"] = _states
+    if district:
+        extra_filters.append(
+            "CASE WHEN " + _IS_OTHERS_STATE_SQL + " THEN 'OTHERS' "
+            "ELSE upper(trim(coalesce(bm.district, ''))) END = upper(trim({district:String}))"
+        )
+        params["district"] = district
+    if category and str(category).strip().upper() != "ALL":
+        extra_filters.append(f"({cat_expr}) = upper(trim({{filter_cat:String}}))")
+        params["filter_cat"] = str(category).strip()
+    if product and str(product).strip().upper() != "ALL":
+        extra_filters.append(f"{prod_expr} = upper(trim({{filter_prod:String}}))")
+        params["filter_prod"] = str(product).strip()
+
+    junk_sql = ", ".join(f"'{p}'" for p in _JUNK_PRODUCTS)
+    junk_nospace_sql = ", ".join(f"'{p.replace(' ', '')}'" for p in _JUNK_PRODUCTS)
+    excluded_cats_sql = ", ".join(f"'{c}'" for c in _EXCLUDED_CH_CATEGORIES)
+
+    base_filters = [
+        date_filter,
+        *extra_filters,
+        f"abs(toFloat64(s.sold_price)) > {_MIN_PRICE}",
+        "upper(coalesce(inv.customer_type, '')) != 'CORPORATE'",
+        "upper(coalesce(inv.financier_name, '')) NOT LIKE '%ECOMMERCE%'",
+        "upper(coalesce(inv.financier_name, '')) NOT LIKE '%E-COMMERCE%'",
+        "upper(coalesce(inv.financier_code, '')) NOT LIKE '%ECOMMERCE%'",
+        _RAW_ALLOWED_RETAIL_FIN,
+        f"(i.category IS NULL OR i.category NOT IN ({excluded_cats_sql}))",
+        f"{prod_expr} != ''",
+        f"{prod_expr} NOT IN ({junk_sql})",
+        f"replaceAll({prod_expr}, ' ', '') NOT IN ({junk_nospace_sql})",
+    ]
+    where_clause = "\n  AND ".join(base_filters)
+
+    _rng_start, _rng_end = emi_state.range_of(date_str, timeframe, end_date_str)
+    bpf_range_sql = emi_state.bpf_filter_sql(_rng_start, _rng_end)
+    sd_date_filter = date_filter.replace("s.date", "s2.date")
+
+    sd_cols = (
+        "invoice_number, any(delivery_order_no) AS delivery_order_no, any(financier) AS financier, any(staff) AS staff"
+        if (include_staff or staff)
+        else "invoice_number, any(delivery_order_no) AS delivery_order_no"
+    )
+
+    joins_sql = f"""LEFT JOIN item_master i            ON s.item_code  = i.item_code
 LEFT JOIN azure_invoice_report inv ON s.invoice_no = inv.invoice_no
 LEFT JOIN branch_master bm         ON upper(trim(s.branch)) = upper(trim(bm.code))
 LEFT JOIN (
-    SELECT invoice_number,
-           any(delivery_order_no) AS delivery_order_no,
-           any(financier) AS financier,
-           any(staff) AS staff
+    SELECT {sd_cols}
     FROM sales_data
     WHERE invoice_number IN (
         SELECT s2.invoice_no
@@ -950,20 +945,71 @@ LEFT JOIN (
     WHERE (bpf_imei.invoice_no = '' OR bpf_imei.invoice_no IS NULL)
       {bpf_range_sql}
     GROUP BY bpf_imei.imei
-) bpf_imei ON s.imei_batch = bpf_imei.fallback_imei
+) bpf_imei ON s.imei_batch = bpf_imei.fallback_imei"""
 
+    exprs = {
+        "fin_expr": fin_expr,
+        "cat_expr": cat_expr,
+        "prod_expr": prod_expr,
+        "qty_expr": qty_expr,
+        "val_expr": val_expr,
+    }
+    return joins_sql, where_clause, params, exprs
+
+
+def get_clickhouse_df(
+    date_str: str,
+    timeframe: str = "monthly",
+    rbm: str = "",
+    bdm: str = "",
+    store: str = "",
+    staff: str = "",
+    end_date_str: str = None,
+    fin_bdm: str = "",
+    state: str = "",
+    district: str = "",
+) -> pd.DataFrame:
+    """
+    Fetch sales data from ClickHouse and return a DataFrame with columns:
+
+        Date, Branch, RBM, BDM, Financier, Category, Product, Brand, QTY, Sold Price
+
+    These column names exactly match what dashboard_aggregator.py expects,
+    so the existing aggregation logic can be reused without modification.
+    """
+    joins_sql, where_clause, params, exprs = _build_sales_where_and_joins(
+        date_str, timeframe, rbm=rbm, bdm=bdm, store=store, staff=staff,
+        end_date_str=end_date_str, state=state, district=district, include_staff=True,
+    )
+
+    if timeframe == 'custom':
+        date_expr = f"toDate('{date_str}')"
+    else:
+        date_expr = {
+            'daily':     'toDate(s.date)',
+            'monthly':   'toStartOfMonth(s.date)',
+            'quarterly': 'toStartOfQuarter(s.date)',
+        }.get(timeframe, 'toDate(s.date)')
+
+    sql = f"""
+SELECT
+    {date_expr}                                                     AS Date,
+    upper(trim(s.branch))                                           AS Branch,
+    upper(trim(coalesce(nullIf(bm.branch_name, ''), s.branch)))     AS _StoreName,
+    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.rbm, inv.rbm, '')))) AS RBM,
+    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.bdm, inv.bdm, '')))) AS BDM,
+    upper(trim(coalesce(sd.staff, 'Unknown')))                      AS Staff,
+    {_STATE_SQL}                                                    AS State,
+    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.district, '')))) AS District,
+    {exprs['fin_expr']}                                             AS Financier,
+    {exprs['cat_expr']}                                             AS Category,
+    {exprs['prod_expr']}                                            AS Product,
+    upper(trim(coalesce(nullIf(i.brand,''), 'UNKNOWN')))            AS Brand,
+    sum({exprs['qty_expr']})                                        AS QTY,
+    sum({exprs['val_expr']})                                        AS `Sold Price`
+FROM azure_sales_report s
+{joins_sql}
 WHERE {where_clause}
-  AND abs(toFloat64(s.sold_price)) > {_MIN_PRICE}
-  AND upper(coalesce(inv.customer_type, '')) != 'CORPORATE'
-  AND upper(coalesce(inv.financier_name, '')) NOT LIKE '%ECOMMERCE%'
-  AND upper(coalesce(inv.financier_name, '')) NOT LIKE '%E-COMMERCE%'
-  AND upper(coalesce(inv.financier_code, '')) NOT LIKE '%ECOMMERCE%'
-  AND {_RAW_ALLOWED_RETAIL_FIN}
-  AND (i.category IS NULL OR i.category NOT IN ({excluded_cats_sql}))
-  AND ({_RAW_PROD_EXPR}) != ''
-  AND ({_RAW_PROD_EXPR}) NOT IN ({junk_sql})
-  AND replaceAll(({_RAW_PROD_EXPR}), ' ', '') NOT IN ({junk_nospace_sql})
-
 GROUP BY Date, Branch, _StoreName, RBM, BDM, Staff, State, District, Financier, Category, Product, Brand
 """
 
@@ -980,21 +1026,11 @@ GROUP BY Date, Branch, _StoreName, RBM, BDM, Staff, State, District, Financier, 
             df = df.drop(columns=["_StoreName"])
         return df
 
-    # ------------------------------------------------------------------
-    # Minimal post-processing — mapping already done in SQL
-    # ------------------------------------------------------------------
-
-    # 1. Ensure Date is datetime
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-
-    # 2. Numeric safety
     df["QTY"] = pd.to_numeric(df["QTY"], errors="coerce").fillna(0)
     df["Sold Price"] = pd.to_numeric(df["Sold Price"], errors="coerce").fillna(0.0)
-
-    # 3. Compute Fin BDM from store name (mirrors raw export logic)
     df = _assign_fin_bdm(df)
 
-    # 4. Apply Fin BDM filter (post-query, since it's computed in Python)
     if fin_bdm:
         df = df[df['Fin BDM'].str.upper().str.strip() == fin_bdm.upper().strip()]
         if df.empty:
@@ -1002,6 +1038,207 @@ GROUP BY Date, Branch, _StoreName, RBM, BDM, Staff, State, District, Financier, 
             return df
 
     logger.info("ClickHouse DataFrame (cleaned): %d rows, columns: %s", len(df), list(df.columns))
+    return df
+
+
+def get_clickhouse_dashboard_rollups(
+    date_str: str,
+    timeframe: str = "monthly",
+    rbm: str = "",
+    bdm: str = "",
+    store: str = "",
+    staff: str = "",
+    end_date_str: str = None,
+    fin_bdm: str = "",
+    state: str = "",
+    district: str = "",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Fetch three compact pre-aggregated DataFrames for get_dashboard_data in ONE
+    ClickHouse GROUPING SETS query (~9k rows / <3 MB on a quarter instead of 145k rows / 93 MB):
+      1. df_cat_zone : (Branch, RBM, BDM, State, District, Financier, Category, Product, Fin BDM)
+      2. df_brand    : (Brand, Category, Financier[, Fin BDM])
+      3. df_hier     : (RBM, BDM, Branch, Staff, Financier, Fin BDM)
+    """
+    joins_sql, where_clause, params, exprs = _build_sales_where_and_joins(
+        date_str, timeframe, rbm=rbm, bdm=bdm, store=store, staff=staff,
+        end_date_str=end_date_str, state=state, district=district, include_staff=True,
+    )
+
+    brand_gset = "(_StoreName, RBM, Brand, Category, Financier)" if fin_bdm else "(Brand, Category, Financier)"
+
+    sql = f"""
+SELECT
+    multiIf(grouping(Product) = 0, 1, grouping(Brand) = 0, 2, 3) AS _gset,
+    Branch,
+    _StoreName,
+    RBM,
+    BDM,
+    Staff,
+    State,
+    District,
+    Financier,
+    Category,
+    Product,
+    Brand,
+    sum(_qty) AS QTY,
+    sum(_val) AS `Sold Price`
+FROM (
+    SELECT
+        upper(trim(s.branch))                                           AS Branch,
+        upper(trim(coalesce(nullIf(bm.branch_name, ''), s.branch)))     AS _StoreName,
+        if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.rbm, inv.rbm, '')))) AS RBM,
+        if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.bdm, inv.bdm, '')))) AS BDM,
+        upper(trim(coalesce(sd.staff, 'Unknown')))                      AS Staff,
+        {_STATE_SQL}                                                    AS State,
+        if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.district, '')))) AS District,
+        {exprs['fin_expr']}                                             AS Financier,
+        {exprs['cat_expr']}                                             AS Category,
+        {exprs['prod_expr']}                                            AS Product,
+        upper(trim(coalesce(nullIf(i.brand,''), 'UNKNOWN')))            AS Brand,
+        {exprs['qty_expr']}                                             AS _qty,
+        {exprs['val_expr']}                                             AS _val
+    FROM azure_sales_report s
+    {joins_sql}
+    WHERE {where_clause}
+)
+GROUP BY GROUPING SETS (
+    (Branch, _StoreName, RBM, BDM, State, District, Financier, Category, Product),
+    {brand_gset},
+    (RBM, BDM, Branch, _StoreName, Staff, Financier)
+)
+"""
+
+    logger.info(
+        "ClickHouse rollup query: timeframe=%s date=%s rbm=%s bdm=%s store=%s fin_bdm=%s",
+        timeframe, date_str, rbm or "*", bdm or "*", store or "*", fin_bdm or "*",
+    )
+    raw_df = query_df(sql, params)
+    if raw_df.empty:
+        empty = pd.DataFrame()
+        return empty, empty, empty
+
+    raw_df["QTY"] = pd.to_numeric(raw_df["QTY"], errors="coerce").fillna(0)
+    raw_df["Sold Price"] = pd.to_numeric(raw_df["Sold Price"], errors="coerce").fillna(0.0)
+
+    gset = pd.to_numeric(raw_df["_gset"], errors="coerce").fillna(0).astype(int)
+
+    df_cat_zone = raw_df.loc[
+        gset == 1,
+        ["Branch", "_StoreName", "RBM", "BDM", "State", "District", "Financier", "Category", "Product", "QTY", "Sold Price"],
+    ].reset_index(drop=True)
+
+    brand_cols = (["_StoreName", "RBM"] if fin_bdm else []) + ["Brand", "Category", "Financier", "QTY", "Sold Price"]
+    df_brand = raw_df.loc[gset == 2, brand_cols].reset_index(drop=True)
+
+    df_hier = raw_df.loc[
+        gset == 3,
+        ["RBM", "BDM", "Branch", "_StoreName", "Staff", "Financier", "QTY", "Sold Price"],
+    ].reset_index(drop=True)
+
+    if not df_cat_zone.empty:
+        df_cat_zone = _assign_fin_bdm(df_cat_zone)
+    if not df_hier.empty:
+        df_hier = _assign_fin_bdm(df_hier)
+    if fin_bdm:
+        fb_upper = fin_bdm.upper().strip()
+        if not df_brand.empty:
+            df_brand = _assign_fin_bdm(df_brand)
+            df_brand = df_brand[df_brand["Fin BDM"].str.upper().str.strip() == fb_upper].drop(columns=["RBM"], errors="ignore")
+        if not df_cat_zone.empty:
+            df_cat_zone = df_cat_zone[df_cat_zone["Fin BDM"].str.upper().str.strip() == fb_upper]
+        if not df_hier.empty:
+            df_hier = df_hier[df_hier["Fin BDM"].str.upper().str.strip() == fb_upper]
+
+    return df_cat_zone, df_brand, df_hier
+
+
+def get_clickhouse_brand_df(
+    date_str: str,
+    timeframe: str = "monthly",
+    rbm: str = "",
+    bdm: str = "",
+    store: str = "",
+    staff: str = "",
+    end_date_str: str = None,
+    fin_bdm: str = "",
+    state: str = "",
+    district: str = "",
+    category: str = "ALL",
+    product: str = "ALL",
+) -> pd.DataFrame:
+    """Lightweight ClickHouse rollup for /api/brand-data (~1k rows instead of 145k)."""
+    joins_sql, where_clause, params, exprs = _build_sales_where_and_joins(
+        date_str, timeframe, rbm=rbm, bdm=bdm, store=store, staff=staff,
+        end_date_str=end_date_str, state=state, district=district,
+        category=category, product=product, include_staff=False,
+    )
+
+    if fin_bdm:
+        extra_sel = "upper(trim(coalesce(nullIf(bm.branch_name, ''), s.branch))) AS _StoreName,\n    if({_is_oth}, 'OTHERS', upper(trim(coalesce(bm.rbm, inv.rbm, '')))) AS RBM,".format(_is_oth=_IS_OTHERS_STATE_SQL)
+        extra_grp = "_StoreName, RBM, "
+    else:
+        extra_sel = ""
+        extra_grp = ""
+
+    sql = f"""
+SELECT
+    {extra_sel}
+    {_STATE_SQL}                                         AS State,
+    {exprs['cat_expr']}                                  AS Category,
+    {exprs['prod_expr']}                                 AS Product,
+    upper(trim(coalesce(nullIf(i.brand,''), 'UNKNOWN'))) AS Brand,
+    {exprs['fin_expr']}                                  AS Financier,
+    sum({exprs['qty_expr']})                             AS QTY,
+    sum({exprs['val_expr']})                             AS `Sold Price`
+FROM azure_sales_report s
+{joins_sql}
+WHERE {where_clause}
+GROUP BY {extra_grp}State, Category, Product, Brand, Financier
+"""
+    df = query_df(sql, params)
+    if df.empty:
+        return df
+
+    df["Date"] = pd.Timestamp(date_str)
+    df["QTY"] = pd.to_numeric(df["QTY"], errors="coerce").fillna(0)
+    df["Sold Price"] = pd.to_numeric(df["Sold Price"], errors="coerce").fillna(0.0)
+    if fin_bdm:
+        df = _assign_fin_bdm(df)
+        df = df[df["Fin BDM"].str.upper().str.strip() == fin_bdm.upper().strip()]
+    return df
+
+
+def get_clickhouse_store_df(
+    date_str: str,
+    timeframe: str = "monthly",
+    end_date_str: str = None,
+    state: str = "",
+) -> pd.DataFrame:
+    """Lightweight ClickHouse rollup for /api/store-data (~1.5k rows instead of 145k)."""
+    joins_sql, where_clause, params, exprs = _build_sales_where_and_joins(
+        date_str, timeframe, end_date_str=end_date_str, state=state, include_staff=False,
+    )
+    sql = f"""
+SELECT
+    upper(trim(s.branch))                                                           AS Branch,
+    if({_IS_OTHERS_STATE_SQL}, 'OTHERS', upper(trim(coalesce(bm.rbm, inv.rbm, '')))) AS RBM,
+    {_STATE_SQL}                                                                    AS State,
+    {exprs['fin_expr']}                                                             AS Financier,
+    sum({exprs['qty_expr']})                                                        AS QTY,
+    sum({exprs['val_expr']})                                                        AS `Sold Price`
+FROM azure_sales_report s
+{joins_sql}
+WHERE {where_clause}
+GROUP BY Branch, RBM, State, Financier
+"""
+    df = query_df(sql, params)
+    if df.empty:
+        return df
+
+    df["Date"] = pd.Timestamp(date_str)
+    df["QTY"] = pd.to_numeric(df["QTY"], errors="coerce").fillna(0)
+    df["Sold Price"] = pd.to_numeric(df["Sold Price"], errors="coerce").fillna(0.0)
     return df
 
 
