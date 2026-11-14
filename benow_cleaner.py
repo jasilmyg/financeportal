@@ -160,7 +160,7 @@ def clean_benow(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     if col_prod == col_cat:
         df_clean['Product'] = df_clean[col_cat].apply(map_product_name)
     else:
-        df_clean['Product'] = df_clean[col_prod] if col_prod in df_clean.columns else ''
+        df_clean['Product'] = df_clean[col_cat].apply(map_product_name) if col_cat in df_clean.columns else (df_clean[col_prod].apply(map_product_name) if col_prod in df_clean.columns else 'Bank EMI')
     df_clean['Brand'] = df_clean[col_brand] if col_brand in df_clean.columns else ''
     col_mid = col_map.get('merchant id', 'Merchant ID')
     df_clean['Branch'] = ''

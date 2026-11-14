@@ -764,13 +764,28 @@ def apply_product_mapping(df_clean: pd.DataFrame) -> pd.DataFrame:
         t2 = brand_filled.sum()
         log.info(f'Pine Lab Tier 2 (Manufacturer inference): filled {t2} additional rows')
 
+    # -- Tier 2b: Refine generic AUDIO rows that are actually Ear Wearables ---
+    audio_mask = df_clean['Product'] == 'AUDIO'
+    if audio_mask.any() and COL_PRODUCT_NAME in df_clean.columns:
+        pname_upper = df_clean.loc[audio_mask, COL_PRODUCT_NAME].fillna('').astype(str).str.upper()
+        ear_hit = pname_upper.str.contains(
+            r'\bAIRPOD|EARBUD|EARPHONE|\bTWS\b|NECKBAND|EAR\s*WEARABLE|\bBUDS|AIRDOPES',
+            regex=True,
+            na=False,
+        )
+        if ear_hit.any():
+            ear_idx = audio_mask[audio_mask].index[ear_hit]
+            df_clean.loc[ear_idx, 'Product']  = 'EAR WEARABLES'
+            df_clean.loc[ear_idx, 'Category'] = 'HVA'
+            log.info(f'Pine Lab Tier 2b (AUDIO -> EAR WEARABLES): refined {int(ear_hit.sum())} rows')
+
     # -- Tier 3: Safety net — guarantee zero blanks ---------------------------
     # Any row still blank at this point has no Product Category, no Product Name,
     # a dummy IMEI with no ERP match, and an unrecognised manufacturer.
     # Assign 'BANK EMI' so the dashboard never sees an empty product/category.
     final_blank = (df_clean['Product'] == '') | (df_clean['Category'] == '') | df_clean['Category'].isna()
     if final_blank.any():
-        df_clean.loc[final_blank, 'Product']  = ''
+        df_clean.loc[final_blank, 'Product']  = 'BANK EMI'
         df_clean.loc[final_blank, 'Category'] = 'BANK EMI'
         log.info(f'Pine Lab Tier 3 (safety net): assigned BANK EMI to {final_blank.sum()} remaining rows')
     # Explicit Bank EMI category assignment

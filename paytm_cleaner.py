@@ -207,6 +207,11 @@ def clean_paytm(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     tmp = apply_product_mapping(tmp)
     df_clean['Product']  = tmp['Product']
     df_clean['Category'] = tmp['Category']
+    if COL_TXN_TYPE in df_clean.columns:
+        bank_mask = df_clean[COL_TXN_TYPE] == TXN_BANK_EMI
+        if bank_mask.any():
+            df_clean.loc[bank_mask, 'Category'] = 'BANK EMI'
+            df_clean.loc[bank_mask, 'Product']  = 'BANK EMI'
 
     # -- Branch: branch name only (drop the 'myG' prefix) ----------------------
     df_clean[COL_BRANCH] = df_clean[COL_STORE].apply(clean_branch_name)

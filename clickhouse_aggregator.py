@@ -285,6 +285,144 @@ def _emi_totals(table: str, financier: str, date_str: str, timeframe: str, end_d
     return _emi_both_totals(table, financier, date_str, timeframe, end_date_str, state_cond=state_cond)[0]
 
 
+_CARD_SUB_PRODUCT_MAP = {
+    'PANEL': 'TV',
+    'PANAL': 'TV',
+    'LED': 'TV',
+    'TV': 'TV',
+    'TELEVISION': 'TV',
+    'TELEVISIONS': 'TV',
+    'RAC': 'AIR CONDITIONER',
+    'CAC': 'AIR CONDITIONER',
+    'AC': 'AIR CONDITIONER',
+    'AIR CONDITIONER': 'AIR CONDITIONER',
+    'AIR CONDITIONERS': 'AIR CONDITIONER',
+    'REF': 'REFRIGERATORS',
+    'RER': 'REFRIGERATORS',
+    'REFRIGERATOR': 'REFRIGERATORS',
+    'REFRIGERATORS': 'REFRIGERATORS',
+    'REFRIGERANOR': 'REFRIGERATORS',
+    'WM': 'WASHING MACHINES',
+    'WASHING MACHINE': 'WASHING MACHINES',
+    'WASHING MACHINES': 'WASHING MACHINES',
+    'DRYER': 'DRYER',
+    'FREEZER': 'FREEZER',
+    'DW': 'DISH WASHER',
+    'DWASH': 'DISH WASHER',
+    'DISHWASHER': 'DISH WASHER',
+    'DISH WASHER': 'DISH WASHER',
+    'MWO': 'MICROWAVE OVEN',
+    'MICROWAVE': 'MICROWAVE OVEN',
+    'MICROWAVE OVEN': 'MICROWAVE OVEN',
+    'HA': 'HOME APPLIANCES',
+    'HOME APPLIANCES': 'HOME APPLIANCES',
+    'MOBILE PHONE': 'MOBILE',
+    'MOBILES': 'MOBILE',
+    'MOBILE': 'MOBILE',
+    'SMARTPHONE': 'MOBILE',
+    'SMARTPHONES': 'MOBILE',
+    'PAD': 'TABLET',
+    'TAB': 'TABLET',
+    'TABLET': 'TABLET',
+    'TABLETS': 'TABLET',
+    'LAPTOP': 'LAPTOP',
+    'LAPTOPS': 'LAPTOP',
+    'DESKTOP': 'DESKTOP',
+    'DESKTOPS': 'DESKTOP',
+    'TWS': 'EAR WEARABLES',
+    'NECKBAND': 'EAR WEARABLES',
+    'EARBUDS': 'EAR WEARABLES',
+    'EARPHONES': 'EAR WEARABLES',
+    'EAR WEARABLES': 'EAR WEARABLES',
+    'AUDIO': 'AUDIO',
+    'SMART WATCH': 'SMART WATCH',
+    'SMARTWATCH': 'SMART WATCH',
+    'PRINTER': 'PRINTER',
+    'CAMERA': 'CAMERA',
+    'IT ACCESSORIES': 'IT ACCESSORIES',
+    'PROJECTOR': 'PROJECTOR',
+    'SMALL APPLIANCES': 'SMALL APPLIANCES',
+    'BANK EMI': 'BANK EMI',
+    'MY EMI': 'BANK EMI',
+}
+
+
+def _normalize_card_sub_product(std_cat: str, raw_prod: str) -> str:
+    """Normalize a card-EMI sub-product label to ERP upper-case Product conventions."""
+    cat_u = str(std_cat or '').strip().upper()
+    if cat_u == 'BANK EMI':
+        return 'BANK EMI'
+    p_u = str(raw_prod or '').strip().upper()
+    if p_u in ('', 'NAN', 'NONE', 'NULL'):
+        if cat_u == 'MOBILE':
+            return 'MOBILE'
+        if cat_u == 'LAPTOP':
+            return 'LAPTOP'
+        if cat_u == 'SA':
+            return 'SMALL APPLIANCES'
+        return 'BANK EMI'
+    if p_u in _CARD_SUB_PRODUCT_MAP:
+        return _CARD_SUB_PRODUCT_MAP[p_u]
+    if 'MOBILE' in p_u:
+        return 'MOBILE'
+    if 'PAD' in p_u or 'TABLET' in p_u:
+        return 'TABLET'
+    if 'PANAL' in p_u or 'PANEL' in p_u or 'TELEVISION' in p_u:
+        return 'TV'
+    if 'WASHING' in p_u:
+        return 'WASHING MACHINES'
+    if 'REFRIG' in p_u:
+        return 'REFRIGERATORS'
+    if 'AIR CONDITIONER' in p_u:
+        return 'AIR CONDITIONER'
+    if 'LAPTOP' in p_u:
+        return 'LAPTOP'
+    if 'EAR' in p_u or 'BUDS' in p_u or 'AIRPOD' in p_u:
+        return 'EAR WEARABLES'
+    if 'WATCH' in p_u:
+        return 'SMART WATCH'
+    return p_u
+
+
+def _emi_product_both_totals(table: str, prod_col: str, financier: str, date_str: str, timeframe: str, end_date_str: str = None, state_cond: str = "") -> tuple[dict, dict]:
+    """
+    ({(erp_category, sub_product): qty}, {(erp_category, sub_product): value_in_cr})
+    straight from an uploaded EMI file table in a single SQL round-trip.
+    """
+    start, end = emi_state.range_of(date_str, timeframe, end_date_str)
+    date_cond = emi_state.date_filter_sql(financier, start, end)
+    if date_cond is None:
+        return {}, {}
+    extra = f" AND {state_cond}" if state_cond else ""
+    sql = f"""
+        SELECT upper(trim(erp_category)) AS cat,
+               upper(trim(coalesce(toString({prod_col}), ''))) AS raw_prod,
+               sum(qty) AS total_qty,
+               sum(toFloat64(original_amount)) / 10000000.0 AS total_val_cr
+        FROM {table}
+        WHERE erp_category != ''
+          AND {date_cond}{extra}
+        GROUP BY cat, raw_prod
+    """
+    res = query_df(sql, {})
+    if res.empty:
+        return {}, {}
+    out_q: dict[tuple[str, str], int] = {}
+    out_v: dict[tuple[str, str], float] = {}
+    for cat_s, raw_p, q_v, val_v in zip(
+        res['cat'].astype(str),
+        res['raw_prod'].astype(str),
+        res['total_qty'].astype(int),
+        res['total_val_cr'].astype(float),
+    ):
+        std_c = cat_s.strip().upper()
+        sub_p = _normalize_card_sub_product(std_c, raw_p)
+        key = (std_c, sub_p)
+        out_q[key] = out_q.get(key, 0) + int(q_v)
+        out_v[key] = out_v.get(key, 0.0) + float(val_v)
+    return out_q, out_v
+
+
 def get_pine_lab_totals(
     date_str: str,
     timeframe: str = "monthly",
@@ -514,11 +652,12 @@ def _get_erp_card_by_state_cat(
     timeframe: str = "monthly",
     end_date_str: str = None,
     excluded_states: list[str] | tuple[str, ...] = (),
-) -> dict[tuple[str, str], tuple[int, float]]:
+    include_product: bool = False,
+) -> dict:
     """
     Lightweight SQL rollup returning {(card_fin_key, CATEGORY): (qty, sold_price_sum)}
+    (or {(card_fin_key, CATEGORY, PRODUCT): (qty, sold_price_sum)} when include_product=True)
     for excluded states (e.g. KARNATAKA/OTHERS when filtering by KERALA).
-    Replaces scanning full 100k+ row DataFrames inside get_card_overrides.
     """
     if not excluded_states:
         return {}
@@ -526,16 +665,18 @@ def _get_erp_card_by_state_cat(
         date_str, timeframe, end_date_str=end_date_str, include_staff=False
     )
     params["excl_states"] = [str(s).strip().upper() for s in excluded_states if str(s).strip()]
+    prod_sel = f",\n        {exprs['prod_expr']} AS Product" if include_product else ""
+    prod_outer = ",\n    Product" if include_product else ""
     sql = f"""
 SELECT
     Financier,
-    Category,
+    Category{prod_outer},
     sum(_qty) AS QTY,
     sum(_val) AS `Sold Price`
 FROM (
     SELECT
         {exprs['fin_expr']} AS Financier,
-        {exprs['cat_expr']} AS Category,
+        {exprs['cat_expr']} AS Category{prod_sel},
         {exprs['qty_expr']} AS _qty,
         {exprs['val_expr']} AS _val
     FROM azure_sales_report s
@@ -544,12 +685,12 @@ FROM (
       AND ({_STATE_SQL}) IN {{excl_states:Array(String)}}
 )
 WHERE upper(Financier) IN ('PAYTM', 'BENOW')
-GROUP BY Financier, Category
+GROUP BY Financier, Category{prod_outer}
 """
     df = query_df(sql, params)
     if df.empty:
         return {}
-    out: dict[tuple[str, str], tuple[int, float]] = {}
+    out: dict = {}
     card_keys_sub = {'PAYTM': 'PAYTM', 'BENOW': 'Benow'}
     for _, row in df.iterrows():
         f = card_keys_sub.get(str(row.get('Financier', '') or '').strip().upper())
@@ -557,9 +698,47 @@ GROUP BY Financier, Category
         if f and c:
             q = int(pd.to_numeric(row.get('QTY', 0), errors='coerce') or 0)
             p = float(pd.to_numeric(row.get('Sold Price', 0.0), errors='coerce') or 0.0)
-            prev_q, prev_p = out.get((f, c), (0, 0.0))
-            out[(f, c)] = (prev_q + q, prev_p + p)
+            if include_product:
+                sub_p = _normalize_card_sub_product(c, str(row.get('Product', '') or ''))
+                key = (f, c, sub_p)
+            else:
+                key = (f, c)
+            prev_q, prev_p = out.get(key, (0, 0.0))
+            out[key] = (prev_q + q, prev_p + p)
     return out
+
+
+def _build_card_override_filters(
+    state: str = "",
+    rbm: str = "",
+    bdm: str = "",
+    store: str = "",
+    fin_bdm: str = "",
+    district: str = "",
+):
+    """Build (skip, excluded, branch_cond, pl_cond, pt_cond, bn_cond) for card EMI override queries."""
+    sel = [x.strip().upper() for x in str(state or '').split(',') if x.strip()]
+    excluded = [s for s in _ALL_STATES if s not in sel] if sel else []
+    if excluded and 'KERALA' not in sel:
+        return True, excluded, None, "", "", ""
+
+    branch_cond = _resolve_emi_branch_filter(state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district)
+
+    pl_state_cond = ""
+    if excluded:
+        sel_sql = ", ".join(f"'{s}'" for s in sel)
+        pl_state_cond = f"upper(coalesce(state, 'KERALA')) IN ({sel_sql})"
+
+    if branch_cond:
+        pl_cond = f"{pl_state_cond} AND {branch_cond}" if pl_state_cond else branch_cond
+        pt_cond = branch_cond
+        bn_cond = branch_cond
+    else:
+        pl_cond = pl_state_cond
+        pt_cond = ""
+        bn_cond = ""
+
+    return False, excluded, branch_cond, pl_cond, pt_cond, bn_cond
 
 
 def get_card_both_overrides(
@@ -577,26 +756,11 @@ def get_card_both_overrides(
     Fetch both QTY and Value (in Crores) card EMI overrides in ONE pass:
     returns ({'PineLab': {CAT: qty}, ...}, {'PineLab': {CAT: val_cr}, ...}).
     """
-    sel = [x.strip().upper() for x in str(state or '').split(',') if x.strip()]
-    excluded = [s for s in _ALL_STATES if s not in sel] if sel else []
-    if excluded and 'KERALA' not in sel:
+    skip, excluded, branch_cond, pl_cond, pt_cond, bn_cond = _build_card_override_filters(
+        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
+    )
+    if skip:
         return {}, {}
-
-    branch_cond = _resolve_emi_branch_filter(state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district)
-
-    pl_state_cond = ""
-    if excluded:
-        sel_sql = ", ".join(f"'{s}'" for s in sel)
-        pl_state_cond = f"upper(coalesce(state, 'KERALA')) IN ({sel_sql})"
-
-    if branch_cond:
-        pl_cond = f"{pl_state_cond} AND {branch_cond}" if pl_state_cond else branch_cond
-        pt_cond = branch_cond
-        bn_cond = branch_cond
-    else:
-        pl_cond = pl_state_cond
-        pt_cond = ""
-        bn_cond = ""
 
     def _safe_both(table, fin, sc=""):
         try:
@@ -644,6 +808,80 @@ def get_card_both_overrides(
                 out_qty[f][c] = max(0, out_qty[f][c] - int(q))
             if c in out_val.get(f, {}):
                 out_val[f][c] = max(0.0, out_val[f][c] - float(p) / 10000000.0)
+
+    return out_qty, out_val
+
+
+def get_card_product_overrides(
+    date_str: str,
+    timeframe: str = "monthly",
+    end_date_str: str = None,
+    state: str = "",
+    rbm: str = "",
+    bdm: str = "",
+    store: str = "",
+    fin_bdm: str = "",
+    district: str = "",
+) -> tuple[dict, dict]:
+    """
+    Fetch sub-product-level QTY and Value (in Crores) card EMI overrides:
+    returns (
+        {'PineLab': {CAT: {PROD: qty}}, 'PAYTM': {...}, 'Benow': {...}},
+        {'PineLab': {CAT: {PROD: val_cr}}, 'PAYTM': {...}, 'Benow': {...}},
+    ).
+    """
+    skip, excluded, branch_cond, pl_cond, pt_cond, bn_cond = _build_card_override_filters(
+        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
+    )
+    if skip:
+        return {}, {}
+
+    def _safe_prod(table, prod_col, fin, sc=""):
+        try:
+            return _emi_product_both_totals(table, prod_col, fin, date_str, timeframe, end_date_str, state_cond=sc)
+        except Exception as e:
+            if sc:
+                try:
+                    return _emi_product_both_totals(table, prod_col, fin, date_str, timeframe, end_date_str, state_cond="")
+                except Exception:
+                    pass
+            logger.warning("_emi_product_both_totals(%s) failed: %s", table, e)
+            return {}, {}
+
+    emi_state._ensure_synced()
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_pine = pool.submit(_safe_prod, 'pine_lab_transactions', 'pl_category', emi_state.PINE_FIN, pl_cond)
+        f_paytm = pool.submit(_safe_prod, 'paytm_transactions', 'pl_product', emi_state.PAYTM_FIN, pt_cond)
+        f_benow = pool.submit(_safe_prod, 'benow_transactions', 'product_category', emi_state.BENOW_FIN, bn_cond)
+        raw_pairs = {
+            'PineLab': f_pine.result(),
+            'PAYTM': f_paytm.result(),
+            'Benow': f_benow.result(),
+        }
+
+    out_qty: dict[str, dict] = {}
+    out_val: dict[str, dict] = {}
+    for fin, (q_map, v_map) in raw_pairs.items():
+        fin_q: dict[str, dict] = {}
+        for (c, p), v in (q_map or {}).items():
+            fin_q.setdefault(c, {})[p] = fin_q.get(c, {}).get(p, 0) + int(v)
+        out_qty[fin] = fin_q
+
+        fin_v: dict[str, dict] = {}
+        for (c, p), v in (v_map or {}).items():
+            fin_v.setdefault(c, {})[p] = fin_v.get(c, {}).get(p, 0.0) + float(v)
+        out_val[fin] = fin_v
+
+    if excluded and not branch_cond:
+        erp_excl = _get_erp_card_by_state_cat(
+            date_str, timeframe, end_date_str, excluded, include_product=True
+        )
+        for (f, c, p), (q, val) in erp_excl.items():
+            if p in out_qty.get(f, {}).get(c, {}):
+                out_qty[f][c][p] = max(0, out_qty[f][c][p] - int(q))
+            if p in out_val.get(f, {}).get(c, {}):
+                out_val[f][c][p] = max(0.0, out_val[f][c][p] - float(val) / 10000000.0)
 
     return out_qty, out_val
 

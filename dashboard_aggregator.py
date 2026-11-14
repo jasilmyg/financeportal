@@ -44,7 +44,7 @@ def _prepare_finance_flags(frame, unup_raw):
     return frame
 
 
-def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district='', pine_lab_val_override=None, paytm_val_override=None, benow_val_override=None, ch_rollups=None):
+def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm='', store='', staff='', zone_map=None, df=None, end_date_str=None, pine_lab_override=None, paytm_override=None, benow_override=None, state='', district='', pine_lab_val_override=None, paytm_val_override=None, benow_val_override=None, ch_rollups=None, card_prod_qty_override=None, card_prod_val_override=None):
     global _cached_df, _cached_mtime
     try:
         _unup_raw, _unup_std = _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str)
@@ -57,6 +57,8 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
         if 'Benow' in _unup_std:
             benow_override = None
             benow_val_override = None
+        _prod_q_ov = {k: v for k, v in (card_prod_qty_override or {}).items() if k not in _unup_std} if card_prod_qty_override else {}
+        _prod_v_ov = {k: v for k, v in (card_prod_val_override or {}).items() if k not in _unup_std} if card_prod_val_override else {}
 
         if ch_rollups is not None:
             df_cat_in, df_brand_in, df_hier_in = ch_rollups
@@ -212,8 +214,9 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             for std_cat in standardCats
         }
         _emi_val_applied = {}
-
-        _emi_applied = {}   # fin_key -> {CATEGORY: qty from the uploaded file}
+        _emi_applied = {}        # fin_key -> {CATEGORY: qty from the uploaded file}
+        _emi_prod_q_applied = {} # fin_key -> {CATEGORY: {SUB_PROD: qty}}
+        _emi_prod_v_applied = {} # fin_key -> {CATEGORY: {SUB_PROD: val_cr}}
 
         def _apply_emi_override(fin_key, override, val_override=None):
             # The uploaded file is the source of truth for this financier: categories
@@ -223,6 +226,16 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             _emi_applied[fin_key] = file_cats
             if val_override is not None:
                 _emi_val_applied[fin_key] = {str(k).strip().upper(): float(v) for k, v in (val_override or {}).items()}
+            if fin_key in _prod_q_ov:
+                _emi_prod_q_applied[fin_key] = {
+                    str(c).strip().upper(): {str(p).strip().upper(): int(q) for p, q in (pmap or {}).items()}
+                    for c, pmap in (_prod_q_ov.get(fin_key) or {}).items()
+                }
+            if fin_key in _prod_v_ov:
+                _emi_prod_v_applied[fin_key] = {
+                    str(c).strip().upper(): {str(p).strip().upper(): float(v) for p, v in (pmap or {}).items()}
+                    for c, pmap in (_prod_v_ov.get(fin_key) or {}).items()
+                }
             for std_cat in standardCats:
                 if std_cat in file_cats:
                     cat_perf['qty'][std_cat][fin_key] = file_cats[std_cat]
@@ -234,57 +247,109 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
                     cat_perf['value'][std_cat][fin_key] = 0.0
 
         def _patch_products_for_emi(products_qty, products_val):
-            # The front-end rebuilds every category cell as the sum of its product rows, so
-            # the product rows must agree with the file totals set above. ERP-matched product
-            # quantities for this financier are cleared and the file's category total is placed
-            # in one 'UNMAPPED' row (the EMI files carry no ERP product). Values stay as ERP-matched
-            # for categories present in the file, and become 0 for categories absent from it.
-            for fin_key, file_cats in _emi_applied.items():
-                for std_cat in standardCats:
-                    qrows = products_qty.get(std_cat)
-                    vrows = products_val.get(std_cat)
+            # Restore ERP-matched card rows back into each sub-product's aCASH, apply each
+            # uploaded file's sub-product card EMI qty/value directly onto matching sub-product
+            # rows (using 'BANK EMI' / 'UNMAPPED' only for any unallocated residual), and
+            # deduct card EMI from each corresponding sub-product's aCASH first.
+            if not _emi_applied:
+                return
+            for std_cat in standardCats:
+                qrows = products_qty.get(std_cat)
+                vrows = products_val.get(std_cat)
+                old_cat_vals = {}
+                for fin_key, file_cats in _emi_applied.items():
                     old_val = 0.0
                     if qrows:
-                        for prod in qrows:
+                        for prod in list(qrows.keys()):
                             if prod != 'UNMAPPED':
                                 qrows[prod]['aCASH'] = int(qrows[prod].get('aCASH', 0) or 0) + int(qrows[prod].get(fin_key, 0) or 0)
                             qrows[prod][fin_key] = 0
                     if vrows:
-                        for prod in vrows:
+                        for prod in list(vrows.keys()):
                             if (fin_key in _emi_val_applied or not file_cats.get(std_cat, 0)) and prod != 'UNMAPPED':
                                 vrows[prod]['aCASH'] = float(vrows[prod].get('aCASH', 0.0) or 0.0) + float(vrows[prod].get(fin_key, 0.0) or 0.0)
-                            old_val += vrows[prod].get(fin_key, 0.0)
+                            old_val += float(vrows[prod].get(fin_key, 0.0) or 0.0)
                             vrows[prod][fin_key] = 0.0
-                    file_qty = file_cats.get(std_cat, 0)
-                    if file_qty:
-                        qrows = products_qty.setdefault(std_cat, {})
-                        vrows = products_val.setdefault(std_cat, {})
-                        qrows.setdefault('UNMAPPED', {f: 0 for f in standardFins})[fin_key] = file_qty
-                        target_val = _emi_val_applied[fin_key].get(std_cat, 0.0) if fin_key in _emi_val_applied else old_val
-                        vrows.setdefault('UNMAPPED', {f: 0.0 for f in standardFins})[fin_key] = target_val
-                        if fin_key in _emi_val_applied:
-                            rem_v = float(target_val)
-                            for p in sorted([k for k in vrows if k != 'UNMAPPED'], key=lambda k: float(vrows[k].get('aCASH', 0.0) or 0.0), reverse=True):
-                                if rem_v <= 0.0:
-                                    break
-                                take_v = min(max(0.0, float(vrows[p].get('aCASH', 0.0) or 0.0)), rem_v)
-                                vrows[p]['aCASH'] = float(vrows[p].get('aCASH', 0.0) or 0.0) - take_v
-                                rem_v -= take_v
-                            if rem_v > 0.0:
-                                _un_v = vrows['UNMAPPED']
-                                _un_v['aCASH'] = float(_un_v.get('aCASH', 0.0) or 0.0) - rem_v
-                        rem = int(file_qty)
-                        for p in sorted([k for k in qrows if k != 'UNMAPPED'], key=lambda k: int(qrows[k].get('aCASH', 0) or 0), reverse=True):
-                            if rem <= 0:
+                    old_cat_vals[fin_key] = old_val
+
+                if qrows and 'UNMAPPED' in qrows and not any(qrows['UNMAPPED'].get(f, 0) for f in standardFins):
+                    del qrows['UNMAPPED']
+                if vrows and 'UNMAPPED' in vrows and not any(vrows['UNMAPPED'].get(f, 0.0) for f in standardFins):
+                    del vrows['UNMAPPED']
+
+                for fin_key, file_cats in _emi_applied.items():
+                    file_qty = int(file_cats.get(std_cat, 0) or 0)
+                    target_val = (
+                        float(_emi_val_applied[fin_key].get(std_cat, 0.0) or 0.0)
+                        if fin_key in _emi_val_applied
+                        else float(old_cat_vals.get(fin_key, 0.0) or 0.0)
+                    )
+                    if not file_qty and abs(target_val) < 1e-12:
+                        continue
+
+                    qrows = products_qty.setdefault(std_cat, {})
+                    vrows = products_val.setdefault(std_cat, {})
+                    existing_key_map = {str(k).strip().upper(): k for k in qrows.keys()}
+                    existing_key_map.update({str(k).strip().upper(): k for k in vrows.keys()})
+
+                    pq_map = _emi_prod_q_applied.get(fin_key, {}).get(std_cat, {})
+                    pv_map = _emi_prod_v_applied.get(fin_key, {}).get(std_cat, {})
+                    fallback_key = 'BANK EMI' if std_cat == 'BANK EMI' else 'UNMAPPED'
+
+                    allocated_q = 0
+                    allocated_v = 0.0
+                    for sub_u in (set(pq_map.keys()) | set(pv_map.keys())):
+                        sub_q_int = int(pq_map.get(sub_u, 0) or 0)
+                        sub_v_flt = float(pv_map.get(sub_u, 0.0) or 0.0) if pv_map else (
+                            target_val * (sub_q_int / file_qty) if file_qty > 0 else 0.0
+                        )
+                        if not sub_q_int and abs(sub_v_flt) < 1e-12:
+                            continue
+                        target_key = existing_key_map.get(sub_u, sub_u)
+                        q_row = qrows.setdefault(target_key, {f: 0 for f in standardFins})
+                        v_row = vrows.setdefault(target_key, {f: 0.0 for f in standardFins})
+                        q_row[fin_key] = int(q_row.get(fin_key, 0) or 0) + sub_q_int
+                        v_row[fin_key] = float(v_row.get(fin_key, 0.0) or 0.0) + sub_v_flt
+                        allocated_q += sub_q_int
+                        allocated_v += sub_v_flt
+
+                    rem_q = file_qty - allocated_q
+                    rem_v = target_val - allocated_v
+                    if rem_q != 0 or abs(rem_v) > 1e-9:
+                        q_row = qrows.setdefault(fallback_key, {f: 0 for f in standardFins})
+                        v_row = vrows.setdefault(fallback_key, {f: 0.0 for f in standardFins})
+                        q_row[fin_key] = int(q_row.get(fin_key, 0) or 0) + rem_q
+                        v_row[fin_key] = float(v_row.get(fin_key, 0.0) or 0.0) + rem_v
+
+                def _deduct_subprod_acash(rows_map, active_fins, cast, eps):
+                    if not rows_map or not active_fins:
+                        return
+                    rem_cat = cast(0)
+                    for row in rows_map.values():
+                        card_amt = sum(cast(row.get(fk, 0) or 0) for fk in active_fins)
+                        if abs(card_amt) <= eps:
+                            continue
+                        avail = max(cast(0), cast(row.get('aCASH', 0) or 0))
+                        take = min(avail, card_amt)
+                        row['aCASH'] = cast(row.get('aCASH', 0) or 0) - take
+                        rem_cat += (card_amt - take)
+                    if rem_cat > eps:
+                        for prod in sorted(rows_map.keys(), key=lambda k: cast(rows_map[k].get('aCASH', 0) or 0), reverse=True):
+                            if rem_cat <= eps:
                                 break
-                            take = min(max(0, int(qrows[p].get('aCASH', 0) or 0)), rem)
-                            qrows[p]['aCASH'] = int(qrows[p].get('aCASH', 0) or 0) - take
-                            rem -= take
-                        if rem > 0:
-                            # Nothing left to deduct from at product level (e.g. the BANK EMI row has no
-                            # ERP products): book the remaining card units against aCASH in the UNMAPPED row.
-                            _un = qrows['UNMAPPED']
-                            _un['aCASH'] = int(_un.get('aCASH', 0) or 0) - rem
+                            if prod in ('UNMAPPED', 'BANK EMI'):
+                                continue
+                            avail = max(cast(0), cast(rows_map[prod].get('aCASH', 0) or 0))
+                            take = min(avail, rem_cat)
+                            rows_map[prod]['aCASH'] = cast(rows_map[prod].get('aCASH', 0) or 0) - take
+                            rem_cat -= take
+                        if rem_cat > eps:
+                            sink_k = 'BANK EMI' if 'BANK EMI' in rows_map else ('UNMAPPED' if 'UNMAPPED' in rows_map else next(iter(rows_map)))
+                            rows_map[sink_k]['aCASH'] = cast(rows_map[sink_k].get('aCASH', 0) or 0) - rem_cat
+
+                _deduct_subprod_acash(qrows, _emi_applied.keys(), int, 0)
+                if _emi_val_applied:
+                    _deduct_subprod_acash(vrows, [fk for fk in _emi_val_applied if fk in _emi_applied], float, 1e-12)
 
         # ── Pine Lab direct override ──────────────────────────────────────────
         # Replace the ERP-matched PineLab counts with direct counts from the

@@ -55,6 +55,7 @@ try:
         get_clickhouse_brand_df,
         get_clickhouse_store_df,
         get_card_both_overrides,
+        get_card_product_overrides,
         get_pine_lab_totals,
     )
     _CLICKHOUSE_AVAILABLE = True
@@ -354,6 +355,8 @@ def api_dashboard_data():
             pine_lab_val_override = None
             paytm_val_override = None
             benow_val_override = None
+            card_prod_qty_override = None
+            card_prod_val_override = None
             if not staff:
                 try:
                     _ov, _vov = get_card_both_overrides(
@@ -366,6 +369,10 @@ def api_dashboard_data():
                     pine_lab_val_override = _vov.get('PineLab')
                     paytm_val_override = _vov.get('PAYTM')
                     benow_val_override = _vov.get('Benow')
+                    card_prod_qty_override, card_prod_val_override = get_card_product_overrides(
+                        date_str, timeframe, end_date_str,
+                        state=state, rbm=rbm, bdm=bdm, store=store, fin_bdm=fin_bdm, district=district
+                    )
                 except Exception as _ov_exc:
                     app.logger.warning('Card EMI override failed: %s', _ov_exc)
             # Reuse existing aggregation logic, passing ClickHouse grouped rollups
@@ -379,6 +386,8 @@ def api_dashboard_data():
                 pine_lab_val_override=pine_lab_val_override,
                 paytm_val_override=paytm_val_override,
                 benow_val_override=benow_val_override,
+                card_prod_qty_override=card_prod_qty_override,
+                card_prod_val_override=card_prod_val_override,
                 state=state, district=district,
                 ch_rollups=rollups
             )
