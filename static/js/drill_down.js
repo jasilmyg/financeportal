@@ -22,7 +22,7 @@
 
   /* ── Format helper ──────────────────────────────────────────── */
   function _f(v, type) {
-    if (type === 'percent')  return (v != null && !isNaN(v)) ? Number(v).toFixed(1) + '%' : '-';
+    if (type === 'percent')  return (v != null && !isNaN(v)) ? Number(v).toFixed(2) + '%' : '-';
     if (typeof formatNumber === 'function') return formatNumber(v, type);
     if (type === 'decimal')  return v != null ? parseFloat(v).toFixed(2)       : '-';
     if (type === 'currency') return v != null ? '\u20B9' + Math.round(v).toLocaleString() : '-';
@@ -270,37 +270,42 @@
 
     /* ── Extra rows at level 0 only ─────────────────────────── */
     if (level === 0) {
-      var sif = cp.sif || null;
       var asp = cp.asp || null;
 
-      /* Share in Fin Value row */
-      if (sif) {
-        var trSif = document.createElement('tr');
-        trSif.style.background = 'rgba(255,255,255,0.01)';
-        var siftd = '<td style="font-weight:600;color:var(--text-muted)">Share in Fin Value</td>' +
-                    '<td class="num-align">-</td>';
-        COLS.slice(1).forEach(function(c){
-          siftd += '<td class="num-align">' + _f(sif[c], 'percent') + '</td>';
-        });
-        siftd += '<td class="num-align">-</td><td class="num-align">-</td>' +
-                 '<td class="num-align">' + _f(sif.paper_total, 'percent') + '</td>' +
-                 '<td class="num-align">' + _f(sif.card_total,  'percent') + '</td>' +
-                 '<td class="num-align">-</td><td class="num-align">-</td>';
-        trSif.innerHTML = siftd;
-        body.appendChild(trSif);
-      }
+      /* Share in Fin Value row — computed in the active mode (Qty in Volume, ₹ in Value) */
+      var gtPaperSif = PAPER.reduce(function(s,c){ return s + (colTotals[c] || 0); }, 0);
+      var gtCardSif  = CARD.reduce( function(s,c){ return s + (colTotals[c] || 0); }, 0);
+      var gtFinSif   = gtPaperSif + gtCardSif;
+      var trSif = document.createElement('tr');
+      trSif.style.background = 'rgba(255,255,255,0.01)';
+      var siftd = '<td style="font-weight:600;color:var(--text-muted)">Share in Fin Value</td>' +
+                  '<td class="num-align">-</td>';
+      COLS.slice(1).forEach(function(c){
+        var pct = gtFinSif > 0 ? ((colTotals[c] || 0) / gtFinSif * 100) : 0;
+        siftd += '<td class="num-align">' + _f(pct, 'percent') + '</td>';
+      });
+      var paperSifPct = gtFinSif > 0 ? (gtPaperSif / gtFinSif * 100) : 0;
+      var cardSifPct  = gtFinSif > 0 ? (gtCardSif  / gtFinSif * 100) : 0;
+      siftd += '<td class="num-align">-</td><td class="num-align">-</td>' +
+               '<td class="num-align">' + _f(paperSifPct, 'percent') + '</td>' +
+               '<td class="num-align">' + _f(cardSifPct,  'percent') + '</td>' +
+               '<td class="num-align">-</td><td class="num-align">-</td>';
+      trSif.innerHTML = siftd;
+      body.appendChild(trSif);
 
       /* ASP row — shown only in Value mode */
       if (asp && !isQty) {
         var trAsp = document.createElement('tr');
         trAsp.style.background = 'rgba(255,255,255,0.01)';
         var asptd = '<td style="font-weight:600;color:var(--text-muted)">ASP</td>' +
-                    '<td class="num-align">-</td>';
+                    '<td class="num-align">' + (asp.aCASH != null ? _f(asp.aCASH, 'currency') : '-') + '</td>';
         COLS.slice(1).forEach(function(c){
           asptd += '<td class="num-align">' + _f(asp[c], 'currency') + '</td>';
         });
-        asptd += '<td class="num-align">-</td><td class="num-align">-</td>' +
-                 '<td class="num-align">-</td><td class="num-align">-</td>' +
+        asptd += '<td class="num-align">' + (asp.total != null ? _f(asp.total, 'currency') : '-') + '</td>' +
+                 '<td class="num-align">-</td>' +
+                 '<td class="num-align">' + (asp.paper_total != null ? _f(asp.paper_total, 'currency') : '-') + '</td>' +
+                 '<td class="num-align">' + (asp.card_total != null ? _f(asp.card_total, 'currency') : '-') + '</td>' +
                  '<td class="num-align">-</td><td class="num-align">-</td>';
         trAsp.innerHTML = asptd;
         body.appendChild(trAsp);

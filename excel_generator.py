@@ -528,7 +528,7 @@ def create_category_sheet(wb, data):
     # share is col_total / grand_total
     for c_idx in range(3, 13):
         col_letter = get_column_letter(c_idx)
-        ws.cell(row=share_row, column=c_idx, value=f"=IF(M{gt_row}=0,0,{col_letter}{gt_row}/M{gt_row})").number_format = "0%"
+        ws.cell(row=share_row, column=c_idx, value=f"=IF(M{gt_row}=0,0,{col_letter}{gt_row}/M{gt_row})").number_format = "0.00%"
         
     # Share in Fin Value row (we'll link to values later, or put formulas)
     ws.cell(row=share_row, column=13, value="")
@@ -643,11 +643,11 @@ def create_category_sheet(wb, data):
     ws.cell(row=share_row_val, column=2).fill = ZEBRA_FILL
     for c_idx in range(3, 13):
         col_letter = get_column_letter(c_idx)
-        ws.cell(row=share_row_val, column=c_idx, value=f"=IF(M{gt_row_val}=0,0,{col_letter}{gt_row_val}/M{gt_row_val})").number_format = "0.0%"
+        ws.cell(row=share_row_val, column=c_idx, value=f"=IF(M{gt_row_val}=0,0,{col_letter}{gt_row_val}/M{gt_row_val})").number_format = "0.00%"
     ws.cell(row=share_row_val, column=13, value="")
     ws.cell(row=share_row_val, column=14, value="")
-    ws.cell(row=share_row_val, column=15, value=f"=IF(M{gt_row_val}=0,0,O{gt_row_val}/M{gt_row_val})").number_format = "0.0%"
-    ws.cell(row=share_row_val, column=16, value=f"=IF(M{gt_row_val}=0,0,P{gt_row_val}/M{gt_row_val})").number_format = "0.0%"
+    ws.cell(row=share_row_val, column=15, value=f"=IF(M{gt_row_val}=0,0,O{gt_row_val}/M{gt_row_val})").number_format = "0.00%"
+    ws.cell(row=share_row_val, column=16, value=f"=IF(M{gt_row_val}=0,0,P{gt_row_val}/M{gt_row_val})").number_format = "0.00%"
     ws.cell(row=share_row_val, column=17, value="")
     ws.cell(row=share_row_val, column=18, value="")
     for col in range(3, 19):
@@ -664,7 +664,7 @@ def create_category_sheet(wb, data):
     ws.cell(row=asp_row, column=2, value="ASP").font = FONT_BODY_BOLD
     ws.cell(row=asp_row, column=2).border = THIN_BORDER
     ws.cell(row=asp_row, column=2).fill = ZEBRA_FILL
-    for c_idx in range(4, 13): # Columns Bajaj to Benow
+    for c_idx in [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]: # aCASH..Benow, TOTAL, Paper, Card
         col_letter = get_column_letter(c_idx)
         # Value row total is gt_row_val, Volume row total is gt_row
         val_cell = f"{col_letter}{gt_row_val}"
@@ -715,21 +715,21 @@ def create_category_sheet(wb, data):
     # asp_row_val = 28 (ASP)
     
     # Let's write the cell values and formulas exactly for these rows:
-    # Volume SIF row (14):
+    # Volume SIF row (14): Volume share in total financed Qty
     for c_idx in range(4, 13):
         col_letter = get_column_letter(c_idx)
-        # Value cell is {col_letter}25. Paper total value is O25. Card total value is P25.
-        ws.cell(row=14, column=c_idx, value=f"=IF((O25+P25)=0,0,{col_letter}25/(O25+P25))").number_format = "0%"
-    # Paper total share = O25 / (O25+P25)
-    ws.cell(row=14, column=15, value="=IF((O25+P25)=0,0,O25/(O25+P25))").number_format = "0.0%"
-    ws.cell(row=14, column=16, value="=IF((O25+P25)=0,0,P25/(O25+P25))").number_format = "0.0%"
+        # Volume cell is {col_letter}12. Paper total volume is O12. Card total volume is P12.
+        ws.cell(row=14, column=c_idx, value=f"=IF((O12+P12)=0,0,{col_letter}12/(O12+P12))").number_format = "0.00%"
+    # Paper total share = O12 / (O12+P12)
+    ws.cell(row=14, column=15, value="=IF((O12+P12)=0,0,O12/(O12+P12))").number_format = "0.00%"
+    ws.cell(row=14, column=16, value="=IF((O12+P12)=0,0,P12/(O12+P12))").number_format = "0.00%"
     
     # Value SIF row (27):
     for c_idx in range(4, 13):
         col_letter = get_column_letter(c_idx)
-        ws.cell(row=27, column=c_idx, value=f"=IF((O25+P25)=0,0,{col_letter}25/(O25+P25))").number_format = "0.0%"
-    ws.cell(row=27, column=15, value="=IF((O25+P25)=0,0,O25/(O25+P25))").number_format = "0.0%"
-    ws.cell(row=27, column=16, value="=IF((O25+P25)=0,0,P25/(O25+P25))").number_format = "0.0%"
+        ws.cell(row=27, column=c_idx, value=f"=IF((O25+P25)=0,0,{col_letter}25/(O25+P25))").number_format = "0.00%"
+    ws.cell(row=27, column=15, value="=IF((O25+P25)=0,0,O25/(O25+P25))").number_format = "0.00%"
+    ws.cell(row=27, column=16, value="=IF((O25+P25)=0,0,P25/(O25+P25))").number_format = "0.00%"
     
     # Style row 14 and 27
     for r in [14, 27]:

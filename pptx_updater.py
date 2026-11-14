@@ -323,7 +323,7 @@ def update_pptx_slides(template_path, data, output_path):
                         update_cell_first_run(table.cell(r, 11), f"{cat_tot}")
                         # Fin Share % (col 12) = (Paper + Card) / Total
                         fin_share = ((paper_tot + card_tot) / cat_tot * 100) if cat_tot != 0 else 0
-                        update_cell_first_run(table.cell(r, 12), f"{fin_share:.1f}%")
+                        update_cell_first_run(table.cell(r, 12), f"{fin_share:.2f}%")
                         # Paper total (col 13)
                         update_cell_first_run(table.cell(r, 13), f"{paper_tot}")
                         # Card total (col 14)
@@ -349,7 +349,7 @@ def update_pptx_slides(template_path, data, output_path):
                     # Row 9 is Share %
                     for f_idx in range(10):
                         sh = (col_totals_qty[f_idx] / tot_all_qty * 100) if tot_all_qty != 0 else 0
-                        update_cell_first_run(table.cell(9, f_idx+1), f"{sh:.0f}%")
+                        update_cell_first_run(table.cell(9, f_idx+1), f"{sh:.2f}%")
                     paper_sh = (tot_paper_qty / tot_all_qty * 100) if tot_all_qty != 0 else 0
                     card_sh = (tot_card_qty / tot_all_qty * 100) if tot_all_qty != 0 else 0
                     update_cell_first_run(table.cell(9, 13), f"{paper_sh:.2f}%")
@@ -388,7 +388,7 @@ def update_pptx_slides(template_path, data, output_path):
                         
                         update_cell_first_run(table.cell(r, 11), f"{cat_tot:.1f}")
                         fin_share_val = ((paper_tot + card_tot) / cat_tot * 100) if cat_tot != 0 else 0
-                        update_cell_first_run(table.cell(r, 12), f"{fin_share_val:.1f}%")
+                        update_cell_first_run(table.cell(r, 12), f"{fin_share_val:.2f}%")
                         update_cell_first_run(table.cell(r, 13), f"{paper_tot:.1f}")
                         update_cell_first_run(table.cell(r, 14), f"{card_tot:.1f}")
                         update_cell_first_run(table.cell(r, 15), get_pct_str(info.get("last_week_pct", 0)))
@@ -420,18 +420,21 @@ def update_pptx_slides(template_path, data, output_path):
                     total_fin_val_cr = tot_paper_val + tot_card_val
                     for f_idx in range(1, 10):
                         sif = (col_totals_val[f_idx] / total_fin_val_cr * 100) if total_fin_val_cr != 0 else 0
-                        update_cell_first_run(table.cell(22, f_idx+1), f"{sif:.1f}%")
+                        update_cell_first_run(table.cell(22, f_idx+1), f"{sif:.2f}%")
                     paper_sif = (tot_paper_val / total_fin_val_cr * 100) if total_fin_val_cr != 0 else 0
                     card_sif = (tot_card_val / total_fin_val_cr * 100) if total_fin_val_cr != 0 else 0
                     update_cell_first_run(table.cell(22, 13), f"{paper_sif:.2f}%")
                     update_cell_first_run(table.cell(22, 14), f"{card_sif:.2f}%")
                     
-                    # Row 10 is Share in Fin Value for Volume section (uses the same values)
+                    # Row 10 is Share in Fin Value for Volume section (Qty / Total Fin Qty)
+                    tot_fin_qty = tot_paper_qty + tot_card_qty
                     for f_idx in range(1, 10):
-                        sif = (col_totals_val[f_idx] / total_fin_val_cr * 100) if total_fin_val_cr != 0 else 0
-                        update_cell_first_run(table.cell(10, f_idx+1), f"{sif:.0f}%")
-                    update_cell_first_run(table.cell(10, 13), f"{paper_sif:.2f}%")
-                    update_cell_first_run(table.cell(10, 14), f"{card_sif:.2f}%")
+                        sif_qty = (col_totals_qty[f_idx] / tot_fin_qty * 100) if tot_fin_qty != 0 else 0
+                        update_cell_first_run(table.cell(10, f_idx+1), f"{sif_qty:.2f}%")
+                    paper_sif_qty = (tot_paper_qty / tot_fin_qty * 100) if tot_fin_qty != 0 else 0
+                    card_sif_qty = (tot_card_qty / tot_fin_qty * 100) if tot_fin_qty != 0 else 0
+                    update_cell_first_run(table.cell(10, 13), f"{paper_sif_qty:.2f}%")
+                    update_cell_first_run(table.cell(10, 14), f"{card_sif_qty:.2f}%")
                     
                     # Row 23 is ASP = Value / Qty * 10,000,000
                     for f_idx in range(1, 10):

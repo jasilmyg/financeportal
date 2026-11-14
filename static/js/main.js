@@ -1901,30 +1901,39 @@ function recalculateAll() {
     });
   }
 
-  // 4. SIF (Share in Fin Value) - Bajaj to Benow
+  // 4. SIF (Share in Fin Value) - Value & Volume - Bajaj to Benow
   const qtyTotals = reviewData.category_performance.qty_totals;
   const valTotals = reviewData.category_performance.val_totals;
   const tot_fin_val_cr = valTotals.paper_total + valTotals.card_total;
+  const tot_fin_qty = qtyTotals.paper_total + qtyTotals.card_total;
   reviewData.category_performance.sif = {};
+  reviewData.category_performance.sif_qty = {};
   const fins_keys = ["aCASH", "BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI", "PineLab", "PAYTM", "Benow"];
   fins_keys.slice(1).forEach(k => { // Skip aCASH
     const v = valTotals.totals[k];
     reviewData.category_performance.sif[k] = tot_fin_val_cr > 0 ? (v / tot_fin_val_cr * 100) : 0;
+    const q = qtyTotals.totals[k];
+    reviewData.category_performance.sif_qty[k] = tot_fin_qty > 0 ? (q / tot_fin_qty * 100) : 0;
   });
   
   // Paper & Card SIF Total
   reviewData.category_performance.sif.paper_total = tot_fin_val_cr > 0 ? (valTotals.paper_total / tot_fin_val_cr * 100) : 0;
   reviewData.category_performance.sif.card_total = tot_fin_val_cr > 0 ? (valTotals.card_total / tot_fin_val_cr * 100) : 0;
+  reviewData.category_performance.sif_qty.paper_total = tot_fin_qty > 0 ? (qtyTotals.paper_total / tot_fin_qty * 100) : 0;
+  reviewData.category_performance.sif_qty.card_total = tot_fin_qty > 0 ? (qtyTotals.card_total / tot_fin_qty * 100) : 0;
 
   // 5. ASP (Average Selling Price)
   reviewData.category_performance.asp = {};
   const aspQtyTotals = reviewData.category_performance.qty_totals;
   const aspValTotals = reviewData.category_performance.val_totals;
-  fins_keys.slice(1).forEach(k => {
+  fins_keys.forEach(k => {
     const qty = aspQtyTotals.totals[k];
     const val = aspValTotals.totals[k];
     reviewData.category_performance.asp[k] = qty > 0 ? ((val / qty) * 10000000) : 0;
   });
+  reviewData.category_performance.asp.total = aspQtyTotals.grand_total > 0 ? ((aspValTotals.grand_total / aspQtyTotals.grand_total) * 10000000) : 0;
+  reviewData.category_performance.asp.paper_total = aspQtyTotals.paper_total > 0 ? ((aspValTotals.paper_total / aspQtyTotals.paper_total) * 10000000) : 0;
+  reviewData.category_performance.asp.card_total = aspQtyTotals.card_total > 0 ? ((aspValTotals.card_total / aspQtyTotals.card_total) * 10000000) : 0;
 
   // 6. Financier Targets & GAPs
   const ft = reviewData.financier_targets;
@@ -2440,6 +2449,7 @@ function renderCategoryPerformance() {
   }
   const cats = ["CD PRODUCTS", "LAPTOP", "MOBILE", "HVA", "SA", "OTHERS", "BANK EMI"];
   const cols = ["aCASH", "BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI", "PineLab", "PAYTM", "Benow"];
+  const _pct2 = v => (v === null || v === undefined || isNaN(v)) ? "-" : `${Number(v).toFixed(2)}%`;
   
   const brandSelect = document.getElementById("filter-brand");
   const selectedBrand = brandSelect ? brandSelect.value : "ALL";
@@ -2481,11 +2491,11 @@ function renderCategoryPerformance() {
     
     tds += `
       <td class="num-align" style="font-weight:600;">${computedTotal}</td>
-      <td class="num-align" style="font-weight:600;">${formatNumber(computedFinShare, "percent")}</td>
+      <td class="num-align" style="font-weight:600;">${_pct2(computedFinShare)}</td>
       <td class="num-align" style="font-weight:600;">${computedPaper}</td>
       <td class="num-align" style="font-weight:600;">${computedCard}</td>
-      <td class="num-align" data-cat="${cat}" data-col="last_week_pct" data-type="qty">${info.last_week_pct != null ? formatNumber(info.last_week_pct, "percent") : '-'}</td>
-      <td class="num-align" data-cat="${cat}" data-col="apr_closing_pct" data-type="qty">${info.apr_closing_pct != null ? formatNumber(info.apr_closing_pct, "percent") : '-'}</td>
+      <td class="num-align" data-cat="${cat}" data-col="last_week_pct" data-type="qty">${info.last_week_pct != null ? _pct2(info.last_week_pct) : '-'}</td>
+      <td class="num-align" data-cat="${cat}" data-col="apr_closing_pct" data-type="qty">${info.apr_closing_pct != null ? _pct2(info.apr_closing_pct) : '-'}</td>
     `;
     tr.innerHTML = tds;
     qty_body.appendChild(tr);
@@ -2521,7 +2531,7 @@ function renderCategoryPerformance() {
         
         pTds += `
           <td class="num-align" style="font-weight:500;">${pTotal}</td>
-          <td class="num-align">${formatNumber(pFinShare, "percent")}</td>
+          <td class="num-align">${_pct2(pFinShare)}</td>
           <td class="num-align">${pPaper}</td>
           <td class="num-align">${pCard}</td>
           <td class="num-align">-</td>
@@ -2561,7 +2571,7 @@ function renderCategoryPerformance() {
   const tot_fin_share_qty = qty_tots.grand_total > 0 ? ((qty_tots.paper_total + qty_tots.card_total) / qty_tots.grand_total * 100) : 0;
   qty_tot_tds += `
     <td class="num-align">${qty_tots.grand_total}</td>
-    <td class="num-align">${formatNumber(tot_fin_share_qty, "percent")}</td>
+    <td class="num-align">${_pct2(tot_fin_share_qty)}</td>
     <td class="num-align">${qty_tots.paper_total}</td>
     <td class="num-align">${qty_tots.card_total}</td>
     <td class="num-align">-</td>
@@ -2576,34 +2586,38 @@ function renderCategoryPerformance() {
   let qty_sh_tds = `<td style="font-weight:600; color:var(--text-muted);">Share</td>`;
   cols.forEach(col => {
     const sh = qty_tots.grand_total > 0 ? ((qty_tots.totals[col] || 0) / qty_tots.grand_total * 100) : 0;
-    qty_sh_tds += `<td class="num-align">${formatNumber(sh, "percent")}</td>`;
+    qty_sh_tds += `<td class="num-align">${_pct2(sh)}</td>`;
   });
   qty_sh_tds += `
     <td class="num-align">-</td>
     <td class="num-align">-</td>
-    <td class="num-align">${formatNumber(qty_tots.grand_total > 0 ? (qty_tots.paper_total / qty_tots.grand_total * 100) : 0, "percent")}</td>
-    <td class="num-align">${formatNumber(qty_tots.grand_total > 0 ? (qty_tots.card_total / qty_tots.grand_total * 100) : 0, "percent")}</td>
+    <td class="num-align">${_pct2(qty_tots.grand_total > 0 ? (qty_tots.paper_total / qty_tots.grand_total * 100) : 0)}</td>
+    <td class="num-align">${_pct2(qty_tots.grand_total > 0 ? (qty_tots.card_total / qty_tots.grand_total * 100) : 0)}</td>
     <td class="num-align">-</td>
     <td class="num-align">-</td>
   `;
   trQtyShare.innerHTML = qty_sh_tds;
   qty_body.appendChild(trQtyShare);
   
-  // Share in Fin Value row (only from static data; skip if not available)
-  const sif = reviewData.category_performance && reviewData.category_performance.sif;
+  // Share in Fin Value row (Volume mode: Fin Qty / Total Fin Qty)
+  const qtyFinTot = (qty_tots.paper_total || 0) + (qty_tots.card_total || 0);
+  const sif_qty = (activeData && activeData.sif_qty) || (reviewData.category_performance && reviewData.category_performance.sif_qty);
   const trQtySif = document.createElement("tr");
   trQtySif.style.background = "rgba(255,255,255,0.01)";
   let qty_sif_tds = `<td style="font-weight:600; color:var(--text-muted);">Share in Fin Value</td>`;
-  if (sif) {
+  if (sif_qty || qtyFinTot > 0) {
     qty_sif_tds += `<td class="num-align">-</td>`;
     cols.slice(1).forEach(col => {
-      qty_sif_tds += `<td class="num-align">${formatNumber(sif[col], "percent")}</td>`;
+      const pct = sif_qty && sif_qty[col] != null ? sif_qty[col] : (qtyFinTot > 0 ? ((qty_tots.totals[col] || 0) / qtyFinTot * 100) : 0);
+      qty_sif_tds += `<td class="num-align">${_pct2(pct)}</td>`;
     });
+    const paperSifPct = sif_qty && sif_qty.paper_total != null ? sif_qty.paper_total : (qtyFinTot > 0 ? ((qty_tots.paper_total || 0) / qtyFinTot * 100) : 0);
+    const cardSifPct = sif_qty && sif_qty.card_total != null ? sif_qty.card_total : (qtyFinTot > 0 ? ((qty_tots.card_total || 0) / qtyFinTot * 100) : 0);
     qty_sif_tds += `
       <td class="num-align">-</td>
       <td class="num-align">-</td>
-      <td class="num-align">${formatNumber(sif.paper_total, "percent")}</td>
-      <td class="num-align">${formatNumber(sif.card_total, "percent")}</td>
+      <td class="num-align">${_pct2(paperSifPct)}</td>
+      <td class="num-align">${_pct2(cardSifPct)}</td>
       <td class="num-align">-</td>
       <td class="num-align">-</td>
     `;
@@ -2636,11 +2650,11 @@ function renderCategoryPerformance() {
     const vFinShare = info.fin_share != null ? info.fin_share : (vComputedTotal > 0 ? ((vFinTotal + vCardTotal) / vComputedTotal * 100) : 0);
     tds += `
       <td class="num-align" style="font-weight:600;">${formatNumber(vComputedTotal, "decimal")}</td>
-      <td class="num-align" style="font-weight:600;">${formatNumber(vFinShare, "percent")}</td>
+      <td class="num-align" style="font-weight:600;">${_pct2(vFinShare)}</td>
       <td class="num-align" style="font-weight:600;">${formatNumber(vPaperTotal, "decimal")}</td>
       <td class="num-align" style="font-weight:600;">${formatNumber(vCardTotalComp, "decimal")}</td>
-      <td class="num-align" data-cat="${cat}" data-col="last_week_pct" data-type="val">${info.last_week_pct != null ? formatNumber(info.last_week_pct, "percent") : '-'}</td>
-      <td class="num-align" data-cat="${cat}" data-col="apr_closing_pct" data-type="val">${info.apr_closing_pct != null ? formatNumber(info.apr_closing_pct, "percent") : '-'}</td>
+      <td class="num-align" data-cat="${cat}" data-col="last_week_pct" data-type="val">${info.last_week_pct != null ? _pct2(info.last_week_pct) : '-'}</td>
+      <td class="num-align" data-cat="${cat}" data-col="apr_closing_pct" data-type="val">${info.apr_closing_pct != null ? _pct2(info.apr_closing_pct) : '-'}</td>
     `;
     tr.innerHTML = tds;
     val_body.appendChild(tr);
@@ -2676,7 +2690,7 @@ function renderCategoryPerformance() {
         
         pTds += `
           <td class="num-align" style="font-weight:500;">${formatNumber(pTotal, "decimal")}</td>
-          <td class="num-align">${formatNumber(pFinShare, "percent")}</td>
+          <td class="num-align">${_pct2(pFinShare)}</td>
           <td class="num-align">${formatNumber(pPaper, "decimal")}</td>
           <td class="num-align">${formatNumber(pCard, "decimal")}</td>
           <td class="num-align">-</td>
@@ -2712,7 +2726,7 @@ function renderCategoryPerformance() {
   const tot_fin_share_val = val_tots.grand_total > 0 ? ((val_tots.paper_total + val_tots.card_total) / val_tots.grand_total * 100) : 0;
   val_tot_tds += `
     <td class="num-align">${formatNumber(val_tots.grand_total, "decimal")}</td>
-    <td class="num-align">${formatNumber(tot_fin_share_val, "percent")}</td>
+    <td class="num-align">${_pct2(tot_fin_share_val)}</td>
     <td class="num-align">${formatNumber(val_tots.paper_total, "decimal")}</td>
     <td class="num-align">${formatNumber(val_tots.card_total, "decimal")}</td>
     <td class="num-align">-</td>
@@ -2727,13 +2741,13 @@ function renderCategoryPerformance() {
   let val_sh_tds = `<td style="font-weight:600; color:var(--text-muted);">Share</td>`;
   cols.forEach(col => {
     const sh = val_tots.grand_total > 0 ? (val_tots.totals[col] / val_tots.grand_total * 100) : 0;
-    val_sh_tds += `<td class="num-align">${formatNumber(sh, "percent")}</td>`;
+    val_sh_tds += `<td class="num-align">${_pct2(sh)}</td>`;
   });
   val_sh_tds += `
     <td class="num-align">-</td>
     <td class="num-align">-</td>
-    <td class="num-align">${formatNumber(val_tots.grand_total > 0 ? (val_tots.paper_total / val_tots.grand_total * 100) : 0, "percent")}</td>
-    <td class="num-align">${formatNumber(val_tots.grand_total > 0 ? (val_tots.card_total / val_tots.grand_total * 100) : 0, "percent")}</td>
+    <td class="num-align">${_pct2(val_tots.grand_total > 0 ? (val_tots.paper_total / val_tots.grand_total * 100) : 0)}</td>
+    <td class="num-align">${_pct2(val_tots.grand_total > 0 ? (val_tots.card_total / val_tots.grand_total * 100) : 0)}</td>
     <td class="num-align">-</td>
     <td class="num-align">-</td>
   `;
@@ -2750,13 +2764,13 @@ function renderCategoryPerformance() {
   if (val_sif) {
     val_sif_tds += `<td class="num-align">-</td>`;
     cols.slice(1).forEach(col => {
-      val_sif_tds += `<td class="num-align">${formatNumber(val_sif[col], "percent")}</td>`;
+      val_sif_tds += `<td class="num-align">${_pct2(val_sif[col])}</td>`;
     });
     val_sif_tds += `
       <td class="num-align">-</td>
       <td class="num-align">-</td>
-      <td class="num-align">${formatNumber(val_sif.paper_total, "percent")}</td>
-      <td class="num-align">${formatNumber(val_sif.card_total, "percent")}</td>
+      <td class="num-align">${_pct2(val_sif.paper_total)}</td>
+      <td class="num-align">${_pct2(val_sif.card_total)}</td>
       <td class="num-align">-</td>
       <td class="num-align">-</td>
     `;
@@ -2771,15 +2785,15 @@ function renderCategoryPerformance() {
   trValAsp.style.background = "rgba(255,255,255,0.01)";
   let val_asp_tds = `<td style="font-weight:600; color:var(--text-muted);">ASP</td>`;
   if (val_asp) {
-    val_asp_tds += `<td class="num-align">-</td>`;
+    val_asp_tds += `<td class="num-align">${val_asp.aCASH != null ? formatNumber(val_asp.aCASH, "currency") : '-'}</td>`;
     cols.slice(1).forEach(col => {
       val_asp_tds += `<td class="num-align">${formatNumber(val_asp[col], "currency")}</td>`;
     });
     val_asp_tds += `
+      <td class="num-align">${val_asp.total != null ? formatNumber(val_asp.total, "currency") : '-'}</td>
       <td class="num-align">-</td>
-      <td class="num-align">-</td>
-      <td class="num-align">-</td>
-      <td class="num-align">-</td>
+      <td class="num-align">${val_asp.paper_total != null ? formatNumber(val_asp.paper_total, "currency") : '-'}</td>
+      <td class="num-align">${val_asp.card_total != null ? formatNumber(val_asp.card_total, "currency") : '-'}</td>
       <td class="num-align">-</td>
       <td class="num-align">-</td>
     `;
