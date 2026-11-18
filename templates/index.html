@@ -1447,7 +1447,7 @@
           </div>
 
           <!-- Main Coordinated Layout: Left = Store Table (Cols A-I), Right = TM + RBM + BDM Summary Tables -->
-          <div style="display:grid; grid-template-columns:minmax(540px, 1.35fr) minmax(460px, 1fr); gap:16px; align-items:start;">
+          <div style="display:grid; grid-template-columns:1fr; gap:16px; align-items:start;">
             <!-- LEFT PANEL: 144 Store-wise Finance Share Table -->
             <div class="data-card" style="margin-bottom:0;">
               <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
@@ -1471,70 +1471,6 @@
               </div>
             </div>
 
-            <!-- RIGHT PANEL: TM Summary + RBM Summary + BDM Summary -->
-            <div style="display:flex; flex-direction:column; gap:16px;">
-              <!-- Table 2: TM (Fin BDM) Summary & Target / Card Slab Table -->
-              <div class="data-card" style="margin-bottom:0;">
-                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                  <div>
-                    <h2 id="oct2-tm-table-title">TM (Fin BDM) Summary &amp; Targets</h2>
-                    <span class="badge">Click any TM row to filter stores</span>
-                  </div>
-                  <label style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px; cursor:pointer;">
-                    <input type="checkbox" id="oct2-tm-show-targets" onchange="renderOct2SheetsUI()" checked />
-                    Show Targets &amp; Card Slabs
-                  </label>
-                </div>
-                <div class="table-responsive">
-                  <table class="data-table" id="table-oct2-tm">
-                    <thead id="oct2-tm-thead"></thead>
-                    <tbody id="oct2-tm-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Table 3: RBM Summary Table -->
-              <div class="data-card" style="margin-bottom:0;">
-                <div class="card-title">
-                  <h2 id="oct2-rbm-table-title">RBM Summary</h2>
-                  <span class="badge">Click any RBM row to filter stores</span>
-                </div>
-                <div class="table-responsive">
-                  <table class="data-table" id="table-oct2-rbm">
-                    <thead>
-                      <tr>
-                        <th>RBM</th>
-                        <th class="num-align">FIN</th>
-                        <th class="num-align">Total</th>
-                        <th class="num-align" style="background:#eab30822; color:#b45309;">FIN SHARE</th>
-                      </tr>
-                    </thead>
-                    <tbody id="oct2-rbm-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Table 4: BDM Summary Table -->
-              <div class="data-card" style="margin-bottom:0;">
-                <div class="card-title">
-                  <h2 id="oct2-bdm-table-title">BDM Summary (23 BDMs)</h2>
-                  <span class="badge">Click any BDM row to filter stores</span>
-                </div>
-                <div class="table-responsive" style="max-height:380px; overflow-y:auto;">
-                  <table class="data-table" id="table-oct2-bdm">
-                    <thead style="position:sticky; top:0; z-index:4;">
-                      <tr>
-                        <th>BDM</th>
-                        <th class="num-align">FIN</th>
-                        <th class="num-align">Total</th>
-                        <th class="num-align" style="background:#eab30822; color:#b45309;">FIN SHARE</th>
-                      </tr>
-                    </thead>
-                    <tbody id="oct2-bdm-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
