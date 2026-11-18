@@ -5837,6 +5837,133 @@ function _oct2CompareMode() { return (document.getElementById("oct2-compare") ||
 
 // Fetches whatever the current "View by" / "Compare with" selection needs on top of the store data.
 // Resolves false when a newer selection superseded this call (the caller must not render then).
+// ---- "Compare with": any day / week / month / quarter / year (or a custom range) ----
+const _OCT2_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const _OCT2_DAY_MS = 86400000;
+const _oct2Pad = n => String(n).padStart(2, "0");
+const _oct2Utc = (y, m, d) => new Date(Date.UTC(y, m, d));
+const _oct2Iso = d => `${d.getUTCFullYear()}-${_oct2Pad(d.getUTCMonth() + 1)}-${_oct2Pad(d.getUTCDate())}`;
+const _oct2ParseIso = s => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ""));
+  return m ? _oct2Utc(+m[1], +m[2] - 1, +m[3]) : null;
+};
+const _oct2Short = d => `${_oct2Pad(d.getUTCDate())} ${_OCT2_MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+
+function _oct2IsoWeekMonday(year, week) {          // Monday of ISO week `week` of `year`
+  const jan4 = _oct2Utc(year, 0, 4);
+  const dayNum = jan4.getUTCDay() || 7;
+  return new Date(jan4.getTime() + ((week - 1) * 7 - (dayNum - 1)) * _OCT2_DAY_MS);
+}
+function _oct2IsoWeekOf(date) {                    // [isoYear, isoWeek]
+  const d = new Date(date.getTime());
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = _oct2Utc(d.getUTCFullYear(), 0, 1);
+  return [d.getUTCFullYear(), Math.ceil(((d - yearStart) / _OCT2_DAY_MS + 1) / 7)];
+}
+function _oct2ShiftMonths(d, n) {                  // same day-of-month, clamped to the target month's length
+  const t = _oct2Utc(d.getUTCFullYear(), d.getUTCMonth() + n, 1);
+  const last = _oct2Utc(t.getUTCFullYear(), t.getUTCMonth() + 1, 0).getUTCDate();
+  t.setUTCDate(Math.min(d.getUTCDate(), last));
+  return t;
+}
+
+// Pre-fills the picker with the period BEFORE the one on screen, so one click still gives "previous"
+function _oct2SeedComparePicker(type) {
+  const p = (_oct2SheetsCacheData || {}).period || {};
+  const now = new Date();
+  const s = _oct2ParseIso(p.start_date) || _oct2Utc(now.getFullYear(), now.getMonth(), 1);
+  const e = _oct2ParseIso(p.end_date) || s;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  if (type === "day") {
+    set("oct2-cmp-date", _oct2Iso(new Date(s.getTime() - _OCT2_DAY_MS)));
+  } else if (type === "week") {
+    const [y, w] = _oct2IsoWeekOf(new Date(s.getTime() - 7 * _OCT2_DAY_MS));
+    set("oct2-cmp-week", `${y}-W${_oct2Pad(w)}`);
+  } else if (type === "month") {
+    const m = _oct2Utc(s.getUTCFullYear(), s.getUTCMonth() - 1, 1);
+    set("oct2-cmp-month", `${m.getUTCFullYear()}-${_oct2Pad(m.getUTCMonth() + 1)}`);
+  } else if (type === "quarter") {
+    let q = Math.floor(s.getUTCMonth() / 3) - 1;
+    let y = s.getUTCFullYear();
+    if (q < 0) { q = 3; y -= 1; }
+    set("oct2-cmp-qtr", String(q + 1));
+    set("oct2-cmp-year", String(y));
+  } else if (type === "year") {
+    set("oct2-cmp-year", String(s.getUTCFullYear() - 1));
+  } else if (type === "custom") {
+    set("oct2-cmp-from", _oct2Iso(_oct2ShiftMonths(s, -1)));
+    set("oct2-cmp-to", _oct2Iso(_oct2ShiftMonths(e, -1)));
+  }
+}
+
+// Turns the picker into {start, end, label} (ISO dates), or {error}
+function _oct2CompareWindow() {
+  const type = _oct2CompareMode();
+  const v = id => ((document.getElementById(id) || {}).value || "").trim();
+  let s = null, e = null, label = "";
+  if (type === "day") {
+    s = e = _oct2ParseIso(v("oct2-cmp-date"));
+    if (s) label = _oct2Short(s);
+  } else if (type === "week") {
+    const m = /^(\d{4})-W(\d{1,2})$/.exec(v("oct2-cmp-week"));
+    if (m) {
+      s = _oct2IsoWeekMonday(+m[1], +m[2]);
+      e = new Date(s.getTime() + 6 * _OCT2_DAY_MS);
+      label = `W${+m[2]} ${m[1]}`;
+    }
+  } else if (type === "month") {
+    const m = /^(\d{4})-(\d{2})$/.exec(v("oct2-cmp-month"));
+    if (m) {
+      s = _oct2Utc(+m[1], +m[2] - 1, 1);
+      e = _oct2Utc(+m[1], +m[2], 0);
+      label = `${_OCT2_MON[+m[2] - 1]} ${m[1]}`;
+    }
+  } else if (type === "quarter") {
+    const y = parseInt(v("oct2-cmp-year"), 10);
+    const q = parseInt(v("oct2-cmp-qtr"), 10);
+    if (y >= 2000 && y <= 2100 && q >= 1 && q <= 4) {
+      s = _oct2Utc(y, (q - 1) * 3, 1);
+      e = _oct2Utc(y, q * 3, 0);
+      label = `Q${q} ${y}`;
+    }
+  } else if (type === "year") {
+    const y = parseInt(v("oct2-cmp-year"), 10);
+    if (y >= 2000 && y <= 2100) {
+      s = _oct2Utc(y, 0, 1);
+      e = _oct2Utc(y, 12, 0);
+      label = String(y);
+    }
+  } else if (type === "custom") {
+    s = _oct2ParseIso(v("oct2-cmp-from"));
+    e = _oct2ParseIso(v("oct2-cmp-to"));
+    if (s && e) label = "Custom period";
+  }
+  if (!s || !e) return { error: "Pick the period to compare with." };
+  if (e < s) return { error: "The comparison 'to' date is before its 'from' date." };
+  return { start: _oct2Iso(s), end: _oct2Iso(e), label };
+}
+
+// Chooses which picker inputs are visible for the selected comparison type, then reloads
+window.onOct2CompareTypeChanged = function() {
+  const type = _oct2CompareMode();
+  const all = ["oct2-cmp-date", "oct2-cmp-week", "oct2-cmp-month", "oct2-cmp-qtr", "oct2-cmp-year", "oct2-cmp-from", "oct2-cmp-sep", "oct2-cmp-to"];
+  const show = {
+    day: ["oct2-cmp-date"], week: ["oct2-cmp-week"], month: ["oct2-cmp-month"],
+    quarter: ["oct2-cmp-qtr", "oct2-cmp-year"], year: ["oct2-cmp-year"],
+    custom: ["oct2-cmp-from", "oct2-cmp-sep", "oct2-cmp-to"],
+  };
+  all.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (show[type] || []).includes(id) ? "" : "none";
+  });
+  const wrap = document.getElementById("oct2-cmp-picker");
+  if (wrap) wrap.style.display = type ? "flex" : "none";
+  const lbl = document.getElementById("oct2-cmp-picker-label");
+  if (lbl) lbl.textContent = ({ day: "Day", week: "Week", month: "Month", quarter: "Quarter", year: "Year", custom: "Date range" })[type] || "Compare period";
+  if (type) _oct2SeedComparePicker(type);
+  onOct2ViewChanged();
+};
+
 async function _oct2LoadExtras() {
   const seq = ++_oct2ExtraSeq;
   const base = _oct2SheetsCacheData;
@@ -5849,13 +5976,18 @@ async function _oct2LoadExtras() {
   const errs = [];
 
   if (cmp) {
-    try {
-      const d = await _cachedFetch(`/api/oct-sheets-compare?${base._qs}&compare=${encodeURIComponent(cmp)}`);
-      if (d && d.error) throw new Error(d.error);
-      cmpData = d;
-    } catch (e) {
-      console.error("Compare load failed:", e);
-      errs.push("Comparison could not be loaded: " + ((e && e.message) || e));
+    const win = _oct2CompareWindow();
+    if (win.error) {
+      errs.push(win.error);
+    } else {
+      try {
+        const d = await _cachedFetch(`/api/oct-sheets-compare?${base._qs}&compare=custom&compare_start=${win.start}&compare_end=${win.end}`);
+        if (d && d.error) throw new Error(d.error);
+        cmpData = { ...d, label: win.label };
+      } catch (e) {
+        console.error("Compare load failed:", e);
+        errs.push("Comparison could not be loaded: " + ((e && e.message) || e));
+      }
     }
   }
   if (view === "staff") {
@@ -6091,6 +6223,12 @@ window.renderOct2SheetsUI = function() {
     const p = _oct2SheetsCacheData.period || {};
     if (cmpData) {
       lines.push(`Comparing <b>${fmtD(p.start_date)} &ndash; ${fmtD(p.end_date)}</b> with <b>${cmpData.label}</b> (${fmtD(cmpData.start_date)} &ndash; ${fmtD(cmpData.end_date)}).`);
+      const dayCount = (a, b) => Math.round((new Date(String(b).slice(0, 10)) - new Date(String(a).slice(0, 10))) / 86400000) + 1;
+      const curDays = dayCount(p.start_date, p.end_date);
+      const cmpDays = dayCount(cmpData.start_date, cmpData.end_date);
+      if (curDays !== cmpDays) {
+        lines.push(`The comparison window is ${cmpDays} day${cmpDays === 1 ? "" : "s"} against ${curDays} selected. FIN SHARE and DIF are like-for-like; GROWTH compares absolute FIN, so it is skewed by the different lengths.`);
+      }
       const cs = cmpData.card_status || {};
       const missing = Object.keys(cs).filter(k => !cs[k].uploaded);
       if (missing.length) lines.push(`Card data is not uploaded for the comparison period (${missing.join(", ")}), so its FIN is understated.`);

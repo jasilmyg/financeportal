@@ -1330,13 +1330,32 @@
             <!-- Compare with the previous day / week / month / year -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted); font-weight:700;">Compare with</label>
-              <select id="oct2-compare" onchange="onOct2ViewChanged()" class="date-select" style="width:150px; padding:4px 8px; height:32px; font-size:12px; font-weight:600;">
+              <select id="oct2-compare" onchange="onOct2CompareTypeChanged()" class="date-select" style="width:150px; padding:4px 8px; height:32px; font-size:12px; font-weight:600;">
                 <option value="" selected>No comparison</option>
-                <option value="day">Previous Day</option>
-                <option value="week">Previous Week</option>
-                <option value="month">Previous Month</option>
-                <option value="year">Previous Year</option>
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+                <option value="quarter">Quarter</option>
+                <option value="year">Year</option>
+                <option value="custom">Custom range</option>
               </select>
+            </div>
+
+            <!-- Which day / week / month / quarter / year (or range) to compare with -->
+            <div id="oct2-cmp-picker" style="display:none; flex-direction:column; gap:3px;">
+              <label id="oct2-cmp-picker-label" style="font-size:11px; color:var(--text-muted); font-weight:700;">Compare period</label>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <input type="date" id="oct2-cmp-date" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px;" />
+                <input type="week" id="oct2-cmp-week" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px;" />
+                <input type="month" id="oct2-cmp-month" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px;" />
+                <select id="oct2-cmp-qtr" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px; width:70px;">
+                  <option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option>
+                </select>
+                <input type="number" id="oct2-cmp-year" min="2000" max="2100" step="1" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px; width:84px;" />
+                <input type="date" id="oct2-cmp-from" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px;" />
+                <span id="oct2-cmp-sep" style="font-size:12px; color:var(--text-muted);">to</span>
+                <input type="date" id="oct2-cmp-to" onchange="onOct2ViewChanged()" class="date-select" style="padding:4px 8px; height:32px; font-size:12px;" />
+              </div>
             </div>
 
             <!-- Show the Paper FIN / Card FIN split columns (hidden by default) -->

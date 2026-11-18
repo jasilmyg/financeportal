@@ -634,7 +634,7 @@ def get_store_fin_share_data(
 # --------------------------------------------------------------------------- compare / staff views
 # Used by the "Duplicate Store Fin Share" tab: compare the selected period with the previous
 # day / week / month / year, and list performance per Staff.
-COMPARE_LABELS = {"day": "Prev Day", "week": "Prev Week", "month": "Prev Month", "year": "Prev Year"}
+COMPARE_LABELS = {"day": "Prev Day", "week": "Prev Week", "month": "Prev Month", "quarter": "Prev Quarter", "year": "Prev Year"}
 CARD_ERP_FINS = ("PineLab", "PAYTM", "Benow")
 
 
@@ -654,6 +654,8 @@ def shift_period(start: date, end: date, compare: str):
         return start - timedelta(days=7), end - timedelta(days=7)
     if compare == "month":
         return _add_months(start, -1), _add_months(end, -1)
+    if compare == "quarter":
+        return _add_months(start, -3), _add_months(end, -3)
     if compare == "year":
         return _add_months(start, -12), _add_months(end, -12)
     raise ValueError(f"unknown compare mode: {compare}")
@@ -676,30 +678,50 @@ def get_store_fin_share_compare(
     period_mode: str = "reference",
     state: str = "",
     compare: str = "month",
+    compare_start: str = "",
+    compare_end: str = "",
 ) -> dict:
-    """Store rows (Value + Volume) for the window one day / week / month / year before the selected one."""
+    """
+    Store rows (Value + Volume) for a comparison window. The window is either explicit
+    (compare_start / compare_end, any day / week / month / quarter / year / range the user
+    picked) or the selected period shifted back by one day / week / month / quarter / year.
+    """
     compare = str(compare or "").strip().lower()
-    if compare not in COMPARE_LABELS:
-        return {"error": f"Unknown compare mode '{compare}' (use day, week, month or year)."}
+    explicit = bool(str(compare_start or "").strip() and str(compare_end or "").strip())
+    if not explicit and compare not in COMPARE_LABELS:
+        return {"error": f"Unknown compare mode '{compare}' (use day, week, month, quarter or year)."}
 
     cur = get_store_fin_share_data(date_str, timeframe=timeframe, end_date_str=end_date_str,
                                    period_mode=period_mode, state=state)
     period = cur.get("period") or {}
     if not period.get("start_date"):
         return {"error": "Current period could not be resolved."}
-    c_start, c_end = shift_period(
-        datetime.strptime(period["start_date"][:10], "%Y-%m-%d").date(),
-        datetime.strptime(period["end_date"][:10], "%Y-%m-%d").date(),
-        compare,
-    )
+
+    if explicit:
+        try:
+            c_start = datetime.strptime(str(compare_start).strip()[:10], "%Y-%m-%d").date()
+            c_end = datetime.strptime(str(compare_end).strip()[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return {"error": "compare_start and compare_end must be dates in YYYY-MM-DD format."}
+        if c_end < c_start:
+            return {"error": "The comparison end date is before its start date."}
+        label = "Selected period"
+    else:
+        c_start, c_end = shift_period(
+            datetime.strptime(period["start_date"][:10], "%Y-%m-%d").date(),
+            datetime.strptime(period["end_date"][:10], "%Y-%m-%d").date(),
+            compare,
+        )
+        label = COMPARE_LABELS[compare]
+
     prev = get_store_fin_share_data(c_start.isoformat(), timeframe="custom", end_date_str=c_end.isoformat(),
                                     period_mode="live", state=state)
     if prev.get("error"):
         return prev
     return {
         "status": "success",
-        "compare": compare,
-        "label": COMPARE_LABELS[compare],
+        "compare": "custom" if explicit else compare,
+        "label": label,
         "start_date": c_start.isoformat(),
         "end_date": c_end.isoformat(),
         "card_status": prev.get("card_status") or {},

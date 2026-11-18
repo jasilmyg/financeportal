@@ -629,6 +629,8 @@ def api_oct_sheets_compare():
             period_mode=request.args.get('period_mode', 'reference'),
             state=request.args.get('state', ''),
             compare=request.args.get('compare', 'month'),
+            compare_start=request.args.get('compare_start', ''),
+            compare_end=request.args.get('compare_end', ''),
         )
         return jsonify(out), (400 if out.get('error') else 200)
     except Exception as exc:
