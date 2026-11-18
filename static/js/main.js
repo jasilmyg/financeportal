@@ -136,6 +136,10 @@ window.refreshCurrentTab = function() {
         loadOctSheetsData(true);
         setTimeout(done, 800);
         break;
+      case 'oct2-sheets':
+        loadOct2SheetsData(true);
+        setTimeout(done, 800);
+        break;
       default:
         // Generic fallback — reload all dashboard data
         loadDashboardData(activeDate, timeframe);
@@ -847,6 +851,9 @@ function initSidebar() {
       if (tab === "oct-sheets") {
         setTimeout(() => loadOctSheetsData(false), 50);
       }
+      if (tab === "oct2-sheets") {
+        setTimeout(() => loadOct2SheetsData(false), 50);
+      }
       if (tab === "store") {
         setTimeout(loadStoreData, 100);
       }
@@ -937,6 +944,7 @@ function initDateSelector() {
     if (document.getElementById("tab-brand")?.classList.contains("active")) loadBrandData();
     if (document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
     if (document.getElementById("tab-oct-sheets")?.classList.contains("active") && typeof loadOctSheetsData === "function") loadOctSheetsData(false);
+    if (document.getElementById("tab-oct2-sheets")?.classList.contains("active") && typeof loadOct2SheetsData === "function") loadOct2SheetsData(false);
     _prewarmClickHouse(activeDate, tf);
   }
 
@@ -1452,7 +1460,7 @@ Promise.all([
 });
 
 // ---- Multi-select State filter (shared across Category, Zone, Price, Brand, Store tabs) ----
-const _STATE_FILTER_PREFIXES = ["cat", "zone", "price", "brand", "store", "oct"];
+const _STATE_FILTER_PREFIXES = ["cat", "zone", "price", "brand", "store", "oct", "oct2"];
 
 function _selectedStates(prefix = "cat") {
   const el = document.getElementById(`${prefix}-filter-state`) || document.getElementById("cat-filter-state");
@@ -1516,6 +1524,7 @@ function renderStateMulti(states) {
       if (prefix === "brand" || document.getElementById("tab-brand")?.classList.contains("active")) loadBrandData();
       if (prefix === "store" || document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
       if (prefix === "oct" || document.getElementById("tab-oct-sheets")?.classList.contains("active")) loadOctSheetsData(true);
+      if (prefix === "oct2" || document.getElementById("tab-oct2-sheets")?.classList.contains("active")) loadOct2SheetsData(true);
     };
 
     const allRow = document.createElement("label");
@@ -5710,6 +5719,642 @@ window.exportOctSheetsToExcel = function() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(volRows), "Volume");
 
     XLSX.writeFile(wb, `Store_Fin_Share_${activeDate || "data"}.xlsx`);
+    showToast("✅ Exported Store Fin Share to Excel", "success");
+  } catch (e) {
+    showToast("Export failed: " + e.message, "error");
+  }
+};
+
+// ============================================================================
+// DUPLICATE STORE FIN SHARE TAB (independent copy - edit this one freely)
+// ============================================================================
+let _oct2SheetsCacheData = null;
+let _activeOct2SubSheet = "oct"; // 'oct' (Value ₹) | 'oct_vol' (Volume Qty)
+
+window.switchOct2SubSheet = function(subSheet) {
+  _activeOct2SubSheet = subSheet === "oct_vol" ? "oct_vol" : "oct";
+  const btnVal = document.getElementById("btn-oct2-sheet-val");
+  const btnVol = document.getElementById("btn-oct2-sheet-vol");
+  if (btnVal && btnVol) {
+    if (_activeOct2SubSheet === "oct") {
+      btnVal.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;";
+      btnVol.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;";
+    } else {
+      btnVol.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;";
+      btnVal.style.cssText = "padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;";
+    }
+  }
+  renderOct2SheetsUI();
+};
+
+window.resetOct2SheetFilters = function() {
+  const sInput = document.getElementById("oct2-store-search");
+  const fTm = document.getElementById("oct2-filter-tm");
+  const fRbm = document.getElementById("oct2-filter-rbm");
+  const fBdm = document.getElementById("oct2-filter-bdm");
+  if (sInput) sInput.value = "";
+  if (fTm) fTm.value = "ALL";
+  if (fRbm) fRbm.value = "ALL";
+  if (fBdm) fBdm.value = "ALL";
+  renderOct2SheetsUI();
+};
+
+window.filterOct2SheetBy = function(field, val) {
+  const elId = field === "tm" ? "oct2-filter-tm" : field === "rbm" ? "oct2-filter-rbm" : "oct2-filter-bdm";
+  const sel = document.getElementById(elId);
+  if (!sel) return;
+  const targetVal = String(val || "").toUpperCase();
+  if (sel.value.toUpperCase() === targetVal) {
+    sel.value = "ALL";
+  } else {
+    for (const opt of sel.options) {
+      if (opt.value.toUpperCase() === targetVal) {
+        sel.value = opt.value;
+        break;
+      }
+    }
+  }
+  renderOct2SheetsUI();
+};
+
+function _syncOct2WindowModeUI(periodObj, date, timeframe) {
+  const isOct2Monthly = (timeframe === "monthly" && String(date || "").startsWith("2026-10"));
+  const modeWrap = document.getElementById("oct2-period-mode-wrap");
+  const liveWrap = document.getElementById("oct2-live-window-wrap");
+  const liveBadge = document.getElementById("oct2-live-window-badge");
+  if (modeWrap) modeWrap.style.display = isOct2Monthly ? "flex" : "none";
+  if (liveWrap) liveWrap.style.display = isOct2Monthly ? "none" : "flex";
+  if (liveBadge && !isOct2Monthly) {
+    if (periodObj && periodObj.start_date && periodObj.end_date) {
+      const fmtD = iso => {
+        const dt = new Date(iso.slice(0, 10) + "T00:00:00");
+        return isNaN(dt) ? iso : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+      };
+      liveBadge.textContent = `${fmtD(periodObj.start_date)} \u2013 ${fmtD(periodObj.end_date)}`;
+    } else {
+      liveBadge.textContent = `${timeframe.charAt(0).toUpperCase() + timeframe.slice(1)} (${date})`;
+    }
+  }
+}
+
+window.loadOct2SheetsData = function(forceReload) {
+  const date = activeDate || "2026-10-01";
+  const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
+  const periodMode = (document.getElementById("oct2-period-mode") || {}).value || "reference";
+  const endDate = _endDate();
+  const stateSel = ((document.getElementById("oct2-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
+  const url = `/api/oct-sheets-data?date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}&state=${encodeURIComponent(stateSel)}`;
+
+  _syncOct2WindowModeUI(null, date, timeframe);
+
+  if (!forceReload && _oct2SheetsCacheData && _oct2SheetsCacheData._url === url) {
+    _syncOct2WindowModeUI(_oct2SheetsCacheData.period, date, timeframe);
+    renderOct2SheetsUI();
+    return;
+  }
+
+  const tbody = document.getElementById("oct2-stores-tbody");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>`;
+  }
+
+  _cachedFetch(url)
+    .then(data => {
+      if (data.error) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--color-danger);">${data.error}</td></tr>`;
+        return;
+      }
+      data._url = url;
+      _oct2SheetsCacheData = data;
+      _syncOct2WindowModeUI(data.period, date, timeframe);
+      populateOct2FilterDropdowns(data);
+      renderOct2Notice(data);
+      renderOct2SheetsUI();
+    })
+    .catch(err => {
+      console.error("Failed to load Store Fin Share data:", err);
+      if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load Store Fin Share data</td></tr>`;
+    });
+};
+
+function populateOct2FilterDropdowns(data) {
+  if (!data || !data.oct) return;
+  const tmSel = document.getElementById("oct2-filter-tm");
+  const rbmSel = document.getElementById("oct2-filter-rbm");
+  const bdmSel = document.getElementById("oct2-filter-bdm");
+
+  // Rebuild lists on every load (TMs / RBMs / BDMs come from the data of the selected period)
+  [[tmSel, "All Fin BDMs"], [rbmSel, "All RBMs"], [bdmSel, "All BDMs"]].forEach(([sel, lbl]) => {
+    if (!sel) return;
+    sel.dataset.prev = sel.value;
+    sel.innerHTML = `<option value="ALL">${lbl}</option>`;
+  });
+  if (tmSel && tmSel.options.length <= 1) {
+    (data.oct.tms || []).forEach(t => {
+      const o = document.createElement("option");
+      o.value = t.tm;
+      o.textContent = t.tm;
+      tmSel.appendChild(o);
+    });
+  }
+  if (rbmSel && rbmSel.options.length <= 1) {
+    (data.oct.rbms || []).forEach(r => {
+      const o = document.createElement("option");
+      o.value = r.rbm;
+      o.textContent = r.rbm;
+      rbmSel.appendChild(o);
+    });
+  }
+  if (bdmSel && bdmSel.options.length <= 1) {
+    (data.oct.bdms || []).forEach(b => {
+      const o = document.createElement("option");
+      o.value = b.bdm;
+      o.textContent = b.bdm;
+      bdmSel.appendChild(o);
+    });
+  }
+  [tmSel, rbmSel, bdmSel].forEach(sel => {
+    if (sel && sel.dataset.prev && [...sel.options].some(o => o.value === sel.dataset.prev)) sel.value = sel.dataset.prev;
+  });
+}
+
+// ---- Notices (benchmark / card upload status / targets) ----
+function renderOct2Notice(data) {
+  const box = document.getElementById("oct2-notice");
+  if (!box || !data) return;
+  const msgs = [];
+  const b = data.benchmark || {};
+  if (b.warning) msgs.push(b.warning);
+  const cs = data.card_status || {};
+  const missing = Object.keys(cs).filter(k => !cs[k].uploaded);
+  if (missing.length) {
+    msgs.push(`Card data not uploaded for this period: ${missing.join(", ")}. FIN is understated until those files are uploaded.`);
+  }
+  const t = data.targets || {};
+  if (t.month && !t.set) {
+    msgs.push(`No TM targets set for ${t.month}. Click "Set Targets" to enter them (Ach %, DRR and Trend need targets).`);
+  }
+  box.innerHTML = msgs.map(m => "&#9888; " + m).join("<br>");
+  box.style.display = msgs.length ? "block" : "none";
+}
+
+// ---- TM targets editor ----
+window.toggleOct2TargetsPanel = function() {
+  const panel = document.getElementById("oct2-targets-panel");
+  if (!panel || !_oct2SheetsCacheData) return;
+  if (panel.style.display !== "none") { panel.style.display = "none"; return; }
+  const month = (_oct2SheetsCacheData.targets || {}).month || "";
+  const title = document.getElementById("oct2-targets-title");
+  if (title) title.textContent = `TM Targets \u2014 ${month}`;
+  fetch(`/api/tm-targets?month=${encodeURIComponent(month)}`)
+    .then(r => r.json())
+    .then(cur => {
+      const body = document.getElementById("oct2-targets-body");
+      body.innerHTML = "";
+      (_oct2SheetsCacheData.oct.tms || []).forEach(t => {
+        const c = (cur && cur[String(t.tm).toUpperCase()]) || {};
+        const inp = (k) => `<input type="number" min="0" step="any" data-k="${k}" value="${c[k] || ""}" style="width:150px; text-align:right; padding:4px 6px;" />`;
+        const tr = document.createElement("tr");
+        tr.dataset.tm = t.tm;
+        tr.innerHTML = `<td style="font-weight:600;">${t.tm}</td>
+          <td class="num-align">${inp("value_target")}</td>
+          <td class="num-align">${inp("card_slab_1")}</td>
+          <td class="num-align">${inp("card_slab_2")}</td>`;
+        body.appendChild(tr);
+      });
+      panel.style.display = "block";
+    })
+    .catch(() => showToast("Could not load targets", "error"));
+};
+
+window.saveOct2Targets = function() {
+  const month = (_oct2SheetsCacheData.targets || {}).month || "";
+  const rows = [...document.querySelectorAll("#oct2-targets-body tr")].map(tr => {
+    const o = { tm: tr.dataset.tm };
+    tr.querySelectorAll("input").forEach(i => { o[i.dataset.k] = parseFloat(i.value) || 0; });
+    return o;
+  });
+  fetch("/api/tm-targets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ month, rows })
+  })
+    .then(r => r.json())
+    .then(res => {
+      if (res.error) { showToast("Save failed: " + res.error, "error"); return; }
+      showToast("Targets saved", "success");
+      _apiCache.clear();
+      document.getElementById("oct2-targets-panel").style.display = "none";
+      loadOct2SheetsData(true);
+    })
+    .catch(e => showToast("Save failed: " + e.message, "error"));
+};
+
+function _oct2ValShareBg(pctInt) {
+  if (pctInt >= 70) return "background:#10b981; color:#052e16; font-weight:700;";
+  if (pctInt >= 65) return "background:#4ade80; color:#052e16; font-weight:700;";
+  if (pctInt >= 60) return "background:#a3e635; color:#1a2e05; font-weight:700;";
+  return "background:#bef264; color:#1a2e05; font-weight:700;";
+}
+
+function _oct2VolShareBg(pctInt) {
+  if (pctInt >= 58) return "background:#38bdf8; color:#082f49; font-weight:700;";
+  if (pctInt >= 50) return "background:#34d399; color:#052e16; font-weight:700;";
+  if (pctInt >= 45) return "background:#a3e635; color:#1a2e05; font-weight:700;";
+  return "background:#f87171; color:#450a0a; font-weight:700;";
+}
+
+window.renderOct2SheetsUI = function() {
+  if (!_oct2SheetsCacheData) return;
+  const isVal = _activeOct2SubSheet === "oct";
+  const sheetObj = isVal ? _oct2SheetsCacheData.oct : _oct2SheetsCacheData.oct_vol;
+  if (!sheetObj) return;
+
+  const qSearch = ((document.getElementById("oct2-store-search") || {}).value || "").trim().toUpperCase();
+  const qTm = ((document.getElementById("oct2-filter-tm") || {}).value || "ALL").toUpperCase();
+  const qRbm = ((document.getElementById("oct2-filter-rbm") || {}).value || "ALL").toUpperCase();
+  const qBdm = ((document.getElementById("oct2-filter-bdm") || {}).value || "ALL").toUpperCase();
+  const showTargets = Boolean((document.getElementById("oct2-tm-show-targets") || {}).checked);
+
+  // Filter stores
+  const allStores = sheetObj.stores || [];
+  const filteredStores = allStores.filter(s => {
+    if (qSearch && !String(s.store).toUpperCase().includes(qSearch)) return false;
+    if (qTm !== "ALL" && String(s.fin_bdm).toUpperCase() !== qTm) return false;
+    if (qRbm !== "ALL" && String(s.rbm).toUpperCase() !== qRbm) return false;
+    if (qBdm !== "ALL" && String(s.bdm).toUpperCase() !== qBdm) return false;
+    return true;
+  });
+
+  // Update KPI Strip
+  const totRow = sheetObj.tm_total || { fin: 0, total: 0, fin_share: 0 };
+  const northRow = sheetObj.tm_north || { fin_share: 0 };
+  const southRow = sheetObj.tm_south || { fin_share: 0 };
+  const octTot = (_oct2SheetsCacheData.oct && _oct2SheetsCacheData.oct.tm_total) || {};
+
+  const kpiFin = document.getElementById("oct2-kpi-fin");
+  const kpiTot = document.getElementById("oct2-kpi-tot");
+  const kpiShare = document.getElementById("oct2-kpi-share");
+  const kpiNS = document.getElementById("oct2-kpi-north-south");
+  const kpiCard = document.getElementById("oct2-kpi-card-ach");
+  const kpiFinSub = document.getElementById("oct2-kpi-fin-sub");
+  const kpiTotSub = document.getElementById("oct2-kpi-tot-sub");
+
+  if (isVal) {
+    if (kpiFin) kpiFin.textContent = "₹" + (totRow.fin / 10000000).toFixed(2) + " Cr";
+    if (kpiFinSub) kpiFinSub.textContent = "Exact: ₹" + Math.round(totRow.fin).toLocaleString("en-IN");
+    if (kpiTot) kpiTot.textContent = "₹" + (totRow.total / 10000000).toFixed(2) + " Cr";
+    if (kpiTotSub) kpiTotSub.textContent = "Exact: ₹" + Math.round(totRow.total).toLocaleString("en-IN");
+  } else {
+    if (kpiFin) kpiFin.textContent = Number(totRow.fin || 0).toLocaleString("en-IN") + " Units";
+    if (kpiFinSub) kpiFinSub.textContent = "Paper Finance + Card EMI Qty";
+    if (kpiTot) kpiTot.textContent = Number(totRow.total || 0).toLocaleString("en-IN") + " Units";
+    if (kpiTotSub) kpiTotSub.textContent = "Total ERP Sales Qty (" + (sheetObj.stores || []).length + " Stores)";
+  }
+  if (kpiShare) kpiShare.textContent = ((totRow.fin_share || 0) * 100).toFixed(2) + "%";
+  if (kpiNS) {
+    kpiNS.textContent = `N: ${((northRow.fin_share || 0) * 100).toFixed(1)}% · S: ${((southRow.fin_share || 0) * 100).toFixed(1)}%`;
+  }
+  if (kpiCard && octTot.card_ach !== undefined) {
+    const cardCr = (octTot.card_ach / 10000000).toFixed(2);
+    const cardPct = ((octTot.card_ach_pct || 0) * 100).toFixed(1);
+    kpiCard.textContent = `₹${cardCr} Cr (${cardPct}%)`;
+  }
+
+  // 1. Render Store Table (Left Panel)
+  const storeTitle = document.getElementById("oct2-store-table-title");
+  const storeBadge = document.getElementById("oct2-store-count-badge");
+  if (storeTitle) {
+    storeTitle.innerHTML = isVal
+      ? "Duplicate Store Fin Share &mdash; Value (&#8377;)"
+      : "Duplicate Store Fin Share &mdash; Volume (Qty)";
+  }
+  if (storeBadge) {
+    storeBadge.textContent = `${filteredStores.length} of ${allStores.length} Stores`;
+  }
+
+  const sThead = document.getElementById("oct2-stores-thead");
+  const sTbody = document.getElementById("oct2-stores-tbody");
+  const benchLabel = ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr";
+  if (sThead) {
+    sThead.innerHTML = isVal
+      ? `<tr>
+          <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
+          <th class="num-align">FIN</th>
+          <th class="num-align" style="color:#4ade80;">Paper FIN</th>
+          <th class="num-align" style="color:#a78bfa;">Card FIN</th>
+          <th class="num-align">Total</th>
+          <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
+          <th class="num-align">${benchLabel}</th>
+          <th class="num-align">DIF</th>
+        </tr>`
+      : `<tr>
+          <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
+          <th class="num-align">FIN</th>
+          <th class="num-align" style="color:#4ade80;">Paper FIN</th>
+          <th class="num-align" style="color:#a78bfa;">Card FIN</th>
+          <th class="num-align">Total</th>
+          <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
+          <th class="num-align">${benchLabel}</th>
+          <th class="num-align">DIF</th>
+        </tr>`;
+  }
+
+  if (sTbody) {
+    if (!filteredStores.length) {
+      sTbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
+    } else {
+      let rowsHtml = "";
+      let sumFin = 0, sumTot = 0, sumPaper = 0, sumCard = 0;
+      filteredStores.forEach(s => {
+        sumFin += (s.fin || 0);
+        sumTot += (s.total || 0);
+        sumPaper += (s.paper_fin || 0);
+        sumCard += (s.card_fin || 0);
+        const sharePctInt = Math.round((s.fin_share || 0) * 100);
+        const shareExact = ((s.fin_share || 0) * 100).toFixed(2) + "%";
+        const shareStyle = isVal ? _oct2ValShareBg(sharePctInt) : _oct2VolShareBg(sharePctInt);
+
+        const benchVal = isVal ? s.amj : s.jas;
+        let benchCell = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
+        if (benchVal !== null && benchVal !== undefined) {
+          const bPctInt = Math.round(benchVal * 100);
+          const bStyle = isVal ? _oct2ValShareBg(bPctInt) : _oct2VolShareBg(bPctInt);
+          benchCell = `<td class="num-align" style="${bStyle} text-align:center;" title="${(benchVal * 100).toFixed(2)}%">${bPctInt}%</td>`;
+        }
+
+        let difCell = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
+        if (s.dif !== null && s.dif !== undefined) {
+          const difPct = (s.dif * 100);
+          const isUp = difPct >= 0;
+          const arrow = isUp ? "&#9650;" : "&#9660;";
+          const difStyle = isUp
+            ? "color:#16a34a; font-weight:700;"
+            : "background:#f87171; color:#450a0a; font-weight:700;";
+          difCell = `<td class="num-align" style="${difStyle}">${arrow}${Math.abs(difPct).toFixed(2)}%</td>`;
+        }
+
+        const finDisplay = Math.round(s.fin || 0).toString();
+        const totDisplay = Math.round(s.total || 0).toString();
+        const tip = isVal
+          ? `Paper Fin: ₹${Math.round(s.paper_fin || 0).toLocaleString('en-IN')} | Card EMI: ₹${Math.round(s.card_fin || 0).toLocaleString('en-IN')}`
+          : `Paper Fin: ${s.paper_fin || 0} | Card EMI: ${s.card_fin || 0}`;
+
+        rowsHtml += `<tr title="${tip}">
+          <td style="font-weight:600; white-space:nowrap;">${s.store}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums;">${finDisplay}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(s.paper_fin || 0)}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(s.card_fin || 0)}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums;">${totDisplay}</td>
+          <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${sharePctInt}%</td>
+          ${benchCell}
+          ${difCell}
+        </tr>`;
+      });
+
+      // Footer total row for filtered stores
+      const totSharePct = sumTot > 0 ? ((sumFin / sumTot) * 100).toFixed(1) : "0.0";
+      rowsHtml += `<tr class="total-row" style="font-weight:800;">
+        <td>Total (${filteredStores.length} Stores)</td>
+        <td class="num-align">${Math.round(sumFin).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="color:#16a34a;">${Math.round(sumPaper).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center; color:#059669;">${totSharePct}%</td>
+        <td colspan="2"></td>
+      </tr>`;
+      sTbody.innerHTML = rowsHtml;
+    }
+  }
+
+  // 2. Render TM (Fin BDM) Summary Table (Right Top)
+  const tmThead = document.getElementById("oct2-tm-thead");
+  const tmTbody = document.getElementById("oct2-tm-tbody");
+  if (tmThead && tmTbody) {
+    if (isVal && showTargets) {
+      tmThead.innerHTML = `<tr>
+        <th>TM</th>
+        <th class="num-align">FIN</th>
+        <th class="num-align">Total</th>
+        <th class="num-align" style="background:#fef08a; color:#1e293b;">FIN SHARE</th>
+        <th class="num-align">Value Target</th>
+        <th class="num-align">Ach %</th>
+        <th class="num-align">Card Slab 2</th>
+        <th class="num-align">Card Ach</th>
+        <th class="num-align">Card Ach %</th>
+      </tr>`;
+    } else if (!isVal && showTargets) {
+      tmThead.innerHTML = `<tr>
+        <th>TM</th>
+        <th class="num-align">FIN</th>
+        <th class="num-align">Total</th>
+        <th class="num-align" style="background:#fef08a; color:#1e293b;">FIN SHARE</th>
+        <th class="num-align">Value Target</th>
+        <th class="num-align">Card Slab 2</th>
+        <th class="num-align">Card Ach</th>
+      </tr>`;
+    } else {
+      tmThead.innerHTML = `<tr>
+        <th>TM</th>
+        <th class="num-align">FIN</th>
+        <th class="num-align">Total</th>
+        <th class="num-align" style="background:#fef08a; color:#1e293b;">FIN SHARE</th>
+      </tr>`;
+    }
+
+    const tmRows = [...(sheetObj.tms || [])];
+    const renderTmRow = (r, isSummary, highlightBg) => {
+      const isSelected = qTm !== "ALL" && String(r.tm).toUpperCase() === qTm;
+      const rowStyle = isSelected
+        ? "background:rgba(37,99,235,0.18); font-weight:700; cursor:pointer;"
+        : isSummary
+          ? (highlightBg || "font-weight:800; background:rgba(15,23,42,0.06);")
+          : "cursor:pointer;";
+      const clickAttr = isSummary ? "" : `onclick="filterOct2SheetBy('tm', '${r.tm}')"`;
+      const shareInt = Math.round((r.fin_share || 0) * 100);
+      const shareExact = ((r.fin_share || 0) * 100).toFixed(2) + "%";
+      const shareStyle = isVal ? _oct2ValShareBg(shareInt) : _oct2VolShareBg(shareInt);
+
+      let cols = `<td>${r.tm}</td>
+        <td class="num-align">${Math.round(r.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(r.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${shareInt}%</td>`;
+
+      if (isVal && showTargets) {
+        const dash = "—";
+        const fmtN = (v) => (v == null ? dash : Math.round(v).toLocaleString("en-IN"));
+        const achPct = r.ach_pct != null ? Math.round(r.ach_pct * 100) + "%" : dash;
+        const cAchPct = r.card_ach_pct != null ? Math.round(r.card_ach_pct * 100) + "%" : dash;
+        cols += `
+          <td class="num-align">${fmtN(r.value_target)}</td>
+          <td class="num-align" style="font-weight:600; color:#2563eb;">${achPct}</td>
+          <td class="num-align">${fmtN(r.card_slab_2)}</td>
+          <td class="num-align">${Math.round(r.card_ach || 0).toLocaleString("en-IN")}</td>
+          <td class="num-align" style="font-weight:700; color:${(r.card_ach_pct || 0) >= 1 ? '#16a34a' : '#d97706'};">${cAchPct}</td>`;
+      } else if (!isVal && showTargets) {
+        cols += `
+          <td class="num-align">${r.value_target != null ? Math.round(r.value_target).toLocaleString("en-IN") : "—"}</td>
+          <td class="num-align">${r.card_slab_2 ? Math.round(r.card_slab_2).toLocaleString("en-IN") : "—"}</td>
+          <td class="num-align">${Math.round(r.card_ach || 0).toLocaleString("en-IN")}</td>`;
+      }
+      return `<tr style="${rowStyle}" ${clickAttr}>${cols}</tr>`;
+    };
+
+    let tmHtml = tmRows.map(r => renderTmRow(r, false)).join("");
+    if (sheetObj.tm_total) {
+      tmHtml += renderTmRow(sheetObj.tm_total, true, "font-weight:800; border-top:2px solid var(--card-border);");
+    }
+    if (sheetObj.tm_north) {
+      tmHtml += renderTmRow(sheetObj.tm_north, true, "font-weight:700; background:rgba(16,185,129,0.10);");
+    }
+    if (sheetObj.tm_south) {
+      tmHtml += renderTmRow(sheetObj.tm_south, true, "font-weight:700; background:rgba(59,130,246,0.08);");
+    }
+    tmTbody.innerHTML = tmHtml;
+  }
+
+  // 3. Render RBM Summary Table (Right Middle)
+  const rbmTbody = document.getElementById("oct2-rbm-tbody");
+  if (rbmTbody) {
+    const rbms = sheetObj.rbms || [];
+    let rbmHtml = "";
+    rbms.forEach(r => {
+      const isSel = qRbm !== "ALL" && String(r.rbm).toUpperCase() === qRbm;
+      const shareInt = Math.round((r.fin_share || 0) * 100);
+      const shareStyle = isVal ? _oct2ValShareBg(shareInt) : _oct2VolShareBg(shareInt);
+      rbmHtml += `<tr style="cursor:pointer; ${isSel ? 'background:rgba(37,99,235,0.18); font-weight:700;' : ''}" onclick="filterOct2SheetBy('rbm', '${r.rbm}')">
+        <td style="font-weight:600;">${r.rbm}</td>
+        <td class="num-align">${Math.round(r.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(r.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="${shareStyle} text-align:center;" title="${((r.fin_share || 0) * 100).toFixed(2)}%">${shareInt}%</td>
+      </tr>`;
+    });
+    if (sheetObj.tm_total) {
+      const t = sheetObj.tm_total;
+      const tInt = Math.round((t.fin_share || 0) * 100);
+      rbmHtml += `<tr class="total-row" style="font-weight:800;">
+        <td>Total</td>
+        <td class="num-align">${Math.round(t.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(t.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center; color:#059669;">${tInt}%</td>
+      </tr>`;
+    }
+    rbmTbody.innerHTML = rbmHtml;
+  }
+
+  // 4. Render BDM Summary Table (Right Bottom)
+  const bdmTbody = document.getElementById("oct2-bdm-tbody");
+  if (bdmTbody) {
+    const bdms = sheetObj.bdms || [];
+    let bdmHtml = "";
+    bdms.forEach(b => {
+      const isSel = qBdm !== "ALL" && String(b.bdm).toUpperCase() === qBdm;
+      const shareInt = Math.round((b.fin_share || 0) * 100);
+      const shareStyle = isVal ? _oct2ValShareBg(shareInt) : _oct2VolShareBg(shareInt);
+      bdmHtml += `<tr style="cursor:pointer; ${isSel ? 'background:rgba(37,99,235,0.18); font-weight:700;' : ''}" onclick="filterOct2SheetBy('bdm', '${b.bdm}')">
+        <td style="font-weight:600;">${b.bdm}</td>
+        <td class="num-align">${Math.round(b.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(b.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="${shareStyle} text-align:center;" title="${((b.fin_share || 0) * 100).toFixed(2)}%">${shareInt}%</td>
+      </tr>`;
+    });
+    if (sheetObj.tm_total) {
+      const t = sheetObj.tm_total;
+      const tInt = Math.round((t.fin_share || 0) * 100);
+      bdmHtml += `<tr class="total-row" style="font-weight:800;">
+        <td>Total</td>
+        <td class="num-align">${Math.round(t.fin || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align">${Math.round(t.total || 0).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center; color:#059669;">${tInt}%</td>
+      </tr>`;
+    }
+    bdmTbody.innerHTML = bdmHtml;
+  }
+};
+
+window.exportOct2SheetsToExcel = function() {
+  if (!_oct2SheetsCacheData || typeof XLSX === "undefined") {
+    showToast("Data not loaded yet", "error");
+    return;
+  }
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: OCT (Value)
+    const oct = _oct2SheetsCacheData.oct;
+    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
+    (oct.stores || []).forEach(s => {
+      octRows.push([
+        s.store,
+        Math.round(s.fin || 0),
+        Math.round(s.paper_fin || 0),
+        Math.round(s.card_fin || 0),
+        Math.round(s.total || 0),
+        ((s.fin_share || 0) * 100).toFixed(2) + "%",
+        s.amj !== null && s.amj !== undefined ? (s.amj * 100).toFixed(2) + "%" : "#N/A",
+        s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
+      ]);
+    });
+    octRows.push([]);
+    octRows.push(["TM", "FIN", "Total", "FIN SHARE", "Value Target", "Ach %", "Card Slab 2", "Card Ach", "Card Ach %"]);
+    [...(oct.tms || []), oct.tm_total, oct.tm_north, oct.tm_south].filter(Boolean).forEach(t => {
+      octRows.push([
+        t.tm,
+        Math.round(t.fin || 0),
+        Math.round(t.total || 0),
+        ((t.fin_share || 0) * 100).toFixed(2) + "%",
+        Math.round(t.value_target || 0),
+        ((t.ach_pct || 0) * 100).toFixed(2) + "%",
+        Math.round(t.card_slab_2 || 0),
+        Math.round(t.card_ach || 0),
+        ((t.card_ach_pct || 0) * 100).toFixed(2) + "%",
+      ]);
+    });
+    octRows.push([]);
+    octRows.push(["RBM", "FIN", "Total", "FIN SHARE"]);
+    (oct.rbms || []).forEach(r => {
+      octRows.push([r.rbm, Math.round(r.fin || 0), Math.round(r.total || 0), ((r.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    octRows.push([]);
+    octRows.push(["BDM", "FIN", "Total", "FIN SHARE"]);
+    (oct.bdms || []).forEach(b => {
+      octRows.push([b.bdm, Math.round(b.fin || 0), Math.round(b.total || 0), ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(octRows), "Value");
+
+    // Sheet 2: OCT Vol (Volume)
+    const vol = _oct2SheetsCacheData.oct_vol;
+    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
+    (vol.stores || []).forEach(s => {
+      volRows.push([
+        s.store,
+        s.fin || 0,
+        s.paper_fin || 0,
+        s.card_fin || 0,
+        s.total || 0,
+        ((s.fin_share || 0) * 100).toFixed(2) + "%",
+        s.jas !== null && s.jas !== undefined ? (s.jas * 100).toFixed(2) + "%" : "#N/A",
+        s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
+      ]);
+    });
+    volRows.push([]);
+    volRows.push(["TM", "FIN", "Total", "FIN SHARE"]);
+    [...(vol.tms || []), vol.tm_total, vol.tm_north, vol.tm_south].filter(Boolean).forEach(t => {
+      volRows.push([t.tm, t.fin || 0, t.total || 0, ((t.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    volRows.push([]);
+    volRows.push(["RBM", "FIN", "Total", "FIN SHARE"]);
+    (vol.rbms || []).forEach(r => {
+      volRows.push([r.rbm, r.fin || 0, r.total || 0, ((r.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    volRows.push([]);
+    volRows.push(["BDM", "FIN", "Total", "FIN SHARE"]);
+    (vol.bdms || []).forEach(b => {
+      volRows.push([b.bdm, b.fin || 0, b.total || 0, ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(volRows), "Volume");
+
+    XLSX.writeFile(wb, `Duplicate_Store_Fin_Share_${activeDate || "data"}.xlsx`);
     showToast("✅ Exported Store Fin Share to Excel", "success");
   } catch (e) {
     showToast("Export failed: " + e.message, "error");

@@ -384,6 +384,10 @@
           <i data-lucide="file-spreadsheet"></i>
           <span>Store Fin Share</span>
         </li>
+        <li class="nav-item" data-tab="oct2-sheets">
+          <i data-lucide="copy"></i>
+          <span>Duplicate Store Fin Share</span>
+        </li>
         <li class="nav-item" data-tab="team">
           <i data-lucide="users"></i>
           <span>Team Performance</span>
@@ -1300,6 +1304,233 @@
                       </tr>
                     </thead>
                     <tbody id="oct-bdm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DUPLICATE STORE FIN SHARE TAB (experiments go here; original Store Fin Share tab stays untouched) -->
+        <div class="tab-page" id="tab-oct2-sheets">
+          <!-- Top Sheet Switcher + Filter Bar -->
+          <div class="category-filters-bar" style="display:flex; gap:14px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:10px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
+            <!-- Excel-style Sheet Tabs: OCT vs OCT Vol -->
+            <div style="display:flex; align-items:center; background:rgba(15,23,42,0.08); padding:4px; border-radius:8px; border:1px solid var(--card-border); gap:4px;">
+              <button type="button" id="btn-oct2-sheet-val" onclick="switchOct2SubSheet('oct')"
+                style="padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;">
+                <span>Value</span>
+                <span style="font-size:10px; font-weight:600; opacity:0.8;">(&#8377;)</span>
+              </button>
+              <button type="button" id="btn-oct2-sheet-vol" onclick="switchOct2SubSheet('oct_vol')"
+                style="padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;">
+                <span>Volume</span>
+                <span style="font-size:10px; font-weight:500; opacity:0.8;">(Qty)</span>
+              </button>
+            </div>
+
+            <!-- Filter by State (shared, synced with the other tabs) -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Filter by State</label>
+              <div id="oct2-filter-state-wrap" style="position:relative; width:140px;">
+                <button type="button" id="oct2-filter-state-btn" class="date-select" style="width:140px; padding:4px 8px; height:32px; font-size:12px; text-align:left; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer;">All States</button>
+                <div id="oct2-filter-state-panel" style="display:none; position:absolute; top:36px; left:0; z-index:1000; min-width:170px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:6px; box-shadow:0 6px 18px rgba(0,0,0,0.25);"></div>
+                <input type="hidden" id="oct2-filter-state" value="">
+              </div>
+            </div>
+
+            <!-- Store Search -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Search Store</label>
+              <input type="text" id="oct2-store-search" placeholder="Search stores..." oninput="renderOct2SheetsUI()"
+                class="date-select" style="width:170px; padding:4px 10px; height:32px; font-size:12px;" />
+            </div>
+
+            <!-- Filter by Fin BDM (TM) -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Fin BDM (TM)</label>
+              <select id="oct2-filter-tm" onchange="renderOct2SheetsUI()" class="date-select" style="width:130px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="ALL">All Fin BDMs</option>
+              </select>
+            </div>
+
+            <!-- Filter by RBM -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">RBM</label>
+              <select id="oct2-filter-rbm" onchange="renderOct2SheetsUI()" class="date-select" style="width:130px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="ALL">All RBMs</option>
+              </select>
+            </div>
+
+            <!-- Filter by BDM -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">BDM</label>
+              <select id="oct2-filter-bdm" onchange="renderOct2SheetsUI()" class="date-select" style="width:135px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="ALL">All BDMs</option>
+              </select>
+            </div>
+
+            <!-- Period Window Mode (Oct 2026 monthly only) + Active Window badge -->
+            <div id="oct2-period-mode-wrap" style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Data Window</label>
+              <select id="oct2-period-mode" onchange="loadOct2SheetsData(true)" class="date-select" style="width:195px; padding:4px 8px; height:32px; font-size:12px;">
+                <option value="reference" selected>OCT 2026 Sheet (01–27 Oct)</option>
+                <option value="live">Live Period (Top Date Picker)</option>
+              </select>
+            </div>
+            <div id="oct2-live-window-wrap" style="display:none; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted);">Active Window</label>
+              <span id="oct2-live-window-badge" class="date-select" style="display:inline-flex; align-items:center; padding:4px 10px; height:32px; font-size:12px; font-weight:600; color:var(--text-main);">—</span>
+            </div>
+
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+              <button type="button" onclick="toggleOct2TargetsPanel()" class="btn" style="padding:5px 11px; font-size:12px; height:32px;">
+                Set Targets
+              </button>
+              <button type="button" onclick="resetOct2SheetFilters()" class="btn" style="padding:5px 11px; font-size:12px; height:32px;">
+                Reset Filters
+              </button>
+              <button type="button" onclick="exportOct2SheetsToExcel()" style="padding:6px 14px; height:32px; border-radius:6px; border:1.5px solid rgba(16,185,129,0.45); background:rgba(16,185,129,0.1); color:#059669; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                &#128196; Export Sheet
+              </button>
+            </div>
+          </div>
+
+          <!-- Data notices (benchmark / card upload status) -->
+          <div id="oct2-notice" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; border:1px solid rgba(217,119,6,0.45); background:rgba(245,158,11,0.10); color:#b45309; font-size:12.5px; line-height:1.5;"></div>
+
+          <!-- TM Targets editor (stored in ClickHouse table tm_fin_targets) -->
+          <div id="oct2-targets-panel" class="data-card" style="display:none; margin-bottom:14px; padding:14px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+              <strong id="oct2-targets-title" style="font-size:13px;">TM Targets</strong>
+              <span style="font-size:11px; color:var(--text-muted);">Amounts in &#8377;. Saved per month in ClickHouse. Leave 0 / blank for no target.</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead><tr><th>TM</th><th class="num-align">Value Target (&#8377;)</th><th class="num-align">Card Slab 1 (&#8377;)</th><th class="num-align">Card Slab 2 (&#8377;)</th></tr></thead>
+                <tbody id="oct2-targets-body"></tbody>
+              </table>
+            </div>
+            <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end;">
+              <button type="button" class="btn" onclick="toggleOct2TargetsPanel()" style="padding:5px 12px; font-size:12px;">Close</button>
+              <button type="button" onclick="saveOct2Targets()" style="padding:6px 14px; border-radius:6px; border:1.5px solid rgba(37,99,235,0.45); background:rgba(37,99,235,0.1); color:#2563eb; font-size:12px; font-weight:600; cursor:pointer;">Save Targets</button>
+            </div>
+          </div>
+
+          <!-- Summary KPI Strip -->
+          <div class="dashboard-grid" style="grid-template-columns:repeat(auto-fit, minmax(195px, 1fr)); gap:12px; margin-bottom:16px;">
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span id="oct2-kpi-fin-label">Total Finance (FIN)</span></div>
+              <div class="kpi-value" id="oct2-kpi-fin" style="font-size:20px;">—</div>
+              <div class="kpi-footer"><span id="oct2-kpi-fin-sub">Paper Finance + Card EMI</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span id="oct2-kpi-tot-label">Total Sales (Total)</span></div>
+              <div class="kpi-value" id="oct2-kpi-tot" style="font-size:20px;">—</div>
+              <div class="kpi-footer"><span id="oct2-kpi-tot-sub">ERP retail stores</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span>Overall FIN SHARE</span></div>
+              <div class="kpi-value" id="oct2-kpi-share" style="font-size:20px; color:#059669;">—</div>
+              <div class="kpi-footer"><span id="oct2-kpi-share-sub">FIN / Total</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span>North vs South Share</span></div>
+              <div class="kpi-value" id="oct2-kpi-north-south" style="font-size:17px;">—</div>
+              <div class="kpi-footer"><span id="oct2-kpi-ns-sub">North vs South TMs</span></div>
+            </div>
+            <div class="kpi-card" style="padding:14px 16px;">
+              <div class="kpi-header" style="margin-bottom:4px;"><span>Card EMI Achievement</span></div>
+              <div class="kpi-value" id="oct2-kpi-card-ach" style="font-size:19px; color:#2563eb;">—</div>
+              <div class="kpi-footer"><span id="oct2-kpi-card-sub">vs Card Slab 2</span></div>
+            </div>
+          </div>
+
+          <!-- Main Coordinated Layout: Left = Store Table (Cols A-I), Right = TM + RBM + BDM Summary Tables -->
+          <div style="display:grid; grid-template-columns:minmax(540px, 1.35fr) minmax(460px, 1fr); gap:16px; align-items:start;">
+            <!-- LEFT PANEL: 144 Store-wise Finance Share Table -->
+            <div class="data-card" style="margin-bottom:0;">
+              <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div>
+                  <h2 id="oct2-store-table-title">Store Fin Share &mdash; Value (&#8377;)</h2>
+                  <span class="badge" id="oct2-store-count-badge">Loading...</span>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted);" id="oct2-formula-hint">
+                  FIN = Paper Finance + PineLab + PAYTM + Benow
+                </span>
+              </div>
+              <div class="table-responsive" style="max-height:760px; overflow-y:auto;">
+                <table class="data-table" id="table-oct2-stores">
+                  <thead id="oct2-stores-thead" style="position:sticky; top:0; z-index:5;">
+                    <!-- Populated by JS -->
+                  </thead>
+                  <tbody id="oct2-stores-tbody">
+                    <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- RIGHT PANEL: TM Summary + RBM Summary + BDM Summary -->
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <!-- Table 2: TM (Fin BDM) Summary & Target / Card Slab Table -->
+              <div class="data-card" style="margin-bottom:0;">
+                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <div>
+                    <h2 id="oct2-tm-table-title">TM (Fin BDM) Summary &amp; Targets</h2>
+                    <span class="badge">Click any TM row to filter stores</span>
+                  </div>
+                  <label style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" id="oct2-tm-show-targets" onchange="renderOct2SheetsUI()" checked />
+                    Show Targets &amp; Card Slabs
+                  </label>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table" id="table-oct2-tm">
+                    <thead id="oct2-tm-thead"></thead>
+                    <tbody id="oct2-tm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Table 3: RBM Summary Table -->
+              <div class="data-card" style="margin-bottom:0;">
+                <div class="card-title">
+                  <h2 id="oct2-rbm-table-title">RBM Summary</h2>
+                  <span class="badge">Click any RBM row to filter stores</span>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table" id="table-oct2-rbm">
+                    <thead>
+                      <tr>
+                        <th>RBM</th>
+                        <th class="num-align">FIN</th>
+                        <th class="num-align">Total</th>
+                        <th class="num-align" style="background:#eab30822; color:#b45309;">FIN SHARE</th>
+                      </tr>
+                    </thead>
+                    <tbody id="oct2-rbm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Table 4: BDM Summary Table -->
+              <div class="data-card" style="margin-bottom:0;">
+                <div class="card-title">
+                  <h2 id="oct2-bdm-table-title">BDM Summary (23 BDMs)</h2>
+                  <span class="badge">Click any BDM row to filter stores</span>
+                </div>
+                <div class="table-responsive" style="max-height:380px; overflow-y:auto;">
+                  <table class="data-table" id="table-oct2-bdm">
+                    <thead style="position:sticky; top:0; z-index:4;">
+                      <tr>
+                        <th>BDM</th>
+                        <th class="num-align">FIN</th>
+                        <th class="num-align">Total</th>
+                        <th class="num-align" style="background:#eab30822; color:#b45309;">FIN SHARE</th>
+                      </tr>
+                    </thead>
+                    <tbody id="oct2-bdm-tbody"></tbody>
                   </table>
                 </div>
               </div>
