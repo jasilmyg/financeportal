@@ -5832,6 +5832,7 @@ function _oct2SetBodies(html) {
 }
 
 function _oct2ViewMode() { return (document.getElementById("oct2-view-by") || {}).value || "store"; }
+function _oct2FinSplit() { return (document.getElementById("oct2-fin-split") || {}).value || ""; }
 function _oct2CompareMode() { return (document.getElementById("oct2-compare") || {}).value || ""; }
 
 // Fetches whatever the current "View by" / "Compare with" selection needs on top of the store data.
@@ -6037,6 +6038,10 @@ window.renderOct2SheetsUI = function() {
   const hasCmp = view === "staff" ? !!(cmpData && staffCmp) : !!cmpData;
   const cmpLbl = hasCmp ? cmpData.label : "";
   const benchLabel = ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr";
+  // Paper FIN / Card FIN columns only appear when picked in the "Finance split" dropdown
+  const finSplit = _oct2FinSplit();
+  const showPaper = finSplit === "paper" || finSplit === "both";
+  const showCard = finSplit === "card" || finSplit === "both";
 
   const qSearch = ((document.getElementById("oct2-store-search") || {}).value || "").trim().toUpperCase();
   const qTm = ((document.getElementById("oct2-filter-tm") || {}).value || "ALL").toUpperCase();
@@ -6190,9 +6195,9 @@ window.renderOct2SheetsUI = function() {
     }
 
     // header
-    const head = [V.head, "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE"];
+    const head = [V.head, "FIN"].concat(showPaper ? ["Paper FIN"] : [], showCard ? ["Card FIN"] : [], ["Total", "FIN SHARE"]);
     let headHtml = th(V.head, "background:#fef08a; color:#1e293b; font-weight:800;", false) +
-      th("FIN") + th("Paper FIN", "color:#4ade80;") + th("Card FIN", "color:#a78bfa;") + th("Total") +
+      th("FIN") + (showPaper ? th("Paper FIN", "color:#4ade80;") : "") + (showCard ? th("Card FIN", "color:#a78bfa;") : "") + th("Total") +
       th("FIN SHARE", "background:#fef08a; color:#1e293b; font-weight:800;");
     if (hasCmp) {
       head.push(`${cmpLbl} FIN`, `${cmpLbl} SHARE`, "DIF", "GROWTH");
@@ -6218,15 +6223,17 @@ window.renderOct2SheetsUI = function() {
       sumFin += r.fin; sumTot += r.total; sumPaper += r.paper_fin; sumCard += r.card_fin;
       if (r.pFin !== null) { sumPFin += r.pFin; sumPTot += r.pTotal; }
       const sharePctInt = Math.round(r.share * 100);
-      const tip = isVal
-        ? `Paper Fin: ₹${Math.round(r.paper_fin).toLocaleString("en-IN")} | Card EMI: ₹${Math.round(r.card_fin).toLocaleString("en-IN")}`
-        : `Paper Fin: ${Math.round(r.paper_fin)} | Card EMI: ${Math.round(r.card_fin)}`;
+      const fmtF = v => (isVal ? "₹" + Math.round(v).toLocaleString("en-IN") : String(Math.round(v)));
+      const tipParts = [];
+      if (showPaper) tipParts.push(`Paper Fin: ${fmtF(r.paper_fin)}`);
+      if (showCard) tipParts.push(`Card EMI: ${fmtF(r.card_fin)}`);
+      const tip = tipParts.join(" | ");
       const nameCell = view === "staff"
         ? `<td style="font-weight:600; white-space:nowrap;">${r.name}<div style="font-size:10px; font-weight:500; color:var(--text-muted);">${r.store || ""}</div></td>`
         : `<td style="font-weight:600; white-space:nowrap;">${r.name}</td>`;
 
       let extra = "";
-      const exp = [r.name, Math.round(r.fin), Math.round(r.paper_fin), Math.round(r.card_fin), Math.round(r.total), (r.share * 100).toFixed(2) + "%"];
+      const exp = [r.name, Math.round(r.fin)].concat(showPaper ? [Math.round(r.paper_fin)] : [], showCard ? [Math.round(r.card_fin)] : [], [Math.round(r.total), (r.share * 100).toFixed(2) + "%"]);
       if (hasCmp) {
         extra = (r.pFin === null ? NA : `<td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.pFin)}</td>`) +
           shareCell(isVal, r.pShare) + pctPointCell(r.dif) + pctPointCell(r.growth);
@@ -6242,8 +6249,8 @@ window.renderOct2SheetsUI = function() {
       html += `<tr title="${tip}">
           ${nameCell}
           <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.fin)}</td>
-          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(r.paper_fin)}</td>
-          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(r.card_fin)}</td>
+          ${showPaper ? `<td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(r.paper_fin)}</td>` : ""}
+          ${showCard ? `<td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(r.card_fin)}</td>` : ""}
           <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.total)}</td>
           <td class="num-align" style="${shareBg(isVal, sharePctInt)} text-align:center;" title="${(r.share * 100).toFixed(2)}%">${sharePctInt}%</td>
           ${extra}
@@ -6264,8 +6271,8 @@ window.renderOct2SheetsUI = function() {
     html += `<tr class="total-row" style="font-weight:800;">
         <td>Total (${rows.length} ${V.plural})</td>
         <td class="num-align">${Math.round(sumFin).toLocaleString("en-IN")}</td>
-        <td class="num-align" style="color:#16a34a;">${Math.round(sumPaper).toLocaleString("en-IN")}</td>
-        <td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>
+        ${showPaper ? `<td class="num-align" style="color:#16a34a;">${Math.round(sumPaper).toLocaleString("en-IN")}</td>` : ""}
+        ${showCard ? `<td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>` : ""}
         <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
         <td class="num-align" style="text-align:center; color:#059669;">${(totShare * 100).toFixed(1)}%</td>
         ${footExtra}

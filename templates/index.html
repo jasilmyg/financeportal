@@ -1339,6 +1339,17 @@
               </select>
             </div>
 
+            <!-- Show the Paper FIN / Card FIN split columns (hidden by default) -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted); font-weight:700;">Finance split</label>
+              <select id="oct2-fin-split" onchange="renderOct2SheetsUI()" class="date-select" style="width:165px; padding:4px 8px; height:32px; font-size:12px; font-weight:600;">
+                <option value="" selected>Hide split (FIN only)</option>
+                <option value="paper">Paper Finance</option>
+                <option value="card">Card Finance</option>
+                <option value="both">Paper + Card Finance</option>
+              </select>
+            </div>
+
             <!-- Filter by State (shared, synced with the other tabs) -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted);">Filter by State</label>
