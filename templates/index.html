@@ -1315,20 +1315,6 @@
         <div class="tab-page" id="tab-oct2-sheets">
           <!-- Top Sheet Switcher + Filter Bar -->
           <div class="category-filters-bar" style="display:flex; gap:14px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:10px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
-            <!-- Excel-style Sheet Tabs: OCT vs OCT Vol -->
-            <div style="display:flex; align-items:center; background:rgba(15,23,42,0.08); padding:4px; border-radius:8px; border:1px solid var(--card-border); gap:4px;">
-              <button type="button" id="btn-oct2-sheet-val" onclick="switchOct2SubSheet('oct')"
-                style="padding:7px 18px; border-radius:6px; border:none; background:#ffffff; color:#0f7b3f; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.12); display:flex; align-items:center; gap:6px; border-bottom:3px solid #0f7b3f;">
-                <span>Value</span>
-                <span style="font-size:10px; font-weight:600; opacity:0.8;">(&#8377;)</span>
-              </button>
-              <button type="button" id="btn-oct2-sheet-vol" onclick="switchOct2SubSheet('oct_vol')"
-                style="padding:7px 18px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); font-weight:600; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; border-bottom:3px solid transparent;">
-                <span>Volume</span>
-                <span style="font-size:10px; font-weight:500; opacity:0.8;">(Qty)</span>
-              </button>
-            </div>
-
             <!-- Filter by State (shared, synced with the other tabs) -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted);">Filter by State</label>
@@ -1446,35 +1432,51 @@
             </div>
           </div>
 
-          <!-- Main Coordinated Layout: Left = Store Table (Cols A-I), Right = TM + RBM + BDM Summary Tables -->
-          <div style="display:grid; grid-template-columns:1fr; gap:16px; align-items:start;">
-            <!-- LEFT PANEL: 144 Store-wise Finance Share Table -->
-            <div class="data-card" style="margin-bottom:0;">
+          <!-- Value (left) and Volume (right) shown side by side -->
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start;">
+            <div class="data-card" style="margin-bottom:0; min-width:0;">
               <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <div>
-                  <h2 id="oct2-store-table-title">Store Fin Share &mdash; Value (&#8377;)</h2>
-                  <span class="badge" id="oct2-store-count-badge">Loading...</span>
+                  <h2 id="oct2-val-title">Duplicate Store Fin Share &mdash; Value (&#8377;)</h2>
+                  <span class="badge" id="oct2-val-badge">Loading...</span>
                 </div>
-                <span style="font-size:11px; color:var(--text-muted);" id="oct2-formula-hint">
-                  FIN = Paper Finance + PineLab + PAYTM + Benow
-                </span>
+                <span style="font-size:11px; color:var(--text-muted);">FIN = Paper Finance + PineLab + PAYTM + Benow</span>
               </div>
-              <div class="table-responsive" style="max-height:760px; overflow-y:auto;">
-                <table class="data-table" id="table-oct2-stores">
-                  <thead id="oct2-stores-thead" style="position:sticky; top:0; z-index:5;">
+              <div class="table-responsive" style="max-height:760px; overflow:auto;">
+                <table class="data-table" id="table-oct2-val">
+                  <thead id="oct2-val-thead" style="position:sticky; top:0; z-index:5;">
                     <!-- Populated by JS -->
                   </thead>
-                  <tbody id="oct2-stores-tbody">
+                  <tbody id="oct2-val-tbody">
                     <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
 
+            <div class="data-card" style="margin-bottom:0; min-width:0;">
+              <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div>
+                  <h2 id="oct2-vol-title">Duplicate Store Fin Share &mdash; Volume (Qty)</h2>
+                  <span class="badge" id="oct2-vol-badge">Loading...</span>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted);">FIN = Paper Finance + PineLab + PAYTM + Benow</span>
+              </div>
+              <div class="table-responsive" style="max-height:760px; overflow:auto;">
+                <table class="data-table" id="table-oct2-vol">
+                  <thead id="oct2-vol-thead" style="position:sticky; top:0; z-index:5;">
+                    <!-- Populated by JS -->
+                  </thead>
+                  <tbody id="oct2-vol-tbody">
+                    <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- TEAM PERFORMANCE TAB -->
+<!-- TEAM PERFORMANCE TAB -->
         <div class="tab-page" id="tab-team">
           <div class="data-card">
             <div class="card-title">
