@@ -5935,7 +5935,6 @@ function renderOct2Notice(data) {
   if (!box || !data) return;
   const msgs = [];
   const b = data.benchmark || {};
-  if (b.warning) msgs.push(b.warning);
   const cs = data.card_status || {};
   const missing = Object.keys(cs).filter(k => !cs[k].uploaded);
   if (missing.length) {
@@ -6202,9 +6201,6 @@ window.renderOct2SheetsUI = function() {
     if (hasCmp) {
       head.push(`${cmpLbl} FIN`, `${cmpLbl} SHARE`, "DIF", "GROWTH");
       headHtml += th(`${cmpLbl} FIN`) + th(`${cmpLbl} SHARE`) + th("DIF") + th("GROWTH");
-    } else if (view === "store") {
-      head.push(benchLabel, "DIF");
-      headHtml += th(benchLabel) + th("DIF");
     }
     if (sThead) sThead.innerHTML = `<tr>${headHtml}</tr>`;
     const nCols = head.length;
@@ -6239,10 +6235,6 @@ window.renderOct2SheetsUI = function() {
           shareCell(isVal, r.pShare) + pctPointCell(r.dif) + pctPointCell(r.growth);
         exp.push(r.pFin === null ? "#N/A" : Math.round(r.pFin), r.pShare === null ? "#N/A" : (r.pShare * 100).toFixed(2) + "%",
           r.dif === null ? "#N/A" : (r.dif * 100).toFixed(2) + "%", r.growth === null ? "#N/A" : (r.growth * 100).toFixed(2) + "%");
-      } else if (view === "store") {
-        extra = shareCell(isVal, r.bench) + pctPointCell(r.benchDif);
-        exp.push(r.bench === null || r.bench === undefined ? "#N/A" : (r.bench * 100).toFixed(2) + "%",
-          r.benchDif === null || r.benchDif === undefined ? "#N/A" : (r.benchDif * 100).toFixed(2) + "%");
       }
       exportRows.push(exp);
 
@@ -6265,8 +6257,6 @@ window.renderOct2SheetsUI = function() {
       footExtra = `<td class="num-align">${Math.round(sumPFin).toLocaleString("en-IN")}</td>
         <td class="num-align" style="text-align:center;">${(pShare * 100).toFixed(1)}%</td>` +
         pctPointCell(totShare - pShare) + pctPointCell(sumPFin > 0 ? (sumFin - sumPFin) / sumPFin : null);
-    } else if (view === "store") {
-      footExtra = `<td colspan="2"></td>`;
     }
     html += `<tr class="total-row" style="font-weight:800;">
         <td>Total (${rows.length} ${V.plural})</td>
