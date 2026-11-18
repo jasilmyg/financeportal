@@ -5729,6 +5729,11 @@ window.exportOctSheetsToExcel = function() {
 // DUPLICATE STORE FIN SHARE TAB (independent copy - edit this one freely)
 // ============================================================================
 let _oct2SheetsCacheData = null;
+let _oct2CompareData = null;                     // /api/oct-sheets-compare payload (selected comparison)
+let _oct2StaffData = { cur: null, cmp: null };   // /api/oct-sheets-staff payloads (Staff view)
+let _oct2ExtraError = "";
+let _oct2ExtraSeq = 0;                           // guards against out-of-order responses
+let _oct2LastRender = { val: null, vol: null };  // what is on screen (used by Export Sheet)
 
 window.resetOct2SheetFilters = function() {
   const sInput = document.getElementById("oct2-store-search");
@@ -5786,40 +5791,100 @@ window.loadOct2SheetsData = function(forceReload) {
   const periodMode = (document.getElementById("oct2-period-mode") || {}).value || "reference";
   const endDate = _endDate();
   const stateSel = ((document.getElementById("oct2-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
-  const url = `/api/oct-sheets-data?date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}&state=${encodeURIComponent(stateSel)}`;
+  const qs = `date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(endDate)}&timeframe=${encodeURIComponent(timeframe)}&period_mode=${encodeURIComponent(periodMode)}&state=${encodeURIComponent(stateSel)}`;
+  const url = `/api/oct-sheets-data?${qs}`;
 
   _syncOct2WindowModeUI(null, date, timeframe);
 
   if (!forceReload && _oct2SheetsCacheData && _oct2SheetsCacheData._url === url) {
     _syncOct2WindowModeUI(_oct2SheetsCacheData.period, date, timeframe);
-    renderOct2SheetsUI();
+    onOct2ViewChanged();
     return;
   }
 
-  // Both tables (Value + Volume) show the same loading / error message
-  const _oct2Bodies = ["oct2-val-tbody", "oct2-vol-tbody"].map(id => document.getElementById(id)).filter(Boolean);
-  const tbody = { set innerHTML(v) { _oct2Bodies.forEach(t => { t.innerHTML = v; }); } };
-  if (tbody) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>`;
-  }
+  _oct2SetBodies(`<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>`);
 
   _cachedFetch(url)
     .then(data => {
       if (data.error) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--color-danger);">${data.error}</td></tr>`;
+        _oct2SetBodies(`<tr><td colspan="10" style="text-align:center; padding:25px; color:var(--color-danger);">${data.error}</td></tr>`);
         return;
       }
       data._url = url;
+      data._qs = qs;
       _oct2SheetsCacheData = data;
       _syncOct2WindowModeUI(data.period, date, timeframe);
       populateOct2FilterDropdowns(data);
       renderOct2Notice(data);
-      renderOct2SheetsUI();
+      onOct2ViewChanged();
     })
     .catch(err => {
       console.error("Failed to load Store Fin Share data:", err);
-      if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load Store Fin Share data</td></tr>`;
+      _oct2SetBodies(`<tr><td colspan="10" style="text-align:center; padding:25px; color:var(--color-danger);">Failed to load Store Fin Share data</td></tr>`);
     });
+};
+
+function _oct2SetBodies(html) {
+  ["oct2-val-tbody", "oct2-vol-tbody"].forEach(id => {
+    const t = document.getElementById(id);
+    if (t) t.innerHTML = html;
+  });
+}
+
+function _oct2ViewMode() { return (document.getElementById("oct2-view-by") || {}).value || "store"; }
+function _oct2CompareMode() { return (document.getElementById("oct2-compare") || {}).value || ""; }
+
+// Fetches whatever the current "View by" / "Compare with" selection needs on top of the store data.
+// Resolves false when a newer selection superseded this call (the caller must not render then).
+async function _oct2LoadExtras() {
+  const seq = ++_oct2ExtraSeq;
+  const base = _oct2SheetsCacheData;
+  if (!base) return false;
+  const cmp = _oct2CompareMode();
+  const view = _oct2ViewMode();
+  const state = ((document.getElementById("oct2-filter-state") || document.getElementById("cat-filter-state") || {}).value || "");
+  let cmpData = null;
+  let staffData = { cur: null, cmp: null };
+  const errs = [];
+
+  if (cmp) {
+    try {
+      const d = await _cachedFetch(`/api/oct-sheets-compare?${base._qs}&compare=${encodeURIComponent(cmp)}`);
+      if (d && d.error) throw new Error(d.error);
+      cmpData = d;
+    } catch (e) {
+      console.error("Compare load failed:", e);
+      errs.push("Comparison could not be loaded: " + ((e && e.message) || e));
+    }
+  }
+  if (view === "staff") {
+    try {
+      const p = base.period || {};
+      const stUrl = (s, e) => `/api/oct-sheets-staff?start_date=${encodeURIComponent(s)}&end_date=${encodeURIComponent(e)}&state=${encodeURIComponent(state)}`;
+      const reqs = [_cachedFetch(stUrl(p.start_date, p.end_date))];
+      if (cmpData) reqs.push(_cachedFetch(stUrl(cmpData.start_date, cmpData.end_date)));
+      const [cur, prev] = await Promise.all(reqs);
+      if (cur && cur.error) throw new Error(cur.error);
+      staffData = { cur, cmp: (prev && !prev.error) ? prev : null };
+    } catch (e) {
+      console.error("Staff load failed:", e);
+      errs.push("Staff data could not be loaded: " + ((e && e.message) || e));
+    }
+  }
+
+  if (seq !== _oct2ExtraSeq) return false;
+  _oct2CompareData = cmpData;
+  _oct2StaffData = staffData;
+  _oct2ExtraError = errs.join(" ");
+  return true;
+}
+
+window.onOct2ViewChanged = async function() {
+  if (_oct2CompareMode() || _oct2ViewMode() === "staff") {
+    _oct2SetBodies(`<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">Loading...</td></tr>`);
+  }
+  const ok = await _oct2LoadExtras();
+  if (ok) renderOct2SheetsUI();
 };
 
 function populateOct2FilterDropdowns(data) {
@@ -5949,244 +6014,283 @@ function _oct2VolShareBg(pctInt) {
   return "background:#f87171; color:#450a0a; font-weight:700;";
 }
 
+const OCT2_VIEWS = {
+  store:   { label: "Store",   head: "Stores",  plural: "Stores",   key: s => s.store },
+  rbm:     { label: "RBM",     head: "RBM",     plural: "RBMs",     key: s => s.rbm },
+  bdm:     { label: "BDM",     head: "BDM",     plural: "BDMs",     key: s => s.bdm },
+  fin_bdm: { label: "Fin BDM", head: "Fin BDM", plural: "Fin BDMs", key: s => s.fin_bdm },
+  staff:   { label: "Staff",   head: "Staff",   plural: "Staff",    key: s => s.staff },
+};
+
 window.renderOct2SheetsUI = function() {
   if (!_oct2SheetsCacheData) return;
   const valObj = _oct2SheetsCacheData.oct;
   const volObj = _oct2SheetsCacheData.oct_vol;
   if (!valObj && !volObj) return;
 
+  const view = OCT2_VIEWS[_oct2ViewMode()] ? _oct2ViewMode() : "store";
+  const V = OCT2_VIEWS[view];
+  const cmpMode = _oct2CompareMode();
+  const cmpData = cmpMode ? _oct2CompareData : null;
+  const staffCur = view === "staff" ? _oct2StaffData.cur : null;
+  const staffCmp = (view === "staff" && cmpData) ? _oct2StaffData.cmp : null;
+  const hasCmp = view === "staff" ? !!(cmpData && staffCmp) : !!cmpData;
+  const cmpLbl = hasCmp ? cmpData.label : "";
+  const benchLabel = ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr";
+
   const qSearch = ((document.getElementById("oct2-store-search") || {}).value || "").trim().toUpperCase();
   const qTm = ((document.getElementById("oct2-filter-tm") || {}).value || "ALL").toUpperCase();
   const qRbm = ((document.getElementById("oct2-filter-rbm") || {}).value || "ALL").toUpperCase();
   const qBdm = ((document.getElementById("oct2-filter-bdm") || {}).value || "ALL").toUpperCase();
 
-  const filterStores = obj => ((obj && obj.stores) || []).filter(s => {
-    if (qSearch && !String(s.store).toUpperCase().includes(qSearch)) return false;
-    if (qTm !== "ALL" && String(s.fin_bdm).toUpperCase() !== qTm) return false;
-    if (qRbm !== "ALL" && String(s.rbm).toUpperCase() !== qRbm) return false;
-    if (qBdm !== "ALL" && String(s.bdm).toUpperCase() !== qBdm) return false;
+  // The same filters apply to every view: they are matched on the store / staff row before grouping
+  const matches = s => {
+    if (qSearch) {
+      const hay = (view === "staff" ? `${s.staff || ""} ${s.store || ""}` : String(s.store || "")).toUpperCase();
+      if (!hay.includes(qSearch)) return false;
+    }
+    if (qTm !== "ALL" && String(s.fin_bdm || "").toUpperCase() !== qTm) return false;
+    if (qRbm !== "ALL" && String(s.rbm || "").toUpperCase() !== qRbm) return false;
+    if (qBdm !== "ALL" && String(s.bdm || "").toUpperCase() !== qBdm) return false;
     return true;
-  });
+  };
 
   // KPI strip: Value (Rs) is the headline figure, Volume (Qty) sits in the sub-line
   const totRow = (valObj && valObj.tm_total) || { fin: 0, total: 0, fin_share: 0 };
   const volTot = (volObj && volObj.tm_total) || { fin: 0, total: 0, fin_share: 0 };
   const northRow = (valObj && valObj.tm_north) || { fin_share: 0 };
   const southRow = (valObj && valObj.tm_south) || { fin_share: 0 };
-
-  const kpiFin = document.getElementById("oct2-kpi-fin");
-  const kpiTot = document.getElementById("oct2-kpi-tot");
-  const kpiShare = document.getElementById("oct2-kpi-share");
-  const kpiNS = document.getElementById("oct2-kpi-north-south");
-  const kpiCard = document.getElementById("oct2-kpi-card-ach");
-  const kpiFinSub = document.getElementById("oct2-kpi-fin-sub");
-  const kpiTotSub = document.getElementById("oct2-kpi-tot-sub");
-  const kpiShareSub = document.getElementById("oct2-kpi-share-sub");
+  const kpi = id => document.getElementById(id);
   const units = n => Number(n || 0).toLocaleString("en-IN") + " Units";
-
-  if (kpiFin) kpiFin.textContent = "₹" + ((totRow.fin || 0) / 10000000).toFixed(2) + " Cr";
-  if (kpiFinSub) kpiFinSub.textContent = "Qty: " + units(volTot.fin);
-  if (kpiTot) kpiTot.textContent = "₹" + ((totRow.total || 0) / 10000000).toFixed(2) + " Cr";
-  if (kpiTotSub) kpiTotSub.textContent = "Qty: " + units(volTot.total);
-  if (kpiShare) kpiShare.textContent = ((totRow.fin_share || 0) * 100).toFixed(2) + "%";
-  if (kpiShareSub) kpiShareSub.textContent = "Volume share: " + ((volTot.fin_share || 0) * 100).toFixed(2) + "%";
-  if (kpiNS) {
-    kpiNS.textContent = `N: ${((northRow.fin_share || 0) * 100).toFixed(1)}% · S: ${((southRow.fin_share || 0) * 100).toFixed(1)}%`;
+  if (kpi("oct2-kpi-fin")) kpi("oct2-kpi-fin").textContent = "₹" + ((totRow.fin || 0) / 10000000).toFixed(2) + " Cr";
+  if (kpi("oct2-kpi-fin-sub")) kpi("oct2-kpi-fin-sub").textContent = "Qty: " + units(volTot.fin);
+  if (kpi("oct2-kpi-tot")) kpi("oct2-kpi-tot").textContent = "₹" + ((totRow.total || 0) / 10000000).toFixed(2) + " Cr";
+  if (kpi("oct2-kpi-tot-sub")) kpi("oct2-kpi-tot-sub").textContent = "Qty: " + units(volTot.total);
+  if (kpi("oct2-kpi-share")) kpi("oct2-kpi-share").textContent = ((totRow.fin_share || 0) * 100).toFixed(2) + "%";
+  if (kpi("oct2-kpi-share-sub")) kpi("oct2-kpi-share-sub").textContent = "Volume share: " + ((volTot.fin_share || 0) * 100).toFixed(2) + "%";
+  if (kpi("oct2-kpi-north-south")) {
+    kpi("oct2-kpi-north-south").textContent = `N: ${((northRow.fin_share || 0) * 100).toFixed(1)}% · S: ${((southRow.fin_share || 0) * 100).toFixed(1)}%`;
   }
   const octTot = (valObj && valObj.tm_total) || {};
-  if (kpiCard && octTot.card_ach !== undefined) {
-    const cardCr = (octTot.card_ach / 10000000).toFixed(2);
-    const cardPct = ((octTot.card_ach_pct || 0) * 100).toFixed(1);
-    kpiCard.textContent = `₹${cardCr} Cr (${cardPct}%)`;
+  if (kpi("oct2-kpi-card-ach") && octTot.card_ach !== undefined) {
+    kpi("oct2-kpi-card-ach").textContent = `₹${(octTot.card_ach / 10000000).toFixed(2)} Cr (${((octTot.card_ach_pct || 0) * 100).toFixed(1)}%)`;
   }
 
-  const benchLabel = ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr";
+  // Notes under the filter bar
+  const fmtD = iso => {
+    const dt = new Date(String(iso).slice(0, 10) + "T00:00:00");
+    return isNaN(dt) ? iso : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  };
+  const nbox = document.getElementById("oct2-compare-notice");
+  if (nbox) {
+    const lines = [];
+    const p = _oct2SheetsCacheData.period || {};
+    if (cmpData) {
+      lines.push(`Comparing <b>${fmtD(p.start_date)} &ndash; ${fmtD(p.end_date)}</b> with <b>${cmpData.label}</b> (${fmtD(cmpData.start_date)} &ndash; ${fmtD(cmpData.end_date)}).`);
+      const cs = cmpData.card_status || {};
+      const missing = Object.keys(cs).filter(k => !cs[k].uploaded);
+      if (missing.length) lines.push(`Card data is not uploaded for the comparison period (${missing.join(", ")}), so its FIN is understated.`);
+    }
+    if (view === "staff") {
+      lines.push("Staff view: Paper FIN is exact; Card FIN counts only card EMI invoices matched to the ERP, because the card files carry no staff details.");
+    }
+    if (_oct2ExtraError) lines.push(`<span style="color:#b91c1c;">${_oct2ExtraError}</span>`);
+    nbox.innerHTML = lines.join("<br>");
+    nbox.style.display = lines.length ? "block" : "none";
+  }
 
-  // Renders one store table (Value or Volume); both are drawn side by side
-  const renderStoreTable = (isVal, sheetObj, key) => {
+  // ---- build the rows of one table (Value or Volume) for the selected view ----
+  const buildRows = isVal => {
+    let curSrc, prevSrc;
+    if (view === "staff") {
+      const mapStaff = r => ({
+        staff: r.staff, store: r.store, rbm: r.rbm, bdm: r.bdm, fin_bdm: r.fin_bdm,
+        fin: isVal ? r.fin_val : r.fin_qty, paper_fin: isVal ? r.paper_val : r.paper_qty,
+        card_fin: isVal ? r.card_val : r.card_qty, total: isVal ? r.tot_val : r.tot_qty,
+      });
+      curSrc = ((staffCur || {}).staff || []).map(mapStaff);
+      prevSrc = ((staffCmp || {}).staff || []).map(mapStaff);
+    } else {
+      const o = isVal ? valObj : volObj;
+      const po = cmpData ? (isVal ? cmpData.oct : cmpData.oct_vol) : null;
+      curSrc = (o && o.stores) || [];
+      prevSrc = (po && po.stores) || [];
+    }
+
+    const group = src => {
+      const m = new Map();
+      src.filter(matches).forEach(s => {
+        const name = V.key(s) || "—";
+        let a = m.get(name);
+        if (!a) {
+          a = { name, store: s.store || "", fin: 0, paper_fin: 0, card_fin: 0, total: 0, n: 0, bench: null, benchDif: null };
+          m.set(name, a);
+        }
+        a.fin += s.fin || 0;
+        a.paper_fin += s.paper_fin || 0;
+        a.card_fin += s.card_fin || 0;
+        a.total += s.total || 0;
+        a.n += 1;
+        if (view === "store") {
+          a.bench = isVal ? s.amj : s.jas;
+          a.benchDif = s.dif;
+        }
+      });
+      return m;
+    };
+
+    const cur = group(curSrc);
+    const prev = hasCmp ? group(prevSrc) : new Map();
+    const names = new Set([...cur.keys(), ...prev.keys()]);
+    const rows = [...names].map(name => {
+      const c = cur.get(name) || { name, store: (prev.get(name) || {}).store || "", fin: 0, paper_fin: 0, card_fin: 0, total: 0, n: 0, bench: null, benchDif: null };
+      const p = prev.get(name) || null;
+      const share = c.total > 0 ? c.fin / c.total : 0;
+      const pShare = p ? (p.total > 0 ? p.fin / p.total : 0) : null;
+      return {
+        ...c, share,
+        pFin: p ? p.fin : null, pTotal: p ? p.total : null, pShare,
+        dif: pShare === null ? null : share - pShare,
+        growth: (p && p.fin > 0) ? (c.fin - p.fin) / p.fin : null,
+      };
+    });
+    if (view === "staff") rows.sort((a, b) => b.total - a.total);
+    else rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return { rows, totalUnfiltered: curSrc.length };
+  };
+
+  const shareBg = (isVal, pctInt) => (isVal ? _oct2ValShareBg(pctInt) : _oct2VolShareBg(pctInt));
+  const NA = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
+  const pctPointCell = v => {
+    if (v === null || v === undefined || isNaN(v)) return NA;
+    const pct = v * 100;
+    const up = pct >= 0;
+    const style = up ? "color:#16a34a; font-weight:700;" : "background:#f87171; color:#450a0a; font-weight:700;";
+    return `<td class="num-align" style="${style}">${up ? "&#9650;" : "&#9660;"}${Math.abs(pct).toFixed(2)}%</td>`;
+  };
+  const shareCell = (isVal, v) => {
+    if (v === null || v === undefined) return NA;
+    const pctInt = Math.round(v * 100);
+    return `<td class="num-align" style="${shareBg(isVal, pctInt)} text-align:center;" title="${(v * 100).toFixed(2)}%">${pctInt}%</td>`;
+  };
+  const th = (t, st, cls) => `<th class="${cls === false ? "" : "num-align"}" style="${st || ""}">${t}</th>`;
+
+  const renderTable = (isVal, key) => {
     const titleEl = document.getElementById(`oct2-${key}-title`);
     const badgeEl = document.getElementById(`oct2-${key}-badge`);
     const sThead = document.getElementById(`oct2-${key}-thead`);
     const sTbody = document.getElementById(`oct2-${key}-tbody`);
-    if (!sheetObj) return;
-
-    const allStores = sheetObj.stores || [];
-    const filteredStores = filterStores(sheetObj);
+    const { rows, totalUnfiltered } = buildRows(isVal);
 
     if (titleEl) {
-      titleEl.innerHTML = isVal
-        ? "Duplicate Store Fin Share &mdash; Value (&#8377;)"
-        : "Duplicate Store Fin Share &mdash; Volume (Qty)";
+      titleEl.innerHTML = `Duplicate Fin Share by ${V.label} &mdash; ${isVal ? "Value (&#8377;)" : "Volume (Qty)"}`;
     }
-    if (badgeEl) badgeEl.textContent = `${filteredStores.length} of ${allStores.length} Stores`;
+    if (badgeEl) {
+      badgeEl.textContent = view === "store" ? `${rows.length} of ${totalUnfiltered} Stores` : `${rows.length} ${V.plural}`;
+    }
 
-    if (sThead) {
-      sThead.innerHTML = `<tr>
-          <th style="background:#fef08a; color:#1e293b; font-weight:800;">Stores</th>
-          <th class="num-align">FIN</th>
-          <th class="num-align" style="color:#4ade80;">Paper FIN</th>
-          <th class="num-align" style="color:#a78bfa;">Card FIN</th>
-          <th class="num-align">Total</th>
-          <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
-          <th class="num-align">${benchLabel}</th>
-          <th class="num-align">DIF</th>
-        </tr>`;
+    // header
+    const head = [V.head, "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE"];
+    let headHtml = th(V.head, "background:#fef08a; color:#1e293b; font-weight:800;", false) +
+      th("FIN") + th("Paper FIN", "color:#4ade80;") + th("Card FIN", "color:#a78bfa;") + th("Total") +
+      th("FIN SHARE", "background:#fef08a; color:#1e293b; font-weight:800;");
+    if (hasCmp) {
+      head.push(`${cmpLbl} FIN`, `${cmpLbl} SHARE`, "DIF", "GROWTH");
+      headHtml += th(`${cmpLbl} FIN`) + th(`${cmpLbl} SHARE`) + th("DIF") + th("GROWTH");
+    } else if (view === "store") {
+      head.push(benchLabel, "DIF");
+      headHtml += th(benchLabel) + th("DIF");
     }
+    if (sThead) sThead.innerHTML = `<tr>${headHtml}</tr>`;
+    const nCols = head.length;
     if (!sTbody) return;
 
-    if (!filteredStores.length) {
-      sTbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
+    const exportRows = [];
+    if (!rows.length) {
+      sTbody.innerHTML = `<tr><td colspan="${nCols}" style="text-align:center; padding:25px; color:var(--text-muted);">No ${V.plural.toLowerCase()} match current filters.</td></tr>`;
+      _oct2LastRender[key] = { head, data: exportRows };
       return;
     }
 
-    let rowsHtml = "";
-    let sumFin = 0, sumTot = 0, sumPaper = 0, sumCard = 0;
-    filteredStores.forEach(s => {
-      sumFin += (s.fin || 0);
-      sumTot += (s.total || 0);
-      sumPaper += (s.paper_fin || 0);
-      sumCard += (s.card_fin || 0);
-      const sharePctInt = Math.round((s.fin_share || 0) * 100);
-      const shareExact = ((s.fin_share || 0) * 100).toFixed(2) + "%";
-      const shareStyle = isVal ? _oct2ValShareBg(sharePctInt) : _oct2VolShareBg(sharePctInt);
-
-      const benchVal = isVal ? s.amj : s.jas;
-      let benchCell = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
-      if (benchVal !== null && benchVal !== undefined) {
-        const bPctInt = Math.round(benchVal * 100);
-        const bStyle = isVal ? _oct2ValShareBg(bPctInt) : _oct2VolShareBg(bPctInt);
-        benchCell = `<td class="num-align" style="${bStyle} text-align:center;" title="${(benchVal * 100).toFixed(2)}%">${bPctInt}%</td>`;
-      }
-
-      let difCell = `<td class="num-align" style="color:var(--text-muted);">#N/A</td>`;
-      if (s.dif !== null && s.dif !== undefined) {
-        const difPct = (s.dif * 100);
-        const isUp = difPct >= 0;
-        const arrow = isUp ? "&#9650;" : "&#9660;";
-        const difStyle = isUp
-          ? "color:#16a34a; font-weight:700;"
-          : "background:#f87171; color:#450a0a; font-weight:700;";
-        difCell = `<td class="num-align" style="${difStyle}">${arrow}${Math.abs(difPct).toFixed(2)}%</td>`;
-      }
-
+    let html = "";
+    let sumFin = 0, sumTot = 0, sumPaper = 0, sumCard = 0, sumPFin = 0, sumPTot = 0;
+    rows.forEach(r => {
+      sumFin += r.fin; sumTot += r.total; sumPaper += r.paper_fin; sumCard += r.card_fin;
+      if (r.pFin !== null) { sumPFin += r.pFin; sumPTot += r.pTotal; }
+      const sharePctInt = Math.round(r.share * 100);
       const tip = isVal
-        ? `Paper Fin: ₹${Math.round(s.paper_fin || 0).toLocaleString('en-IN')} | Card EMI: ₹${Math.round(s.card_fin || 0).toLocaleString('en-IN')}`
-        : `Paper Fin: ${s.paper_fin || 0} | Card EMI: ${s.card_fin || 0}`;
+        ? `Paper Fin: ₹${Math.round(r.paper_fin).toLocaleString("en-IN")} | Card EMI: ₹${Math.round(r.card_fin).toLocaleString("en-IN")}`
+        : `Paper Fin: ${Math.round(r.paper_fin)} | Card EMI: ${Math.round(r.card_fin)}`;
+      const nameCell = view === "staff"
+        ? `<td style="font-weight:600; white-space:nowrap;">${r.name}<div style="font-size:10px; font-weight:500; color:var(--text-muted);">${r.store || ""}</div></td>`
+        : `<td style="font-weight:600; white-space:nowrap;">${r.name}</td>`;
 
-      rowsHtml += `<tr title="${tip}">
-          <td style="font-weight:600; white-space:nowrap;">${s.store}</td>
-          <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(s.fin || 0)}</td>
-          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(s.paper_fin || 0)}</td>
-          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(s.card_fin || 0)}</td>
-          <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(s.total || 0)}</td>
-          <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${sharePctInt}%</td>
-          ${benchCell}
-          ${difCell}
+      let extra = "";
+      const exp = [r.name, Math.round(r.fin), Math.round(r.paper_fin), Math.round(r.card_fin), Math.round(r.total), (r.share * 100).toFixed(2) + "%"];
+      if (hasCmp) {
+        extra = (r.pFin === null ? NA : `<td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.pFin)}</td>`) +
+          shareCell(isVal, r.pShare) + pctPointCell(r.dif) + pctPointCell(r.growth);
+        exp.push(r.pFin === null ? "#N/A" : Math.round(r.pFin), r.pShare === null ? "#N/A" : (r.pShare * 100).toFixed(2) + "%",
+          r.dif === null ? "#N/A" : (r.dif * 100).toFixed(2) + "%", r.growth === null ? "#N/A" : (r.growth * 100).toFixed(2) + "%");
+      } else if (view === "store") {
+        extra = shareCell(isVal, r.bench) + pctPointCell(r.benchDif);
+        exp.push(r.bench === null || r.bench === undefined ? "#N/A" : (r.bench * 100).toFixed(2) + "%",
+          r.benchDif === null || r.benchDif === undefined ? "#N/A" : (r.benchDif * 100).toFixed(2) + "%");
+      }
+      exportRows.push(exp);
+
+      html += `<tr title="${tip}">
+          ${nameCell}
+          <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.fin)}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(r.paper_fin)}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(r.card_fin)}</td>
+          <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.total)}</td>
+          <td class="num-align" style="${shareBg(isVal, sharePctInt)} text-align:center;" title="${(r.share * 100).toFixed(2)}%">${sharePctInt}%</td>
+          ${extra}
         </tr>`;
     });
 
-    // Footer total row for filtered stores
-    const totSharePct = sumTot > 0 ? ((sumFin / sumTot) * 100).toFixed(1) : "0.0";
-    rowsHtml += `<tr class="total-row" style="font-weight:800;">
-        <td>Total (${filteredStores.length} Stores)</td>
+    // footer: totals of the rows shown
+    const totShare = sumTot > 0 ? sumFin / sumTot : 0;
+    let footExtra = "";
+    if (hasCmp) {
+      const pShare = sumPTot > 0 ? sumPFin / sumPTot : 0;
+      footExtra = `<td class="num-align">${Math.round(sumPFin).toLocaleString("en-IN")}</td>
+        <td class="num-align" style="text-align:center;">${(pShare * 100).toFixed(1)}%</td>` +
+        pctPointCell(totShare - pShare) + pctPointCell(sumPFin > 0 ? (sumFin - sumPFin) / sumPFin : null);
+    } else if (view === "store") {
+      footExtra = `<td colspan="2"></td>`;
+    }
+    html += `<tr class="total-row" style="font-weight:800;">
+        <td>Total (${rows.length} ${V.plural})</td>
         <td class="num-align">${Math.round(sumFin).toLocaleString("en-IN")}</td>
         <td class="num-align" style="color:#16a34a;">${Math.round(sumPaper).toLocaleString("en-IN")}</td>
         <td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>
         <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
-        <td class="num-align" style="text-align:center; color:#059669;">${totSharePct}%</td>
-        <td colspan="2"></td>
+        <td class="num-align" style="text-align:center; color:#059669;">${(totShare * 100).toFixed(1)}%</td>
+        ${footExtra}
       </tr>`;
-    sTbody.innerHTML = rowsHtml;
+    sTbody.innerHTML = html;
+    _oct2LastRender[key] = { head, data: exportRows };
   };
 
-  renderStoreTable(true, valObj, "val");
-  renderStoreTable(false, volObj, "vol");
+  renderTable(true, "val");
+  renderTable(false, "vol");
 };
 
 window.exportOct2SheetsToExcel = function() {
-  if (!_oct2SheetsCacheData || typeof XLSX === "undefined") {
+  const L = _oct2LastRender;
+  if (typeof XLSX === "undefined" || !(L.val || L.vol)) {
     showToast("Data not loaded yet", "error");
     return;
   }
   try {
     const wb = XLSX.utils.book_new();
-
-    // Sheet 1: OCT (Value)
-    const oct = _oct2SheetsCacheData.oct;
-    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
-    (oct.stores || []).forEach(s => {
-      octRows.push([
-        s.store,
-        Math.round(s.fin || 0),
-        Math.round(s.paper_fin || 0),
-        Math.round(s.card_fin || 0),
-        Math.round(s.total || 0),
-        ((s.fin_share || 0) * 100).toFixed(2) + "%",
-        s.amj !== null && s.amj !== undefined ? (s.amj * 100).toFixed(2) + "%" : "#N/A",
-        s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
-      ]);
+    [["Value", L.val], ["Volume", L.vol]].forEach(([name, t]) => {
+      if (t) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([t.head, ...t.data]), name);
     });
-    octRows.push([]);
-    octRows.push(["TM", "FIN", "Total", "FIN SHARE", "Value Target", "Ach %", "Card Slab 2", "Card Ach", "Card Ach %"]);
-    [...(oct.tms || []), oct.tm_total, oct.tm_north, oct.tm_south].filter(Boolean).forEach(t => {
-      octRows.push([
-        t.tm,
-        Math.round(t.fin || 0),
-        Math.round(t.total || 0),
-        ((t.fin_share || 0) * 100).toFixed(2) + "%",
-        Math.round(t.value_target || 0),
-        ((t.ach_pct || 0) * 100).toFixed(2) + "%",
-        Math.round(t.card_slab_2 || 0),
-        Math.round(t.card_ach || 0),
-        ((t.card_ach_pct || 0) * 100).toFixed(2) + "%",
-      ]);
-    });
-    octRows.push([]);
-    octRows.push(["RBM", "FIN", "Total", "FIN SHARE"]);
-    (oct.rbms || []).forEach(r => {
-      octRows.push([r.rbm, Math.round(r.fin || 0), Math.round(r.total || 0), ((r.fin_share || 0) * 100).toFixed(2) + "%"]);
-    });
-    octRows.push([]);
-    octRows.push(["BDM", "FIN", "Total", "FIN SHARE"]);
-    (oct.bdms || []).forEach(b => {
-      octRows.push([b.bdm, Math.round(b.fin || 0), Math.round(b.total || 0), ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(octRows), "Value");
-
-    // Sheet 2: OCT Vol (Volume)
-    const vol = _oct2SheetsCacheData.oct_vol;
-    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", ((_oct2SheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
-    (vol.stores || []).forEach(s => {
-      volRows.push([
-        s.store,
-        s.fin || 0,
-        s.paper_fin || 0,
-        s.card_fin || 0,
-        s.total || 0,
-        ((s.fin_share || 0) * 100).toFixed(2) + "%",
-        s.jas !== null && s.jas !== undefined ? (s.jas * 100).toFixed(2) + "%" : "#N/A",
-        s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
-      ]);
-    });
-    volRows.push([]);
-    volRows.push(["TM", "FIN", "Total", "FIN SHARE"]);
-    [...(vol.tms || []), vol.tm_total, vol.tm_north, vol.tm_south].filter(Boolean).forEach(t => {
-      volRows.push([t.tm, t.fin || 0, t.total || 0, ((t.fin_share || 0) * 100).toFixed(2) + "%"]);
-    });
-    volRows.push([]);
-    volRows.push(["RBM", "FIN", "Total", "FIN SHARE"]);
-    (vol.rbms || []).forEach(r => {
-      volRows.push([r.rbm, r.fin || 0, r.total || 0, ((r.fin_share || 0) * 100).toFixed(2) + "%"]);
-    });
-    volRows.push([]);
-    volRows.push(["BDM", "FIN", "Total", "FIN SHARE"]);
-    (vol.bdms || []).forEach(b => {
-      volRows.push([b.bdm, b.fin || 0, b.total || 0, ((b.fin_share || 0) * 100).toFixed(2) + "%"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(volRows), "Volume");
-
-    XLSX.writeFile(wb, `Duplicate_Store_Fin_Share_${activeDate || "data"}.xlsx`);
-    showToast("✅ Exported Store Fin Share to Excel", "success");
+    XLSX.writeFile(wb, `Duplicate_Fin_Share_${_oct2ViewMode()}_${activeDate || "data"}.xlsx`);
+    showToast("✅ Exported to Excel", "success");
   } catch (e) {
     showToast("Export failed: " + e.message, "error");
   }

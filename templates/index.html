@@ -1315,6 +1315,30 @@
         <div class="tab-page" id="tab-oct2-sheets">
           <!-- Top Sheet Switcher + Filter Bar -->
           <div class="category-filters-bar" style="display:flex; gap:14px; padding:14px 18px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:10px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
+            <!-- View by: what each table row represents -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted); font-weight:700;">View by</label>
+              <select id="oct2-view-by" onchange="onOct2ViewChanged()" class="date-select" style="width:140px; padding:4px 8px; height:32px; font-size:12px; font-weight:600;">
+                <option value="store" selected>Store</option>
+                <option value="rbm">RBM</option>
+                <option value="bdm">BDM</option>
+                <option value="fin_bdm">Fin BDM (TM)</option>
+                <option value="staff">Staff</option>
+              </select>
+            </div>
+
+            <!-- Compare with the previous day / week / month / year -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <label style="font-size:11px; color:var(--text-muted); font-weight:700;">Compare with</label>
+              <select id="oct2-compare" onchange="onOct2ViewChanged()" class="date-select" style="width:150px; padding:4px 8px; height:32px; font-size:12px; font-weight:600;">
+                <option value="" selected>No comparison</option>
+                <option value="day">Previous Day</option>
+                <option value="week">Previous Week</option>
+                <option value="month">Previous Month</option>
+                <option value="year">Previous Year</option>
+              </select>
+            </div>
+
             <!-- Filter by State (shared, synced with the other tabs) -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <label style="font-size:11px; color:var(--text-muted);">Filter by State</label>
@@ -1384,6 +1408,9 @@
 
           <!-- Data notices (benchmark / card upload status) -->
           <div id="oct2-notice" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; border:1px solid rgba(217,119,6,0.45); background:rgba(245,158,11,0.10); color:#b45309; font-size:12.5px; line-height:1.5;"></div>
+
+          <!-- Comparison / staff-view notes -->
+          <div id="oct2-compare-notice" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; border:1px solid rgba(37,99,235,0.35); background:rgba(37,99,235,0.07); color:#1d4ed8; font-size:12.5px; line-height:1.55;"></div>
 
           <!-- TM Targets editor (stored in ClickHouse table tm_fin_targets) -->
           <div id="oct2-targets-panel" class="data-card" style="display:none; margin-bottom:14px; padding:14px 16px;">

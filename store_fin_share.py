@@ -629,3 +629,168 @@ def get_store_fin_share_data(
     with _MEM_CACHE_LOCK:
         _MEM_CACHE[cache_key] = result
     return result
+
+
+# --------------------------------------------------------------------------- compare / staff views
+# Used by the "Duplicate Store Fin Share" tab: compare the selected period with the previous
+# day / week / month / year, and list performance per Staff.
+COMPARE_LABELS = {"day": "Prev Day", "week": "Prev Week", "month": "Prev Month", "year": "Prev Year"}
+CARD_ERP_FINS = ("PineLab", "PAYTM", "Benow")
+
+
+def _add_months(d: date, n: int) -> date:
+    idx = d.year * 12 + (d.month - 1) + n
+    y, m0 = divmod(idx, 12)
+    return date(y, m0 + 1, min(d.day, calendar.monthrange(y, m0 + 1)[1]))
+
+
+def shift_period(start: date, end: date, compare: str):
+    """Same-length window one day / week / month / year earlier."""
+    from datetime import timedelta
+
+    if compare == "day":
+        return start - timedelta(days=1), end - timedelta(days=1)
+    if compare == "week":
+        return start - timedelta(days=7), end - timedelta(days=7)
+    if compare == "month":
+        return _add_months(start, -1), _add_months(end, -1)
+    if compare == "year":
+        return _add_months(start, -12), _add_months(end, -12)
+    raise ValueError(f"unknown compare mode: {compare}")
+
+
+def _slim_store_rows(rows: list) -> list:
+    return [
+        {
+            "store": r["store"], "fin": r["fin"], "paper_fin": r["paper_fin"], "card_fin": r["card_fin"],
+            "total": r["total"], "rbm": r["rbm"], "bdm": r["bdm"], "fin_bdm": r["fin_bdm"],
+        }
+        for r in rows
+    ]
+
+
+def get_store_fin_share_compare(
+    date_str: str,
+    timeframe: str = "monthly",
+    end_date_str: str = "",
+    period_mode: str = "reference",
+    state: str = "",
+    compare: str = "month",
+) -> dict:
+    """Store rows (Value + Volume) for the window one day / week / month / year before the selected one."""
+    compare = str(compare or "").strip().lower()
+    if compare not in COMPARE_LABELS:
+        return {"error": f"Unknown compare mode '{compare}' (use day, week, month or year)."}
+
+    cur = get_store_fin_share_data(date_str, timeframe=timeframe, end_date_str=end_date_str,
+                                   period_mode=period_mode, state=state)
+    period = cur.get("period") or {}
+    if not period.get("start_date"):
+        return {"error": "Current period could not be resolved."}
+    c_start, c_end = shift_period(
+        datetime.strptime(period["start_date"][:10], "%Y-%m-%d").date(),
+        datetime.strptime(period["end_date"][:10], "%Y-%m-%d").date(),
+        compare,
+    )
+    prev = get_store_fin_share_data(c_start.isoformat(), timeframe="custom", end_date_str=c_end.isoformat(),
+                                    period_mode="live", state=state)
+    if prev.get("error"):
+        return prev
+    return {
+        "status": "success",
+        "compare": compare,
+        "label": COMPARE_LABELS[compare],
+        "start_date": c_start.isoformat(),
+        "end_date": c_end.isoformat(),
+        "card_status": prev.get("card_status") or {},
+        "oct": {"stores": _slim_store_rows((prev.get("oct") or {}).get("stores", []))},
+        "oct_vol": {"stores": _slim_store_rows((prev.get("oct_vol") or {}).get("stores", []))},
+    }
+
+
+def get_staff_fin_share(start_date: str, end_date: str, state: str = "") -> dict:
+    """
+    Per-staff Value + Volume for [start_date, end_date] from the ERP sales.
+    FIN = paper finance + card EMI invoices matched to the ERP (the uploaded card files carry no
+    staff information, so card EMI that could not be matched to an invoice is not attributed).
+    """
+    import clickhouse_aggregator as ca
+
+    emi_state._ensure_synced()
+    sel_states = tuple(sorted({x.strip().upper() for x in str(state or "").split(",") if x.strip()}))
+    cache_key = ("staff", start_date, end_date, sel_states, emi_state.signature(sync=False))
+    with _MEM_CACHE_LOCK:
+        cached = _MEM_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    joins_sql, where_clause, params, exprs = ca._build_sales_where_and_joins(
+        start_date, "custom", end_date_str=end_date, state=",".join(sel_states), include_staff=True,
+    )
+    sql = f"""
+SELECT Branch, _StoreName, Staff, Financier, sum(_qty) AS QTY, sum(_val) AS VAL
+FROM (
+    SELECT
+        upper(trim(s.branch))                                       AS Branch,
+        upper(trim(coalesce(nullIf(bm.branch_name, ''), s.branch))) AS _StoreName,
+        upper(trim(coalesce(sd.staff, 'Unknown')))                  AS Staff,
+        {exprs['fin_expr']}                                         AS Financier,
+        {exprs['qty_expr']}                                         AS _qty,
+        {exprs['val_expr']}                                         AS _val
+    FROM azure_sales_report s
+    {joins_sql}
+    WHERE {where_clause}
+)
+GROUP BY Branch, _StoreName, Staff, Financier
+"""
+    df = query_df(sql, params)
+
+    meta = {name: (rbm, bdm) for name, rbm, bdm in _branch_meta_rows()}
+    try:
+        from sales_cleaner import STORE_FIN_BDM_MAP as _FIN_BDM_MAP
+    except Exception:
+        _FIN_BDM_MAP = {}
+
+    staff = {}
+    if df is not None and not df.empty:
+        for store_name, st, fin, qty, val in zip(
+            df["_StoreName"].tolist(), df["Staff"].tolist(), df["Financier"].tolist(),
+            df["QTY"].tolist(), df["VAL"].tolist(),
+        ):
+            st = str(st or "").strip().upper() or "UNKNOWN"
+            d = staff.setdefault(st, {
+                "paper_val": 0.0, "card_val": 0.0, "tot_val": 0.0,
+                "paper_qty": 0.0, "card_qty": 0.0, "tot_qty": 0.0, "stores": {},
+            })
+            qty = float(qty or 0.0)
+            val = float(val or 0.0)
+            d["tot_val"] += val
+            d["tot_qty"] += qty
+            if fin in PAPER_FINS:
+                d["paper_val"] += val
+                d["paper_qty"] += qty
+            elif fin in CARD_ERP_FINS:
+                d["card_val"] += val
+                d["card_qty"] += qty
+            sn = str(store_name or "").strip().upper()
+            d["stores"][sn] = d["stores"].get(sn, 0.0) + val
+
+    rows = []
+    for st, d in staff.items():
+        if not d["tot_val"] and not d["tot_qty"]:
+            continue
+        top_store = max(d["stores"].items(), key=lambda kv: kv[1])[0] if d["stores"] else ""
+        rbm, bdm = meta.get(top_store, ("", ""))
+        rows.append({
+            "staff": st, "store": top_store, "stores": len(d["stores"]),
+            "rbm": rbm, "bdm": bdm, "fin_bdm": str(_FIN_BDM_MAP.get(top_store, "")).strip().upper(),
+            "fin_val": round(d["paper_val"] + d["card_val"], 2), "paper_val": round(d["paper_val"], 2),
+            "card_val": round(d["card_val"], 2), "tot_val": round(d["tot_val"], 2),
+            "fin_qty": int(round(d["paper_qty"] + d["card_qty"])), "paper_qty": int(round(d["paper_qty"])),
+            "card_qty": int(round(d["card_qty"])), "tot_qty": int(round(d["tot_qty"])),
+        })
+    rows.sort(key=lambda r: r["tot_val"], reverse=True)
+    result = {"status": "success", "start_date": start_date, "end_date": end_date, "staff": rows}
+    with _MEM_CACHE_LOCK:
+        _MEM_CACHE[cache_key] = result
+    return result

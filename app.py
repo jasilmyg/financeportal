@@ -615,6 +615,44 @@ def api_oct_sheets_data():
         return jsonify({'error': str(exc)}), 500
 
 
+@app.route('/api/oct-sheets-compare', methods=['GET'])
+def api_oct_sheets_compare():
+    """Store rows for the window one day / week / month / year before the selected period."""
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'error': 'ClickHouse not available.'}), 503
+    try:
+        from store_fin_share import get_store_fin_share_compare
+        out = get_store_fin_share_compare(
+            request.args.get('date') or '2026-10-01',
+            timeframe=request.args.get('timeframe', 'monthly'),
+            end_date_str=request.args.get('end_date', ''),
+            period_mode=request.args.get('period_mode', 'reference'),
+            state=request.args.get('state', ''),
+            compare=request.args.get('compare', 'month'),
+        )
+        return jsonify(out), (400 if out.get('error') else 200)
+    except Exception as exc:
+        app.logger.error('api_oct_sheets_compare failed: %s', exc, exc_info=True)
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/oct-sheets-staff', methods=['GET'])
+def api_oct_sheets_staff():
+    """Per-staff Value + Volume for an explicit date range."""
+    if not _CLICKHOUSE_AVAILABLE:
+        return jsonify({'error': 'ClickHouse not available.'}), 503
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '') or start_date
+    if not start_date:
+        return jsonify({'error': 'start_date is required'}), 400
+    try:
+        from store_fin_share import get_staff_fin_share
+        return jsonify(get_staff_fin_share(start_date[:10], end_date[:10], request.args.get('state', '')))
+    except Exception as exc:
+        app.logger.error('api_oct_sheets_staff failed: %s', exc, exc_info=True)
+        return jsonify({'error': str(exc)}), 500
+
+
 @app.route('/api/tm-targets', methods=['GET', 'POST'])
 def api_tm_targets():
     """Monthly TM targets (value target, card slab 1/2) stored in ClickHouse table tm_fin_targets."""
