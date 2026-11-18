@@ -5400,9 +5400,6 @@ window.renderOctSheetsUI = function() {
           <th class="num-align" style="color:#a78bfa;">Card FIN</th>
           <th class="num-align">Total</th>
           <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
-          <th>Fin BDM</th>
-          <th>BDM</th>
-          <th>RBM</th>
           <th class="num-align">${benchLabel}</th>
           <th class="num-align">DIF</th>
         </tr>`
@@ -5413,9 +5410,6 @@ window.renderOctSheetsUI = function() {
           <th class="num-align" style="color:#a78bfa;">Card FIN</th>
           <th class="num-align">Total</th>
           <th class="num-align" style="background:#fef08a; color:#1e293b; font-weight:800;">FIN SHARE</th>
-          <th>Fin BDM</th>
-          <th>BDM</th>
-          <th>RBM</th>
           <th class="num-align">${benchLabel}</th>
           <th class="num-align">DIF</th>
         </tr>`;
@@ -5423,7 +5417,7 @@ window.renderOctSheetsUI = function() {
 
   if (sTbody) {
     if (!filteredStores.length) {
-      sTbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
+      sTbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:25px; color:var(--text-muted);">No stores match current filters.</td></tr>`;
     } else {
       let rowsHtml = "";
       let sumFin = 0, sumTot = 0, sumPaper = 0, sumCard = 0;
@@ -5468,9 +5462,6 @@ window.renderOctSheetsUI = function() {
           <td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(s.card_fin || 0)}</td>
           <td class="num-align" style="font-variant-numeric:tabular-nums;">${totDisplay}</td>
           <td class="num-align" style="${shareStyle} text-align:center;" title="${shareExact}">${sharePctInt}%</td>
-          <td style="white-space:nowrap;">${s.fin_bdm}</td>
-          <td style="white-space:nowrap;">${s.bdm}</td>
-          <td style="white-space:nowrap;">${s.rbm}</td>
           ${benchCell}
           ${difCell}
         </tr>`;
@@ -5485,7 +5476,7 @@ window.renderOctSheetsUI = function() {
         <td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>
         <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
         <td class="num-align" style="text-align:center; color:#059669;">${totSharePct}%</td>
-        <td colspan="5"></td>
+        <td colspan="2"></td>
       </tr>`;
       sTbody.innerHTML = rowsHtml;
     }
@@ -5646,7 +5637,7 @@ window.exportOctSheetsToExcel = function() {
 
     // Sheet 1: OCT (Value)
     const oct = _octSheetsCacheData.oct;
-    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
+    const octRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
     (oct.stores || []).forEach(s => {
       octRows.push([
         s.store,
@@ -5655,9 +5646,6 @@ window.exportOctSheetsToExcel = function() {
         Math.round(s.card_fin || 0),
         Math.round(s.total || 0),
         ((s.fin_share || 0) * 100).toFixed(2) + "%",
-        s.fin_bdm,
-        s.bdm,
-        s.rbm,
         s.amj !== null && s.amj !== undefined ? (s.amj * 100).toFixed(2) + "%" : "#N/A",
         s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
       ]);
@@ -5691,7 +5679,7 @@ window.exportOctSheetsToExcel = function() {
 
     // Sheet 2: OCT Vol (Volume)
     const vol = _octSheetsCacheData.oct_vol;
-    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", "Fin BDM", "BDM", "RBM", ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
+    const volRows = [["Stores", "FIN", "Paper FIN", "Card FIN", "Total", "FIN SHARE", ((_octSheetsCacheData.benchmark || {}).label) || "Prev Qtr", "DIF"]];
     (vol.stores || []).forEach(s => {
       volRows.push([
         s.store,
@@ -5700,9 +5688,6 @@ window.exportOctSheetsToExcel = function() {
         s.card_fin || 0,
         s.total || 0,
         ((s.fin_share || 0) * 100).toFixed(2) + "%",
-        s.fin_bdm,
-        s.bdm,
-        s.rbm,
         s.jas !== null && s.jas !== undefined ? (s.jas * 100).toFixed(2) + "%" : "#N/A",
         s.dif !== null && s.dif !== undefined ? (s.dif * 100).toFixed(2) + "%" : "#N/A",
       ]);
