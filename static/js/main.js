@@ -868,6 +868,7 @@ function initSidebar() {
 // Date Selector Management
 function initDateSelector() {
   const dateInput   = document.getElementById("reviewDateSelect");
+  const weekInput   = document.getElementById("periodWeek");
   const endDateInput= document.getElementById("endDateSelect");
   const endSep      = document.getElementById("endDateSeparator");
   const yearInput   = document.getElementById("periodYear");
@@ -878,37 +879,34 @@ function initDateSelector() {
   // Quarter → month start map  (Q1=Jan, Q2=Apr, Q3=Jul, Q4=Oct)
   const Q_START_MO  = { 1:1, 2:4, 3:7, 4:10 };
 
+  function dateToIsoWeek(isoStr) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(isoStr || ""));
+    if (!m) return "";
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const wk = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(wk).padStart(2, "0")}`;
+  }
+
+  function isoWeekToMonday(weekVal) {
+    const m = /^(\d{4})-W(\d{1,2})$/.exec(String(weekVal || "").trim());
+    if (!m) return "";
+    const jan4 = new Date(Date.UTC(+m[1], 0, 4));
+    const dayNum = jan4.getUTCDay() || 7;
+    const mon = new Date(jan4.getTime() + ((+m[2] - 1) * 7 - (dayNum - 1)) * 86400000);
+    return `${mon.getUTCFullYear()}-${String(mon.getUTCMonth() + 1).padStart(2, "0")}-${String(mon.getUTCDate()).padStart(2, "0")}`;
+  }
+
   // --- UI switch based on selected timeframe ---
   function applyPickerMode(tf) {
-    if (tf === 'daily') {
-      dateInput.style.display    = 'block';
-      if (endDateInput) endDateInput.style.display = 'none';
-      if (endSep) endSep.style.display = 'none';
-      yearInput.style.display    = 'none';
-      monthPills.style.display   = 'none';
-      quarterPills.style.display = 'none';
-    } else if (tf === 'custom') {
-      dateInput.style.display    = 'block';
-      if (endDateInput) endDateInput.style.display = 'block';
-      if (endSep) endSep.style.display = 'inline-block';
-      yearInput.style.display    = 'none';
-      monthPills.style.display   = 'none';
-      quarterPills.style.display = 'none';
-    } else if (tf === 'monthly') {
-      dateInput.style.display    = 'none';
-      if (endDateInput) endDateInput.style.display = 'none';
-      if (endSep) endSep.style.display = 'none';
-      yearInput.style.display    = 'block';
-      monthPills.style.display   = 'flex';
-      quarterPills.style.display = 'none';
-    } else {  // quarterly
-      dateInput.style.display    = 'none';
-      if (endDateInput) endDateInput.style.display = 'none';
-      if (endSep) endSep.style.display = 'none';
-      yearInput.style.display    = 'block';
-      monthPills.style.display   = 'none';
-      quarterPills.style.display = 'flex';
-    }
+    dateInput.style.display = (tf === 'daily' || tf === 'custom') ? 'block' : 'none';
+    if (weekInput) weekInput.style.display = (tf === 'weekly') ? 'block' : 'none';
+    if (endDateInput) endDateInput.style.display = (tf === 'custom') ? 'block' : 'none';
+    if (endSep) endSep.style.display = (tf === 'custom') ? 'inline-block' : 'none';
+    yearInput.style.display = (tf === 'monthly' || tf === 'quarterly' || tf === 'yearly') ? 'block' : 'none';
+    monthPills.style.display = (tf === 'monthly') ? 'flex' : 'none';
+    quarterPills.style.display = (tf === 'quarterly') ? 'flex' : 'none';
   }
 
   // --- Build ISO date from year + month ---
@@ -948,10 +946,16 @@ function initDateSelector() {
     _prewarmClickHouse(activeDate, tf);
   }
 
-  // --- Initialise year input from current activeDate ---
+  // --- Initialise year / week inputs from current activeDate ---
   function syncYearInput() {
     if (activeDate) {
       yearInput.value = activeDate.split('-')[0];
+    }
+  }
+  function syncWeekInput() {
+    if (weekInput && activeDate) {
+      const wk = dateToIsoWeek(activeDate);
+      if (wk) weekInput.value = wk;
     }
   }
 
@@ -984,6 +988,7 @@ function initDateSelector() {
       
       const activeTf = tfSelect.value;
       syncYearInput();
+      syncWeekInput();
       applyPickerMode(activeTf);
       highlightPills(activeTf);
       loadData(activeDate, { skipDashboard: true });
@@ -1000,8 +1005,23 @@ function initDateSelector() {
   dateInput.addEventListener("change", (e) => {
     activeDate = e.target.value;
     syncYearInput();
+    syncWeekInput();
     reloadAll(tfSelect.value);
   });
+
+  // ----------------------------------------------------------------
+  // Weekly input change
+  // ----------------------------------------------------------------
+  if (weekInput) {
+    weekInput.addEventListener("change", (e) => {
+      const mon = isoWeekToMonday(e.target.value);
+      if (!mon) return;
+      activeDate = mon;
+      dateInput.value = mon;
+      syncYearInput();
+      reloadAll('weekly');
+    });
+  }
   
   // ----------------------------------------------------------------
   // Custom end date input change
@@ -1014,7 +1034,7 @@ function initDateSelector() {
   }
 
   // ----------------------------------------------------------------
-  // Year input change (monthly / quarterly)
+  // Year input change (monthly / quarterly / yearly)
   // ----------------------------------------------------------------
   yearInput.addEventListener("change", () => {
     const yr  = parseInt(yearInput.value);
@@ -1025,10 +1045,13 @@ function initDateSelector() {
     const mo  = d.getMonth() + 1;
     if (tf === 'monthly') {
       activeDate = makeDate(yr, mo);
+    } else if (tf === 'yearly') {
+      activeDate = makeDate(yr, 1);
     } else {
       const q = Math.ceil(mo / 3);
       activeDate = makeDate(yr, Q_START_MO[q]);
     }
+    syncWeekInput();
     highlightPills(tf);
     reloadAll(tf);
   });
@@ -1071,16 +1094,28 @@ function initDateSelector() {
       const d = new Date(activeDate + 'T00:00:00');
       const yr = d.getFullYear();
       const mo = d.getMonth() + 1;
-      if (tf === 'monthly') {
+      if (tf === 'weekly') {
+        const mon = isoWeekToMonday(dateToIsoWeek(activeDate));
+        if (mon) activeDate = mon;
+      } else if (tf === 'monthly') {
         activeDate = makeDate(yr, mo);
       } else if (tf === 'quarterly') {
         const q = Math.ceil(mo / 3);
         activeDate = makeDate(yr, Q_START_MO[q]);
+      } else if (tf === 'yearly') {
+        activeDate = makeDate(yr, 1);
       } else if (tf === 'daily') {
         dateInput.value = activeDate || '';
+      } else if (tf === 'custom') {
+        dateInput.value = activeDate || '';
+        if (endDateInput && !activeEndDate) {
+          endDateInput.value = activeDate;
+          activeEndDate = activeDate;
+        }
       }
     }
     syncYearInput();
+    syncWeekInput();
     highlightPills(tf);
     reloadAll(tf);
   });
@@ -3099,7 +3134,7 @@ function renderChart() {
 
   // --- Timeframe-adjusted targets ---
   const timeframe = (document.getElementById("timeframeSelect") || {}).value || "monthly";
-  const tfFactor = timeframe === "quarterly" ? 3/12 : timeframe === "daily" ? 1/365 : 1/12;
+  const tfFactor = timeframe === "yearly" ? 1 : timeframe === "quarterly" ? 3/12 : timeframe === "weekly" ? 7/365 : timeframe === "daily" ? 1/365 : 1/12;
 
   const isVolume = _chartMode === 'volume';
   const fins     = isVolume ? paperFins : cardFins;

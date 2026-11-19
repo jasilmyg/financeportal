@@ -421,13 +421,17 @@
             <!-- Daily / Custom: plain date input (shown only when timeframe=daily or custom) -->
             <input type="date" class="date-select" id="reviewDateSelect"
                    style="padding: 0 10px; display:block;" />
+
+            <!-- Weekly: ISO week picker (shown when timeframe=weekly) -->
+            <input type="week" class="date-select" id="periodWeek"
+                   style="padding: 0 10px; display:none;" />
                    
             <!-- End Date: shown only when timeframe=custom -->
             <span id="endDateSeparator" style="display:none; color:var(--text-muted); font-size: 13px; font-weight: 500; margin: 0 8px;">to</span>
             <input type="date" class="date-select" id="endDateSelect"
                    style="padding: 0 10px; display:none;" />
 
-            <!-- Year input (shown for monthly + quarterly) -->
+            <!-- Year input (shown for monthly + quarterly + yearly) -->
             <input type="number" id="periodYear" class="date-select"
                    min="2018" max="2035" placeholder="Year"
                    style="width:78px; text-align:center; display:none; padding:0 6px;" />
@@ -461,8 +465,10 @@
           <div class="date-selector-wrapper">
             <select class="date-select" id="timeframeSelect">
               <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
               <option value="quarterly">Quarterly</option>
+              <option value="yearly">Yearly</option>
               <option value="custom">Custom Range</option>
             </select>
           </div>

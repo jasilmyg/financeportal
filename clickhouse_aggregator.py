@@ -19,7 +19,7 @@ get_clickhouse_df(date_str, timeframe, rbm, bdm, store, staff)
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -216,6 +216,11 @@ def _build_date_filter(date_str: str, timeframe: str, end_date_str: str = None) 
     if timeframe == "daily":
         sql = "toDate(s.date) = {target_date:Date}"
         params = {"target_date": dt.date()}
+    elif timeframe == "weekly":
+        w_start = dt.date() - timedelta(days=dt.date().weekday())
+        w_end = w_start + timedelta(days=6)
+        sql = "toDate(s.date) BETWEEN {start_date:Date} AND {end_date:Date}"
+        params = {"start_date": w_start, "end_date": w_end}
     elif timeframe == "monthly":
         sql = "toYear(s.date) = {yr:UInt16} AND toMonth(s.date) = {mo:UInt8}"
         params = {"yr": dt.year, "mo": dt.month}
@@ -231,6 +236,9 @@ def _build_date_filter(date_str: str, timeframe: str, end_date_str: str = None) 
             "mo_start": quarter_start_month,
             "mo_end": quarter_end_month,
         }
+    elif timeframe == "yearly":
+        sql = "toYear(s.date) = {yr:UInt16}"
+        params = {"yr": dt.year}
     elif timeframe == "custom":
         dt_end = datetime.strptime(end_date_str, "%Y-%m-%d") if end_date_str else dt
         sql = "toDate(s.date) BETWEEN {start_date:Date} AND {end_date:Date}"
@@ -1225,8 +1233,10 @@ def get_clickhouse_df(
     else:
         date_expr = {
             'daily':     'toDate(s.date)',
+            'weekly':    'toMonday(s.date)',
             'monthly':   'toStartOfMonth(s.date)',
             'quarterly': 'toStartOfQuarter(s.date)',
+            'yearly':    'toStartOfYear(s.date)',
         }.get(timeframe, 'toDate(s.date)')
 
     sql = f"""

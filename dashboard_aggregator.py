@@ -1,10 +1,31 @@
 import pandas as pd
 import numpy as np
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from sales_cleaner import _normalize_columns, PRODUCT_CATEGORY_MAP
 
 CARD_FINS = ['PINE LAB EMI', 'PINELAB', 'PINE LAB', 'PAYTM', 'BENOW'] # Upper case for matching
+
+
+def _timeframe_mask(dates_series: pd.Series, target_date: pd.Timestamp, timeframe: str, end_date: pd.Timestamp = None) -> pd.Series:
+    """Boolean mask filtering a datetime Series for daily/weekly/monthly/quarterly/yearly/custom."""
+    if timeframe == 'daily':
+        return dates_series.dt.date == target_date.date()
+    if timeframe == 'weekly':
+        t_date = target_date.date()
+        w_start = t_date - timedelta(days=t_date.weekday())
+        w_end = w_start + timedelta(days=6)
+        return (dates_series.dt.date >= w_start) & (dates_series.dt.date <= w_end)
+    if timeframe == 'monthly':
+        return (dates_series.dt.year == target_date.year) & (dates_series.dt.month == target_date.month)
+    if timeframe == 'quarterly':
+        return (dates_series.dt.year == target_date.year) & (dates_series.dt.quarter == target_date.quarter)
+    if timeframe == 'yearly':
+        return dates_series.dt.year == target_date.year
+    if timeframe == 'custom':
+        ed = (end_date or target_date).date()
+        return (dates_series.dt.date >= target_date.date()) & (dates_series.dt.date <= ed)
+    return pd.Series(True, index=dates_series.index)
 
 
 def _unuploaded_card_raw_names(target_date_str, timeframe, end_date_str=None):
@@ -92,17 +113,8 @@ def get_dashboard_data(raw_file_path, target_date_str, timeframe, rbm='', bdm=''
             target_date = pd.to_datetime(target_date_str)
 
             # 4. Filter by timeframe
-            if timeframe == 'daily':
-                mask = (df['Date'].dt.date == target_date.date())
-            elif timeframe == 'monthly':
-                mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.month == target_date.month)
-            elif timeframe == 'quarterly':
-                mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.quarter == target_date.quarter)
-            elif timeframe == 'custom':
-                end_date = pd.to_datetime(end_date_str) if end_date_str else target_date
-                mask = (df['Date'].dt.date >= target_date.date()) & (df['Date'].dt.date <= end_date.date())
-            else:
-                mask = pd.Series(True, index=df.index) # all data fallback
+            end_date = pd.to_datetime(end_date_str) if (timeframe == 'custom' and end_date_str) else target_date
+            mask = _timeframe_mask(df['Date'], target_date, timeframe, end_date)
 
             df_filtered = df[mask].copy()
 
@@ -700,16 +712,7 @@ def get_price_range_data(raw_file_path, target_date_str, timeframe, price_range=
         end_date = pd.to_datetime(end_date_str) if end_date_str else target_date
 
         # Timeframe filter
-        if timeframe == 'daily':
-            mask = df['Date'].dt.date == target_date.date()
-        elif timeframe == 'monthly':
-            mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.month == target_date.month)
-        elif timeframe == 'quarterly':
-            mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.quarter == target_date.quarter)
-        elif timeframe == 'custom':
-            mask = (df['Date'].dt.date >= target_date.date()) & (df['Date'].dt.date <= end_date.date())
-        else:
-            mask = pd.Series(True, index=df.index)
+        mask = _timeframe_mask(df['Date'], target_date, timeframe, end_date)
 
         df_f = df[mask].copy()
         if df_f.empty:
@@ -842,16 +845,7 @@ def _load_and_filter(raw_file_path, target_date_str, timeframe, df=None, end_dat
     else:
         end_date = target_date
 
-    if timeframe == 'daily':
-        mask = df['Date'].dt.date == target_date.date()
-    elif timeframe == 'monthly':
-        mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.month == target_date.month)
-    elif timeframe == 'quarterly':
-        mask = (df['Date'].dt.year == target_date.year) & (df['Date'].dt.quarter == target_date.quarter)
-    elif timeframe == 'custom':
-        mask = (df['Date'].dt.date >= target_date.date()) & (df['Date'].dt.date <= end_date.date())
-    else:
-        mask = pd.Series(True, index=df.index)
+    mask = _timeframe_mask(df['Date'], target_date, timeframe, end_date)
 
     df_f = df[mask].copy()
     if df_f.empty:

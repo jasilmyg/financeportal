@@ -12,7 +12,7 @@ columns go back to empty until the EMI files are uploaded again.
 import json
 import os
 import threading
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -245,11 +245,16 @@ def range_of(date_str: str, timeframe: str, end_date_str: str = None):
     d = pd.to_datetime(date_str).date()
     if timeframe == 'daily':
         return d, d
+    if timeframe == 'weekly':
+        start = d - timedelta(days=d.weekday())
+        return start, start + timedelta(days=6)
     if timeframe == 'monthly':
         return _month_bounds(d.strftime('%Y-%m'))
     if timeframe == 'quarterly':
         first = date(d.year, ((d.month - 1) // 3) * 3 + 1, 1)
         return first, (pd.Timestamp(first) + pd.offsets.MonthEnd(3)).date()
+    if timeframe == 'yearly':
+        return date(d.year, 1, 1), date(d.year, 12, 31)
     if timeframe == 'custom':
         end = pd.to_datetime(end_date_str).date() if end_date_str else d
         return (d, end) if d <= end else (end, d)
