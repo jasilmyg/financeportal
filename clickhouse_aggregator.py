@@ -1820,6 +1820,13 @@ LEFT JOIN (
            any(coalesce(financier, '')) AS financier,
            any(coalesce(EMI, '')) AS emi
     FROM sales_data
+    WHERE invoice_number IN (
+        SELECT s2.invoice_no
+        FROM azure_sales_report s2
+        WHERE toDate(s2.date) >= toDate('{start}')
+          AND toDate(s2.date) <= toDate('{end}')
+          AND abs(toFloat64(s2.sold_price)) > {_MIN_PRICE}
+    )
     GROUP BY invoice_number
 ) sd                               ON s.invoice_no = sd.invoice_number
 
@@ -1878,7 +1885,9 @@ ORDER BY toDate(s.date) ASC, s.branch ASC
 
         still_missing = mapped.isna()
         if still_missing.any():
-            mapped[still_missing] = store_upper[still_missing].apply(_fuzzy_bdm)
+            uniq_miss = store_upper[still_missing].unique()
+            fuzzy_map = {s: _fuzzy_bdm(s) for s in uniq_miss}
+            mapped[still_missing] = store_upper[still_missing].map(fuzzy_map)
 
         # RBM-level fallback for anything still empty
         if 'RBM' in df.columns:
@@ -1888,5 +1897,8 @@ ORDER BY toDate(s.date) ASC, s.branch ASC
                 mapped[still_missing] = rbm_upper[still_missing].map(_RBM_FIN_BDM)
 
         df['Fin BDM'] = mapped.fillna('')
+
+    if not df.empty and 'Slno' in df.columns:
+        df['Slno'] = range(1, len(df) + 1)
 
     return df

@@ -1599,6 +1599,73 @@ def api_download_cleaned():
     )
 
 
+def _write_cleaned_export_xlsx(df: pd.DataFrame, target) -> None:
+    """Stream cleaned DATA DataFrame into an .xlsx file path or BytesIO with constant memory."""
+    import xlsxwriter as _xw
+
+    opts = {
+        'constant_memory': True,
+        'strings_to_urls': False,
+        'strings_to_formulas': False,
+    }
+    if not isinstance(target, (str, os.PathLike)):
+        opts['in_memory'] = True
+
+    workbook = _xw.Workbook(target, opts)
+    worksheet = workbook.add_worksheet('Sheet1')
+
+    hdr_fmt = workbook.add_format({
+        'bold': True, 'font_color': '#FFFFFF', 'bg_color': '#1e3a5f',
+        'border': 1, 'align': 'center', 'valign': 'vcenter',
+        'font_name': 'Calibri', 'font_size': 10,
+    })
+    nrm_fmt = workbook.add_format({
+        'font_name': 'Calibri', 'font_size': 9,
+    })
+    num_fmt = workbook.add_format({
+        'font_name': 'Calibri', 'font_size': 9,
+        'num_format': '#,##0', 'align': 'right',
+    })
+    price_fmt = workbook.add_format({
+        'font_name': 'Calibri', 'font_size': 9,
+        'num_format': '#,##0.00', 'align': 'right',
+    })
+
+    cols = list(df.columns)
+    num_cols = {'QTY', 'Slno'}
+    price_cols = {'Sold Price', 'Price'}
+
+    sample = df.head(1000)
+    for col_num, col_name in enumerate(cols):
+        col_vals = sample[col_name].astype(str)
+        max_width = max(len(str(col_name)), int(col_vals.str.len().max()) if not col_vals.empty else 0)
+        col_fmt = price_fmt if col_name in price_cols else (num_fmt if col_name in num_cols else nrm_fmt)
+        worksheet.set_column(col_num, col_num, min(max_width + 2, 35), col_fmt)
+
+    worksheet.freeze_panes(1, 0)
+    worksheet.autofilter(0, 0, len(df), len(cols) - 1)
+    worksheet.set_row(0, 18)
+    worksheet.write_row(0, 0, cols, hdr_fmt)
+
+    col_lists = []
+    for col_name in cols:
+        s = df[col_name]
+        if col_name in price_cols:
+            col_lists.append(pd.to_numeric(s, errors='coerce').fillna(0.0).astype(float).tolist())
+        elif col_name in num_cols:
+            col_lists.append(pd.to_numeric(s, errors='coerce').fillna(0).astype('int64').tolist())
+        elif col_name == 'Date':
+            dt_s = pd.to_datetime(s, errors='coerce')
+            col_lists.append(dt_s.dt.strftime('%Y-%m-%d').fillna('').tolist())
+        else:
+            col_lists.append(s.fillna('').astype(str).tolist())
+
+    for row_idx, row_vals in enumerate(zip(*col_lists), start=1):
+        worksheet.write_row(row_idx, 0, row_vals)
+
+    workbook.close()
+
+
 @app.route('/api/export-date-range', methods=['GET'])
 def api_export_date_range():
     """
@@ -1641,67 +1708,9 @@ def api_export_date_range():
             return jsonify({'error': f'No data found for {start_date} → {end_date}. '
                                       'Upload a cleaned sales report or connect ClickHouse.'}), 404
 
-        # ── Build Excel in memory ──
+        # ── Build Excel in memory via constant-memory streaming writer ──
         output = _io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='Sheet1', index=False, startrow=1, header=False)
-
-            workbook  = writer.book
-            worksheet = writer.sheets['Sheet1']
-
-            # Header style — dark blue background, white bold text
-            hdr_fmt = workbook.add_format({
-                'bold': True, 'font_color': '#FFFFFF', 'bg_color': '#1e3a5f',
-                'border': 1,  'align': 'center', 'valign': 'vcenter',
-                'font_name': 'Calibri', 'font_size': 10,
-            })
-            # Data row style — light alternate rows
-            alt_fmt = workbook.add_format({
-                'font_name': 'Calibri', 'font_size': 9,
-                'bg_color': '#EBF5FB', 'border': 1,
-            })
-            nrm_fmt = workbook.add_format({
-                'font_name': 'Calibri', 'font_size': 9, 'border': 1,
-            })
-            num_fmt = workbook.add_format({
-                'font_name': 'Calibri', 'font_size': 9, 'border': 1,
-                'num_format': '#,##0', 'align': 'right',
-            })
-            price_fmt = workbook.add_format({
-                'font_name': 'Calibri', 'font_size': 9, 'border': 1,
-                'num_format': '#,##0.00', 'align': 'right',
-            })
-
-            # Write header row
-            for col_num, col_name in enumerate(df.columns):
-                worksheet.write(0, col_num, col_name, hdr_fmt)
-
-            # Write data with alternating rows + numeric formatting
-            num_cols    = {'QTY', 'Sold Price', 'Price', 'Slno'}
-            price_cols  = {'Sold Price', 'Price'}
-            for row_num, (_, row) in enumerate(df.iterrows()):
-                row_fmt = alt_fmt if row_num % 2 == 0 else nrm_fmt
-                for col_num, (col_name, val) in enumerate(zip(df.columns, row)):
-                    if col_name in price_cols:
-                        worksheet.write_number(row_num + 1, col_num,
-                                               float(val) if pd.notna(val) else 0, price_fmt)
-                    elif col_name in num_cols:
-                        worksheet.write_number(row_num + 1, col_num,
-                                               int(val) if pd.notna(val) else 0, num_fmt)
-                    else:
-                        worksheet.write(row_num + 1, col_num,
-                                        str(val) if pd.notna(val) else '', row_fmt)
-
-            # Auto-fit column widths
-            for col_num, col_name in enumerate(df.columns):
-                col_vals = df[col_name].astype(str)
-                max_width = max(len(col_name), col_vals.str.len().max() if not col_vals.empty else 0)
-                worksheet.set_column(col_num, col_num, min(int(max_width) + 2, 35))
-
-            # Freeze the header row
-            worksheet.freeze_panes(1, 0)
-            worksheet.autofilter(0, 0, 0, len(df.columns) - 1)
-            worksheet.set_row(0, 18)
+        _write_cleaned_export_xlsx(df, output)
 
         output.seek(0)
         safe_start = start_date.replace('-', '')
