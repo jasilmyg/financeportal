@@ -1489,46 +1489,24 @@
             </div>
           </div>
 
-          <!-- Value (left) and Volume (right) shown side by side -->
-          <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start;">
-            <div class="data-card" style="margin-bottom:0; min-width:0;">
-              <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <div>
-                  <h2 id="oct2-val-title">Duplicate Store Fin Share &mdash; Value (&#8377;)</h2>
-                  <span class="badge" id="oct2-val-badge">Loading...</span>
-                </div>
-                <span style="font-size:11px; color:var(--text-muted);">FIN = Paper Finance + PineLab + PAYTM + Benow</span>
+          <!-- Single combined Value (₹) + Volume (Qty) table -->
+          <div class="data-card" style="margin-bottom:0; min-width:0;">
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <h2 id="oct2-table-title">Duplicate Store Fin Share &mdash; Value (&#8377;) &amp; Volume (Qty)</h2>
+                <span class="badge" id="oct2-table-badge">Loading...</span>
               </div>
-              <div class="table-responsive" style="max-height:760px; overflow:auto;">
-                <table class="data-table" id="table-oct2-val">
-                  <thead id="oct2-val-thead" style="position:sticky; top:0; z-index:5;">
-                    <!-- Populated by JS -->
-                  </thead>
-                  <tbody id="oct2-val-tbody">
-                    <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
-                  </tbody>
-                </table>
-              </div>
+              <span style="font-size:11px; color:var(--text-muted);">FIN = Paper Finance + PineLab + PAYTM + Benow</span>
             </div>
-
-            <div class="data-card" style="margin-bottom:0; min-width:0;">
-              <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <div>
-                  <h2 id="oct2-vol-title">Duplicate Store Fin Share &mdash; Volume (Qty)</h2>
-                  <span class="badge" id="oct2-vol-badge">Loading...</span>
-                </div>
-                <span style="font-size:11px; color:var(--text-muted);">FIN = Paper Finance + PineLab + PAYTM + Benow</span>
-              </div>
-              <div class="table-responsive" style="max-height:760px; overflow:auto;">
-                <table class="data-table" id="table-oct2-vol">
-                  <thead id="oct2-vol-thead" style="position:sticky; top:0; z-index:5;">
-                    <!-- Populated by JS -->
-                  </thead>
-                  <tbody id="oct2-vol-tbody">
-                    <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
-                  </tbody>
-                </table>
-              </div>
+            <div class="table-responsive" style="max-height:760px; overflow:auto;">
+              <table class="data-table" id="table-oct2-combined">
+                <thead id="oct2-table-thead" style="position:sticky; top:0; z-index:5;">
+                  <!-- Populated by JS -->
+                </thead>
+                <tbody id="oct2-table-tbody">
+                  <tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">Loading Store Fin Share data...</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

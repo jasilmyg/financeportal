@@ -5825,10 +5825,8 @@ window.loadOct2SheetsData = function(forceReload) {
 };
 
 function _oct2SetBodies(html) {
-  ["oct2-val-tbody", "oct2-vol-tbody"].forEach(id => {
-    const t = document.getElementById(id);
-    if (t) t.innerHTML = html;
-  });
+  const t = document.getElementById("oct2-table-tbody");
+  if (t) t.innerHTML = html;
 }
 
 function _oct2ViewMode() { return (document.getElementById("oct2-view-by") || {}).value || "store"; }
@@ -6317,113 +6315,164 @@ window.renderOct2SheetsUI = function() {
   };
   const th = (t, st, cls) => `<th class="${cls === false ? "" : "num-align"}" style="${st || ""}">${t}</th>`;
 
-  const renderTable = (isVal, key) => {
-    const titleEl = document.getElementById(`oct2-${key}-title`);
-    const badgeEl = document.getElementById(`oct2-${key}-badge`);
-    const sThead = document.getElementById(`oct2-${key}-thead`);
-    const sTbody = document.getElementById(`oct2-${key}-tbody`);
-    const { rows, totalUnfiltered } = buildRows(isVal);
+  const titleEl = document.getElementById("oct2-table-title");
+  const badgeEl = document.getElementById("oct2-table-badge");
+  const sThead = document.getElementById("oct2-table-thead");
+  const sTbody = document.getElementById("oct2-table-tbody");
 
-    if (titleEl) {
-      titleEl.innerHTML = `Duplicate Fin Share by ${V.label} &mdash; ${isVal ? "Value (&#8377;)" : "Volume (Qty)"}`;
-    }
-    if (badgeEl) {
-      badgeEl.textContent = view === "store" ? `${rows.length} of ${totalUnfiltered} Stores` : `${rows.length} ${V.plural}`;
-    }
+  const valBuilt = buildRows(true);
+  const volBuilt = buildRows(false);
+  const valMap = new Map(valBuilt.rows.map(r => [r.name, r]));
+  const volMap = new Map(volBuilt.rows.map(r => [r.name, r]));
+  const zeroRow = name => ({ name, store: "", fin: 0, paper_fin: 0, card_fin: 0, total: 0, n: 0, share: 0, pFin: null, pTotal: null, pShare: null, dif: null, growth: null });
 
-    // header
-    const head = [V.head, "FIN"].concat(showPaper ? ["Paper FIN"] : [], showCard ? ["Card FIN"] : [], ["Total", "FIN SHARE"]);
-    let headHtml = th(V.head, "background:#fef08a; color:#1e293b; font-weight:800;", false) +
-      th("FIN") + (showPaper ? th("Paper FIN", "color:#4ade80;") : "") + (showCard ? th("Card FIN", "color:#a78bfa;") : "") + th("Total") +
+  const allNames = new Set([...valMap.keys(), ...volMap.keys()]);
+  const combinedRows = [...allNames].map(name => {
+    const valR = valMap.get(name) || zeroRow(name);
+    const volR = volMap.get(name) || zeroRow(name);
+    return { name, store: valR.store || volR.store || "", val: valR, vol: volR };
+  });
+  if (view === "staff") combinedRows.sort((a, b) => b.val.total - a.val.total);
+  else combinedRows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  if (titleEl) {
+    titleEl.innerHTML = `Duplicate Fin Share by ${V.label} &mdash; Value (&#8377;) &amp; Volume (Qty)`;
+  }
+  if (badgeEl) {
+    badgeEl.textContent = view === "store" ? `${combinedRows.length} of ${valBuilt.totalUnfiltered} Stores` : `${combinedRows.length} ${V.plural}`;
+  }
+
+  // Two-row grouped header: Row 1 = [Entity | VALUE (₹) | VOLUME (Qty)], Row 2 = metric columns
+  const sideSubLabels = ["FIN"].concat(showPaper ? ["Paper FIN"] : [], showCard ? ["Card FIN"] : [], ["Total", "FIN SHARE"], hasCmp ? [`${cmpLbl} FIN`, `${cmpLbl} SHARE`, "DIF", "GROWTH"] : []);
+  const sideCols = sideSubLabels.length;
+  const subHeadHtml = isVol => {
+    const sep = isVol ? "border-left:2px solid rgba(255,255,255,0.28);" : "border-left:2px solid rgba(255,255,255,0.18);";
+    let h = th("FIN", sep) +
+      (showPaper ? th("Paper FIN", "color:#4ade80;") : "") +
+      (showCard ? th("Card FIN", "color:#a78bfa;") : "") +
+      th("Total") +
       th("FIN SHARE", "background:#fef08a; color:#1e293b; font-weight:800;");
     if (hasCmp) {
-      head.push(`${cmpLbl} FIN`, `${cmpLbl} SHARE`, "DIF", "GROWTH");
-      headHtml += th(`${cmpLbl} FIN`) + th(`${cmpLbl} SHARE`) + th("DIF") + th("GROWTH");
+      h += th(`${cmpLbl} FIN`) + th(`${cmpLbl} SHARE`) + th("DIF") + th("GROWTH");
     }
-    if (sThead) sThead.innerHTML = `<tr>${headHtml}</tr>`;
-    const nCols = head.length;
-    if (!sTbody) return;
+    return h;
+  };
+  if (sThead) {
+    sThead.innerHTML =
+      `<tr>` +
+        `<th rowspan="2" style="background:#fef08a; color:#1e293b; font-weight:800; vertical-align:middle;">${V.head}</th>` +
+        `<th colspan="${sideCols}" style="text-align:center; background:#1e3a5f; color:#ffffff; font-weight:800; letter-spacing:0.4px; border-left:2px solid rgba(255,255,255,0.22);">VALUE (&#8377;)</th>` +
+        `<th colspan="${sideCols}" style="text-align:center; background:#0f4c5c; color:#ffffff; font-weight:800; letter-spacing:0.4px; border-left:2px solid rgba(255,255,255,0.32);">VOLUME (Qty)</th>` +
+      `</tr>` +
+      `<tr>${subHeadHtml(false)}${subHeadHtml(true)}</tr>`;
+  }
 
-    const exportRows = [];
-    if (!rows.length) {
-      sTbody.innerHTML = `<tr><td colspan="${nCols}" style="text-align:center; padding:25px; color:var(--text-muted);">No ${V.plural.toLowerCase()} match current filters.</td></tr>`;
-      _oct2LastRender[key] = { head, data: exportRows };
-      return;
-    }
+  const exportHead = [V.head]
+    .concat(sideSubLabels.map(l => `Value ${l}`))
+    .concat(sideSubLabels.map(l => `Volume ${l}`));
+  const nCols = 1 + sideCols * 2;
+  if (!sTbody) return;
 
-    let html = "";
-    let sumFin = 0, sumTot = 0, sumPaper = 0, sumCard = 0, sumPFin = 0, sumPTot = 0;
-    rows.forEach(r => {
-      sumFin += r.fin; sumTot += r.total; sumPaper += r.paper_fin; sumCard += r.card_fin;
-      if (r.pFin !== null) { sumPFin += r.pFin; sumPTot += r.pTotal; }
-      const sharePctInt = Math.round(r.share * 100);
-      const fmtF = v => (isVal ? "₹" + Math.round(v).toLocaleString("en-IN") : String(Math.round(v)));
-      const tipParts = [];
-      if (showPaper) tipParts.push(`Paper Fin: ${fmtF(r.paper_fin)}`);
-      if (showCard) tipParts.push(`Card EMI: ${fmtF(r.card_fin)}`);
-      const tip = tipParts.join(" | ");
-      const nameCell = view === "staff"
-        ? `<td style="font-weight:600; white-space:nowrap;">${r.name}<div style="font-size:10px; font-weight:500; color:var(--text-muted);">${r.store || ""}</div></td>`
-        : `<td style="font-weight:600; white-space:nowrap;">${r.name}</td>`;
+  const exportRows = [];
+  if (!combinedRows.length) {
+    sTbody.innerHTML = `<tr><td colspan="${nCols}" style="text-align:center; padding:25px; color:var(--text-muted);">No ${V.plural.toLowerCase()} match current filters.</td></tr>`;
+    _oct2LastRender = { combined: { head: exportHead, data: exportRows } };
+    return;
+  }
 
-      let extra = "";
-      const exp = [r.name, Math.round(r.fin)].concat(showPaper ? [Math.round(r.paper_fin)] : [], showCard ? [Math.round(r.card_fin)] : [], [Math.round(r.total), (r.share * 100).toFixed(2) + "%"]);
-      if (hasCmp) {
-        extra = (r.pFin === null ? NA : `<td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.pFin)}</td>`) +
-          shareCell(isVal, r.pShare) + pctPointCell(r.dif) + pctPointCell(r.growth);
-        exp.push(r.pFin === null ? "#N/A" : Math.round(r.pFin), r.pShare === null ? "#N/A" : (r.pShare * 100).toFixed(2) + "%",
-          r.dif === null ? "#N/A" : (r.dif * 100).toFixed(2) + "%", r.growth === null ? "#N/A" : (r.growth * 100).toFixed(2) + "%");
-      }
-      exportRows.push(exp);
-
-      html += `<tr title="${tip}">
-          ${nameCell}
-          <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.fin)}</td>
-          ${showPaper ? `<td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(r.paper_fin)}</td>` : ""}
-          ${showCard ? `<td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(r.card_fin)}</td>` : ""}
-          <td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.total)}</td>
-          <td class="num-align" style="${shareBg(isVal, sharePctInt)} text-align:center;" title="${(r.share * 100).toFixed(2)}%">${sharePctInt}%</td>
-          ${extra}
-        </tr>`;
-    });
-
-    // footer: totals of the rows shown
-    const totShare = sumTot > 0 ? sumFin / sumTot : 0;
-    let footExtra = "";
+  const sideCellsHtml = (r, isVal, sepStyle) => {
+    const sharePctInt = Math.round(r.share * 100);
+    let c =
+      `<td class="num-align" style="font-variant-numeric:tabular-nums; ${sepStyle}">${Math.round(r.fin)}</td>` +
+      (showPaper ? `<td class="num-align" style="font-variant-numeric:tabular-nums; color:#16a34a;">${Math.round(r.paper_fin)}</td>` : "") +
+      (showCard ? `<td class="num-align" style="font-variant-numeric:tabular-nums; color:#7c3aed;">${Math.round(r.card_fin)}</td>` : "") +
+      `<td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.total)}</td>` +
+      `<td class="num-align" style="${shareBg(isVal, sharePctInt)} text-align:center;" title="${(r.share * 100).toFixed(2)}%">${sharePctInt}%</td>`;
     if (hasCmp) {
-      const pShare = sumPTot > 0 ? sumPFin / sumPTot : 0;
-      footExtra = `<td class="num-align">${Math.round(sumPFin).toLocaleString("en-IN")}</td>
-        <td class="num-align" style="text-align:center;">${(pShare * 100).toFixed(1)}%</td>` +
-        pctPointCell(totShare - pShare) + pctPointCell(sumPFin > 0 ? (sumFin - sumPFin) / sumPFin : null);
+      c += (r.pFin === null ? NA : `<td class="num-align" style="font-variant-numeric:tabular-nums;">${Math.round(r.pFin)}</td>`) +
+        shareCell(isVal, r.pShare) + pctPointCell(r.dif) + pctPointCell(r.growth);
     }
-    html += `<tr class="total-row" style="font-weight:800;">
-        <td>Total (${rows.length} ${V.plural})</td>
-        <td class="num-align">${Math.round(sumFin).toLocaleString("en-IN")}</td>
-        ${showPaper ? `<td class="num-align" style="color:#16a34a;">${Math.round(sumPaper).toLocaleString("en-IN")}</td>` : ""}
-        ${showCard ? `<td class="num-align" style="color:#7c3aed;">${Math.round(sumCard).toLocaleString("en-IN")}</td>` : ""}
-        <td class="num-align">${Math.round(sumTot).toLocaleString("en-IN")}</td>
-        <td class="num-align" style="text-align:center; color:#059669;">${(totShare * 100).toFixed(1)}%</td>
-        ${footExtra}
-      </tr>`;
-    sTbody.innerHTML = html;
-    _oct2LastRender[key] = { head, data: exportRows };
+    return c;
   };
 
-  renderTable(true, "val");
-  renderTable(false, "vol");
+  const sideExportVals = r => {
+    const arr = [Math.round(r.fin)]
+      .concat(showPaper ? [Math.round(r.paper_fin)] : [], showCard ? [Math.round(r.card_fin)] : [], [Math.round(r.total), (r.share * 100).toFixed(2) + "%"]);
+    if (hasCmp) {
+      arr.push(
+        r.pFin === null ? "#N/A" : Math.round(r.pFin),
+        r.pShare === null ? "#N/A" : (r.pShare * 100).toFixed(2) + "%",
+        r.dif === null ? "#N/A" : (r.dif * 100).toFixed(2) + "%",
+        r.growth === null ? "#N/A" : (r.growth * 100).toFixed(2) + "%"
+      );
+    }
+    return arr;
+  };
+
+  const mkAcc = () => ({ fin: 0, paper: 0, card: 0, tot: 0, pFin: 0, pTot: 0 });
+  const sumVal = mkAcc();
+  const sumVol = mkAcc();
+  const addAcc = (acc, r) => {
+    acc.fin += r.fin; acc.paper += r.paper_fin; acc.card += r.card_fin; acc.tot += r.total;
+    if (r.pFin !== null) { acc.pFin += r.pFin; acc.pTot += r.pTotal; }
+  };
+
+  let html = "";
+  combinedRows.forEach(item => {
+    addAcc(sumVal, item.val);
+    addAcc(sumVol, item.vol);
+    const tipParts = [];
+    if (showPaper) tipParts.push(`Paper Fin: ₹${Math.round(item.val.paper_fin).toLocaleString("en-IN")} (${Math.round(item.vol.paper_fin)} Qty)`);
+    if (showCard) tipParts.push(`Card EMI: ₹${Math.round(item.val.card_fin).toLocaleString("en-IN")} (${Math.round(item.vol.card_fin)} Qty)`);
+    const tip = tipParts.join(" | ");
+    const nameCell = view === "staff"
+      ? `<td style="font-weight:600; white-space:nowrap;">${item.name}<div style="font-size:10px; font-weight:500; color:var(--text-muted);">${item.store || ""}</div></td>`
+      : `<td style="font-weight:600; white-space:nowrap;">${item.name}</td>`;
+
+    exportRows.push([item.name, ...sideExportVals(item.val), ...sideExportVals(item.vol)]);
+    html += `<tr title="${tip}">` +
+      nameCell +
+      sideCellsHtml(item.val, true, "border-left:2px solid var(--card-border);") +
+      sideCellsHtml(item.vol, false, "border-left:2px solid var(--card-border);") +
+      `</tr>`;
+  });
+
+  const footerSideHtml = acc => {
+    const totShare = acc.tot > 0 ? acc.fin / acc.tot : 0;
+    let f =
+      `<td class="num-align" style="border-left:2px solid var(--card-border);">${Math.round(acc.fin).toLocaleString("en-IN")}</td>` +
+      (showPaper ? `<td class="num-align" style="color:#16a34a;">${Math.round(acc.paper).toLocaleString("en-IN")}</td>` : "") +
+      (showCard ? `<td class="num-align" style="color:#7c3aed;">${Math.round(acc.card).toLocaleString("en-IN")}</td>` : "") +
+      `<td class="num-align">${Math.round(acc.tot).toLocaleString("en-IN")}</td>` +
+      `<td class="num-align" style="text-align:center; color:#059669;">${(totShare * 100).toFixed(1)}%</td>`;
+    if (hasCmp) {
+      const pShare = acc.pTot > 0 ? acc.pFin / acc.pTot : 0;
+      f += `<td class="num-align">${Math.round(acc.pFin).toLocaleString("en-IN")}</td>` +
+        `<td class="num-align" style="text-align:center;">${(pShare * 100).toFixed(1)}%</td>` +
+        pctPointCell(totShare - pShare) +
+        pctPointCell(acc.pFin > 0 ? (acc.fin - acc.pFin) / acc.pFin : null);
+    }
+    return f;
+  };
+
+  html += `<tr class="total-row" style="font-weight:800;">` +
+    `<td>Total (${combinedRows.length} ${V.plural})</td>` +
+    footerSideHtml(sumVal) +
+    footerSideHtml(sumVol) +
+    `</tr>`;
+  sTbody.innerHTML = html;
+  _oct2LastRender = { combined: { head: exportHead, data: exportRows } };
 };
 
 window.exportOct2SheetsToExcel = function() {
-  const L = _oct2LastRender;
-  if (typeof XLSX === "undefined" || !(L.val || L.vol)) {
+  const t = (_oct2LastRender || {}).combined;
+  if (typeof XLSX === "undefined" || !t) {
     showToast("Data not loaded yet", "error");
     return;
   }
   try {
     const wb = XLSX.utils.book_new();
-    [["Value", L.val], ["Volume", L.vol]].forEach(([name, t]) => {
-      if (t) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([t.head, ...t.data]), name);
-    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([t.head, ...t.data]), "Fin Share");
     XLSX.writeFile(wb, `Duplicate_Fin_Share_${_oct2ViewMode()}_${activeDate || "data"}.xlsx`);
     showToast("✅ Exported to Excel", "success");
   } catch (e) {
