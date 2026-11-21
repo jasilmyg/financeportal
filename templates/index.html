@@ -17,6 +17,7 @@
 
   <!-- CSS -->
   <link rel="stylesheet" href="/static/css/style.css?v=20260917_toggle_v1">
+  <link rel="stylesheet" href="/static/css/ai_copilot.css?v=20261121_v1">
   <!-- Three.js for 3D background -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -400,6 +401,10 @@
           <i data-lucide="settings"></i>
           <span>Global Targets</span>
         </li>
+        <li class="nav-item" data-tab="ai-studio">
+          <i data-lucide="sparkles"></i>
+          <span>AI Analyst &amp; Studio</span>
+        </li>
       </nav>
       
       <div class="sidebar-footer">
@@ -488,6 +493,10 @@
         </div>
         
         <div class="action-buttons">
+          <button class="btn-ai-copilot" id="btnOpenAICopilot" title="Open myG AI Finance Copilot (Ctrl+K)">
+            <span>✨ AI Copilot</span>
+            <span class="ai-kbd">Ctrl+K</span>
+          </button>
           <button id="themeToggleBtn" onclick="window.toggleTheme()" title="Toggle dark / light theme" aria-label="Toggle theme">
             <span class="theme-icon">🌙</span>
           </button>
@@ -2296,10 +2305,260 @@
             <button class="btn btn-primary" id="btnSaveConfig" style="margin-top: 20px;"><i data-lucide="check"></i> Save Targets Config</button>
           </div>
         </div>
+
+        <!-- AI ANALYST & STUDIO TAB -->
+        <div class="tab-page" id="tab-ai-studio">
+          <div class="data-card" style="margin-bottom: 16px;">
+            <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+              <div>
+                <h2 style="margin:0;">✨ myG AI Analyst &amp; Dashboard Studio</h2>
+                <span class="ai-mode-pill builtin" style="margin-top:4px;">● Connecting AI Engine…</span>
+              </div>
+              <div class="ai-ctx-summary" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            </div>
+
+            <div class="ai-studio-subnav" style="margin-top:14px;">
+              <button class="ai-subtab-btn active" data-sub="chat" onclick="window.MyGAI.switchStudioSubtab('chat')">💬 AI Chat Workspace</button>
+              <button class="ai-subtab-btn" data-sub="brief" onclick="window.MyGAI.switchStudioSubtab('brief')">🧠 Deep Insights &amp; Morning Brief</button>
+              <button class="ai-subtab-btn" data-sub="studio" onclick="window.MyGAI.switchStudioSubtab('studio')">🛠 Dashboard Editor Studio</button>
+              <button class="ai-subtab-btn" data-sub="memory" onclick="window.MyGAI.switchStudioSubtab('memory')">📚 Learned Memory &amp; Settings</button>
+            </div>
+
+            <!-- SUBVIEW 1: FULL-SCREEN AI CHAT WORKSPACE -->
+            <div class="ai-subview active" id="ai-sub-chat">
+              <div class="ai-studio-chat-grid">
+                <div class="ai-conv-sidebar">
+                  <button class="ai-send-btn" style="width:100%;" onclick="window.MyGAI.newChat()">+ New Conversation</button>
+                  <div style="font-size:11px;font-weight:700;opacity:0.65;margin-top:6px;text-transform:uppercase;">Saved Chats (ClickHouse)</div>
+                  <div id="ai-conv-list"></div>
+                </div>
+                <div class="ai-studio-chat-main">
+                  <div class="ai-quick-chips">
+                    <button class="ai-chip" data-target="studio" data-deep="1" data-prompt="Run a deep 7-axis finance analysis and identify top recovery opportunities">🧠 Deep 7-Axis Analysis</button>
+                    <button class="ai-chip" data-target="studio" data-prompt="Show top 10 and bottom 10 stores by Fin Share compared with previous month">🏪 Store Fin Share Audit</button>
+                    <button class="ai-chip" data-target="studio" data-prompt="Show TM (Fin BDM) target vs achievement pacing">🎯 TM Pacing</button>
+                    <button class="ai-chip" data-target="studio" data-prompt="Show Brand and Price Range finance breakdown for MOBILE">📱 Mobile Brand Mix</button>
+                    <button class="ai-chip" data-target="studio" data-prompt="Pin a Top 10 Stores Fin Share chart to Dashboard">🛠 Pin Custom Chart</button>
+                  </div>
+                  <div class="ai-messages" id="studio-messages"></div>
+                  <div class="ai-composer">
+                    <div class="ai-composer-row">
+                      <textarea class="ai-textarea" id="studio-input" rows="2" placeholder="Ask anything about sales, stores, TMs, staff, financiers, SQL queries, dashboard edits, or say 'Remember that...'"></textarea>
+                      <button class="ai-send-btn" id="studio-send">Send ↵</button>
+                    </div>
+                    <div class="ai-composer-opts">
+                      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="studio-deep"> Force Deep Reasoning Model (Pro)
+                      </label>
+                      <span>Shift+Enter for new line · Persists in ClickHouse</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SUBVIEW 2: EXECUTIVE MORNING BRIEF & DEEP INSIGHTS -->
+            <div class="ai-subview" id="ai-sub-brief">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <div style="font-size:13px;opacity:0.85;">Automatic 7-axis variance bridge, store anomalies, ₹ Cr recovery levers &amp; ERP-vs-DO data hygiene audit for the active Review Date.</div>
+                <button class="ai-send-btn" onclick="window.MyGAI.loadExecutiveBrief()">🔄 Run Deep Insights Now</button>
+              </div>
+              <div id="ai-brief-output">
+                <div class="ai-stat-card" style="text-align:center;padding:28px;">Click <strong>Run Deep Insights Now</strong> to generate a live executive diagnostic.</div>
+              </div>
+            </div>
+
+            <!-- SUBVIEW 3: DASHBOARD EDITOR STUDIO (TIER 2) -->
+            <div class="ai-subview" id="ai-sub-studio">
+              <div class="ai-two-col">
+                <div class="ai-stat-card">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <h3 style="margin:0;font-size:15px;">Pinned Live Widgets</h3>
+                    <button class="ai-icon-btn" id="btn-ai-studio-undo" onclick="window.MyGAI.undoDashboardEdit()">↩ 1-Click Undo</button>
+                  </div>
+                  <div id="ai-studio-widgets-list"></div>
+                  <h4 style="margin:14px 0 8px;font-size:13px;">Edit Version History (ClickHouse)</h4>
+                  <div id="ai-studio-history-list"></div>
+                </div>
+
+                <div class="ai-stat-card">
+                  <h3 style="margin:0 0 12px;font-size:15px;">+ Pin New Live Widget to Any Tab</h3>
+                  <div class="ai-form-row">
+                    <label>Widget Title</label>
+                    <input type="text" id="studio-w-title" placeholder="e.g. Top 10 Stores Fin Share or IDFC Mobile Share">
+                  </div>
+                  <div class="ai-two-col">
+                    <div class="ai-form-row">
+                      <label>Target Tab</label>
+                      <select id="studio-w-tab">
+                        <option value="dashboard">Dashboard</option>
+                        <option value="exec-summary">Exec Summary</option>
+                        <option value="store">Store Performance</option>
+                        <option value="oct2-sheets">Duplicate Store Fin Share</option>
+                        <option value="category">Category Performance</option>
+                      </select>
+                    </div>
+                    <div class="ai-form-row">
+                      <label>Widget Type</label>
+                      <select id="studio-w-type">
+                        <option value="chart">Bar / Line Chart</option>
+                        <option value="table">Live Table</option>
+                        <option value="kpi">Single KPI Card</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="ai-form-row">
+                    <label>Data Source</label>
+                    <select id="studio-w-source">
+                      <option value="financier">Financier Value Mix (Live ClickHouse)</option>
+                      <option value="store_top">Top 10 Stores by Fin Share</option>
+                      <option value="store_low">Bottom 10 Stores by Fin Share</option>
+                      <option value="tm">Fin BDM (TM) Fin Share</option>
+                      <option value="category">Category Fin Share %</option>
+                      <option value="sql">Custom Read-Only ClickHouse SQL (supports {{DATE_FILTER}})</option>
+                    </select>
+                  </div>
+                  <div class="ai-form-row" id="studio-w-sql-row" style="display:none;">
+                    <label>ClickHouse SELECT SQL (use {{DATE_FILTER}}, {{PAPER_FIN_EXPR}}, {{BASE_FILTER}})</label>
+                    <textarea id="studio-w-sql" rows="4" placeholder="SELECT {{PAPER_FIN_EXPR}} AS fin, round(sum({{VAL_EXPR}})/1e7, 2) AS cr FROM azure_sales_report s LEFT JOIN azure_invoice_report inv ON s.invoice_no = inv.invoice_no WHERE {{DATE_FILTER}} AND {{BASE_FILTER}} GROUP BY fin ORDER BY cr DESC"></textarea>
+                  </div>
+                  <div class="ai-form-row">
+                    <label>Admin PIN (only if PIN lock enabled)</label>
+                    <input type="password" id="studio-admin-pin" placeholder="Leave blank if PIN lock is OFF">
+                  </div>
+                  <button class="ai-send-btn" onclick="window.MyGAI.createWidgetFromStudio()">✓ Pin Widget to Dashboard</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- SUBVIEW 4: LEARNED MEMORY & AI PROVIDER SETTINGS -->
+            <div class="ai-subview" id="ai-sub-memory">
+              <div class="ai-two-col">
+                <div class="ai-stat-card">
+                  <h3 style="margin:0 0 10px;font-size:15px;">📚 Learned Business Rules &amp; Exceptions</h3>
+                  <div id="ai-memory-list" style="margin-bottom:14px;"></div>
+                  <div class="ai-form-row">
+                    <label>Topic / Rule Name</label>
+                    <input type="text" id="mem-topic" placeholder="e.g. Vypin Store Renovation">
+                  </div>
+                  <div class="ai-form-row">
+                    <label>Category</label>
+                    <select id="mem-cat">
+                      <option value="business_rule">Business Rule</option>
+                      <option value="store_exception">Store Exception</option>
+                      <option value="kpi_definition">KPI Definition</option>
+                      <option value="user_preference">User Preference</option>
+                    </select>
+                  </div>
+                  <div class="ai-form-row">
+                    <label>Detail to Remember Permanently</label>
+                    <textarea id="mem-content" rows="2" placeholder="e.g. Vypin Future was closed Oct 5-12 for renovation; exclude from drop alerts."></textarea>
+                  </div>
+                  <button class="ai-send-btn" onclick="window.MyGAI.addMemoryFromUI()">+ Save to ClickHouse Memory</button>
+
+                  <h4 style="margin:18px 0 8px;font-size:13px;">⭐ Learned Golden SQL Queries</h4>
+                  <div id="ai-golden-list"></div>
+                </div>
+
+                <div class="ai-stat-card">
+                  <h3 style="margin:0 0 10px;font-size:15px;">⚙️ LLM Provider &amp; Security Settings</h3>
+                  <div id="ai-pin-status" style="font-size:12px;margin-bottom:12px;opacity:0.85;"></div>
+                  <div class="ai-form-row">
+                    <label>AI Provider</label>
+                    <select id="ai-set-provider">
+                      <option value="gemini">Google Gemini (Recommended: 2.5 Flash + 2.5 Pro)</option>
+                      <option value="openai">OpenAI (GPT-4.1-mini + GPT-4.1)</option>
+                      <option value="anthropic">Anthropic Claude (Sonnet 4)</option>
+                      <option value="openrouter">OpenRouter / OpenAI-Compatible</option>
+                    </select>
+                  </div>
+                  <div class="ai-form-row">
+                    <label>API Key (or set GEMINI_API_KEY / OPENAI_API_KEY in .env or Render env vars)</label>
+                    <input type="password" id="ai-set-apikey" placeholder="Paste new API key (stored safely in ClickHouse; leave blank to keep existing)">
+                  </div>
+                  <div class="ai-two-col">
+                    <div class="ai-form-row">
+                      <label>Fast Model (Quick Q&amp;A / UI)</label>
+                      <input type="text" id="ai-set-fast" placeholder="gemini-2.5-flash">
+                    </div>
+                    <div class="ai-form-row">
+                      <label>Deep Model (Analysis / SQL / Code)</label>
+                      <input type="text" id="ai-set-deep" placeholder="gemini-2.5-pro">
+                    </div>
+                  </div>
+                  <div class="ai-form-row">
+                    <label>Custom Base URL (optional, for OpenRouter/Azure/proxy)</label>
+                    <input type="text" id="ai-set-baseurl" placeholder="Leave blank for provider default">
+                  </div>
+                  <div class="ai-two-col">
+                    <div class="ai-form-row">
+                      <label>Set / Change Admin PIN (optional)</label>
+                      <input type="password" id="ai-set-newpin" placeholder="Leave blank or type __CLEAR__">
+                    </div>
+                    <div class="ai-form-row">
+                      <label>Current Admin PIN (if already locked)</label>
+                      <input type="password" id="ai-set-curpin" placeholder="Required only if PIN active">
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                    <button class="ai-send-btn" onclick="window.MyGAI.saveAISettings()">💾 Save AI Settings</button>
+                    <button class="ai-icon-btn" onclick="window.MyGAI.testAIProvider()">⚡ Test Connection</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         
       </div>
     </main>
   </div>
+
+  <!-- FLOATING AI COPILOT DRAWER (Available on every tab via Ctrl+K) -->
+  <div class="ai-drawer-backdrop" id="aiDrawerBackdrop"></div>
+  <aside class="ai-drawer" id="aiDrawer" aria-label="myG AI Finance Copilot">
+    <div class="ai-drawer-header">
+      <div class="ai-drawer-title">
+        <div class="ai-avatar-badge">✨</div>
+        <div>
+          <h3>myG Finance AI Copilot</h3>
+          <span class="ai-mode-pill builtin">● Connecting…</span>
+        </div>
+      </div>
+      <div class="ai-header-actions">
+        <button class="ai-icon-btn" title="New Chat" onclick="window.MyGAI.newChat()">+ New</button>
+        <button class="ai-icon-btn" title="Expand / Narrow" onclick="window.MyGAI.toggleDrawerWide()">⇔</button>
+        <button class="ai-icon-btn" title="Open Full AI Studio" onclick="window.MyGAI.closeDrawer();document.querySelector('.nav-item[data-tab=&quot;ai-studio&quot;]')?.click();">Studio ↗</button>
+        <button class="ai-icon-btn" title="Close (Esc)" onclick="window.MyGAI.closeDrawer()">✕</button>
+      </div>
+    </div>
+
+    <div class="ai-context-strip">
+      <div class="ai-ctx-summary" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div class="ai-quick-chips">
+      <button class="ai-chip" data-target="drawer" data-deep="1" data-prompt="Run a deep analysis for the current period with top drops and recovery upside">🧠 Deep Insights</button>
+      <button class="ai-chip" data-target="drawer" data-prompt="Show top 10 stores and bottom 10 stores by Fin Share">🏪 Store Rank</button>
+      <button class="ai-chip" data-target="drawer" data-prompt="Show TM target pacing and Card Slab achievement">🎯 TM Targets</button>
+      <button class="ai-chip" data-target="drawer" data-prompt="Open Duplicate Store Fin Share by Fin BDM with Paper + Card Finance split">⚡ Filter View</button>
+    </div>
+
+    <div class="ai-messages" id="drawer-messages"></div>
+
+    <div class="ai-composer">
+      <div class="ai-composer-row">
+        <textarea class="ai-textarea" id="drawer-input" rows="2" placeholder="Ask anything, run SQL, edit widgets/targets, or say 'Remember that...'"></textarea>
+        <button class="ai-send-btn" id="drawer-send">Ask ↵</button>
+      </div>
+      <div class="ai-composer-opts">
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+          <input type="checkbox" id="drawer-deep"> Deep Mode
+        </label>
+        <span>Ctrl+K toggle · Live ClickHouse</span>
+      </div>
+    </div>
+  </aside>
 
   <!-- NEW DATE MODAL -->
   <div class="modal-overlay" id="newDateModal">
@@ -2335,6 +2594,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="/static/js/main.js?v=20261109_derived_logic"></script>
   <script src="/static/js/drill_down.js?v=20261103_emi_gate"></script>
+  <script src="/static/js/ai_copilot.js?v=20261121_v1"></script>
 
   <!-- Data Plexus Network Animation (Light Theme) -->
   <script>

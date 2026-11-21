@@ -67,6 +67,14 @@ app = Flask(__name__, template_folder=os.path.join(basedir, 'templates'), static
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable static file caching
 logging.basicConfig(level=logging.INFO)
 
+# --- Inbuilt AI Agent, Deep Insights & Dashboard Studio Blueprint ---
+try:
+    from ai_routes import ai_bp
+    app.register_blueprint(ai_bp)
+    app.logger.info("AI Agent Blueprint (/api/ai/*) registered.")
+except Exception as _ai_exc:
+    app.logger.warning("AI Agent Blueprint not loaded (optional): %s", _ai_exc)
+
 # Holds path to the latest cleaned sales report (temp file)
 _latest_cleaned_report_path = None
 # Holds path to the latest finance detailed report (temp file)

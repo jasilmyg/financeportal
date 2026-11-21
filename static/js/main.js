@@ -943,8 +943,57 @@ function initDateSelector() {
     if (document.getElementById("tab-store")?.classList.contains("active")) loadStoreData();
     if (document.getElementById("tab-oct-sheets")?.classList.contains("active") && typeof loadOctSheetsData === "function") loadOctSheetsData(false);
     if (document.getElementById("tab-oct2-sheets")?.classList.contains("active") && typeof loadOct2SheetsData === "function") loadOct2SheetsData(false);
+    if (window.MyGAI && typeof window.MyGAI.onPeriodChanged === "function") window.MyGAI.onPeriodChanged();
     _prewarmClickHouse(activeDate, tf);
   }
+
+  // Expose safe bridge for the inbuilt AI Agent (context read + live Tier-1 period control)
+  window._mygPortalBridge = {
+    getContext: function () {
+      const activeNav = document.querySelector(".nav-item.active");
+      const activeTab = activeNav ? activeNav.getAttribute("data-tab") : "dashboard";
+      const tf = (tfSelect && tfSelect.value) || "monthly";
+      let st = "KERALA";
+      try {
+        if (typeof _getSelectedStates === "function") {
+          const prefix = activeTab === "oct2-sheets" ? "oct2" : activeTab === "oct-sheets" ? "oct" : activeTab === "store" ? "store" : "cat";
+          const arr = _getSelectedStates(prefix);
+          if (arr && arr.length) st = arr.join(",");
+        }
+      } catch (_) {}
+      const oct2View = document.getElementById("oct2-view-by");
+      const oct2Cmp = document.getElementById("oct2-compare-mode");
+      const oct2Split = document.getElementById("oct2-fin-split");
+      return {
+        active_tab: activeTab || "dashboard",
+        date: activeDate || (dateInput && dateInput.value) || "",
+        end_date: tf === "custom" ? (activeEndDate || (endDateInput && endDateInput.value) || "") : "",
+        timeframe: tf,
+        state: st,
+        source: _dataSource || "clickhouse",
+        oct2_view_by: oct2View ? oct2View.value : "store",
+        oct2_compare: oct2Cmp ? oct2Cmp.value : "none",
+        oct2_fin_split: oct2Split ? oct2Split.value : "total",
+      };
+    },
+    setPeriod: function (newTf, newDate, newEndDate) {
+      const tf = (newTf && ["daily", "weekly", "monthly", "quarterly", "yearly", "custom"].includes(newTf)) ? newTf : tfSelect.value;
+      if (newDate) {
+        activeDate = String(newDate).slice(0, 10);
+        if (dateInput) dateInput.value = activeDate;
+      }
+      if (tf === "custom" && newEndDate) {
+        activeEndDate = String(newEndDate).slice(0, 10);
+        if (endDateInput) endDateInput.value = activeEndDate;
+      }
+      tfSelect.value = tf;
+      applyPickerMode(tf);
+      syncYearInput();
+      syncWeekInput();
+      highlightPills(tf);
+      reloadAll(tf);
+    },
+  };
 
   // --- Initialise year / week inputs from current activeDate ---
   function syncYearInput() {
