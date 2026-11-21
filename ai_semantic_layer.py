@@ -113,9 +113,9 @@ SCHEMA_GUIDE = """
    - `sales_data` (alias `sd`, join `s.invoice_no = sd.invoice_number`, aggregate with `any()` by `invoice_number` first to avoid fanout!):
      Columns: `invoice_number`, `delivery_order_no`, `staff`, `customer_name`, `customer_mobile`.
    - Card EMI settlement tables (store-level / invoice-level uploaded files):
-     * `pine_lab_transactions` (`date`, `store`, `amount`, `qty`, `product`, `category`, `brand`, `issuer_bank`, `data_month`)
-     * `paytm_transactions` (`date`, `store`, `amount`, `qty`, `product`, `category`, `brand`, `data_month`)
-     * `benow_transactions` (`date`, `store`, `amount`, `qty`, `product`, `category`, `brand`, `data_month`)
+     * `pine_lab_transactions` (`txn_date`, `branch`, `original_amount`, `qty`, `product`, `category`, `brand`, `data_month`)
+     * `paytm_transactions` (`txn_date`, `branch`, `original_amount`, `qty`, `product`, `category`, `brand`, `data_month`)
+     * `benow_transactions` (`txn_date`, `branch`, `original_amount`, `qty`, `product`, `category`, `brand`, `data_month`)
      * `benow_pine_financier` (`invoice_no`, `imei`, `financier`, `data_month`)
    - `tm_fin_targets`: monthly TM (Fin BDM) targets (`month` 'YYYY-MM', `tm`, `value_target`, `card_slab_1`, `card_slab_2`).
 
@@ -144,6 +144,7 @@ SCHEMA_GUIDE = """
    - `{{DO_CLEAN}}`       -> normalized uppercase delivery_order_no
    - `{{BASE_FILTER}}`    -> standard >3000 & non-corporate & non-ecommerce WHERE condition
    IMPORTANT: Always filter `toDate(s.date)` FIRST for fast partition pruning!
+   MEMORY-SAFETY RULE (ClickHouse Cloud 6.8 GiB RAM cap): When querying > 90 days or comparing years, NEVER join the entire `azure_invoice_report` table unfiltered — always pre-filter `azure_invoice_report` by `WHERE toDate(date) BETWEEN ...` in a subquery and append `SETTINGS join_algorithm = 'grace_hash', max_threads = 2`! Or simply call the `compare_periods` tool for multi-year/quarter/month comparisons.
 """
 
 

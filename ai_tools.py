@@ -1602,9 +1602,280 @@ def tool_explain_portal_logic(topic: str = "cleaning") -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# TOOL 10b: Memory-Safe Period-over-Period & Multi-Year Comparison Tool
+# ---------------------------------------------------------------------------
+def _query_period_metrics_safe(start_d: str, end_d: str, state: str = "KERALA") -> dict[str, Any]:
+    """
+    Memory-safe ClickHouse aggregation for ANY window (even a full 12-month year with 9M+ rows).
+    Filters azure_invoice_report & sales_data by the exact date range and uses grace_hash join
+    so ClickHouse Cloud never hits its 6.8 GiB FillingRightJoinSide RAM ceiling.
+    """
+    from datetime import timedelta
+
+    dt_s = datetime.strptime(start_d[:10], "%Y-%m-%d").date()
+    dt_e = datetime.strptime(end_d[:10], "%Y-%m-%d").date()
+    inv_s = (dt_s - timedelta(days=3)).isoformat()
+    inv_e = (dt_e + timedelta(days=3)).isoformat()
+
+    st_list = [x.strip().upper() for x in str(state or "").split(",") if x.strip()]
+    state_expr = ai_semantic_layer.get_sql_macros()["STATE_EXPR"]
+    state_where = f" AND ({state_expr}) IN {{states:Array(String)}}" if st_list else ""
+    prod_expr = f"({ca._RAW_PROD_EXPR})"
+    cat_expr = ai_semantic_layer.get_sql_macros()["CAT_EXPR"]
+    zone_expr = ai_semantic_layer.get_sql_macros()["ZONE_EXPR"]
+    qty_expr = ai_semantic_layer.get_sql_macros()["QTY_EXPR"]
+    val_expr = ai_semantic_layer.get_sql_macros()["VAL_EXPR"]
+    base_filter = ai_semantic_layer.get_sql_macros()["BASE_FILTER"]
+    bl_set = ", ".join(f"'{p.replace(' ', '')}'" for p in sorted(ca._JUNK_PRODUCTS))
+
+    # Lean paper financier expression (uses ERP inv + DO overrides only when sales_data matches)
+    paper_fin_expr = """CASE
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%BAJAJ%' OR upper(coalesce(inv.financier_code, '')) LIKE 'BAJAJ%' THEN 'BAJAJ'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%HDB%' OR upper(coalesce(inv.financier_code, '')) LIKE 'HDB%' THEN 'HDB'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%DMI%' OR upper(coalesce(inv.financier_code, '')) LIKE 'SAMSUNG%' THEN 'DMI'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%IDFC%' OR upper(coalesce(inv.financier_code, '')) LIKE 'IDFC%' THEN 'IDFC'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%TVS%' OR upper(coalesce(inv.financier_code, '')) LIKE 'TVSC%' THEN 'TVS'
+        WHEN upper(coalesce(inv.financier_name, '')) LIKE '%POONAWALLA%' OR upper(coalesce(inv.financier_name, '')) LIKE '%PFL%' OR upper(coalesce(inv.financier_code, '')) LIKE 'POONA%' THEN 'PFL'
+        ELSE 'aCASH'
+    END"""
+
+    params: dict[str, Any] = {
+        "s_dt": dt_s, "e_dt": dt_e,
+        "inv_s": datetime.strptime(inv_s, "%Y-%m-%d").date(),
+        "inv_e": datetime.strptime(inv_e, "%Y-%m-%d").date(),
+    }
+    if st_list:
+        params["states"] = st_list
+
+    sql = f"""
+    SELECT
+        toMonth(s.date) AS mo,
+        ({cat_expr}) AS cat,
+        ({paper_fin_expr}) AS fin,
+        ({zone_expr}) AS zone,
+        sum({qty_expr}) AS qty,
+        sum({val_expr}) AS val
+    FROM azure_sales_report s
+    LEFT JOIN item_master i ON s.item_code = i.item_code
+    LEFT JOIN (
+        SELECT
+            invoice_no,
+            any(financier_name) AS financier_name,
+            any(financier_code) AS financier_code,
+            any(customer_type) AS customer_type,
+            any(rbm) AS rbm
+        FROM azure_invoice_report
+        WHERE toDate(date) BETWEEN {{inv_s:Date}} AND {{inv_e:Date}}
+        GROUP BY invoice_no
+    ) inv ON s.invoice_no = inv.invoice_no
+    LEFT JOIN branch_master bm ON upper(trim(s.branch)) = upper(trim(bm.code))
+    WHERE toDate(s.date) BETWEEN {{s_dt:Date}} AND {{e_dt:Date}}
+      AND {base_filter}
+      AND replaceAll({prod_expr}, ' ', '') NOT IN ({bl_set})
+      AND {prod_expr} != ''
+      {state_where}
+    GROUP BY mo, cat, fin, zone
+    SETTINGS join_algorithm = 'grace_hash', max_bytes_before_external_group_by = 1000000000, max_threads = 2
+    """
+    df = ch.query_df(sql, params, cache=True)
+
+    # Fetch uploaded Card EMI totals (PineLab, PAYTM, Benow) for the same window
+    card_fin_val = {"PineLab": 0.0, "PAYTM": 0.0, "Benow": 0.0}
+    card_fin_qty = {"PineLab": 0, "PAYTM": 0, "Benow": 0}
+    card_by_mo: dict[int, float] = {}
+    for tbl, fin_label in (("pine_lab_transactions", "PineLab"), ("paytm_transactions", "PAYTM"), ("benow_transactions", "Benow")):
+        try:
+            cdf = ch.query_df(
+                f"SELECT toMonth(txn_date) AS mo, toInt64(sum(qty)) AS q, toFloat64(sum(original_amount)) AS v "
+                f"FROM {tbl} WHERE toDate(txn_date) BETWEEN {{s_dt:Date}} AND {{e_dt:Date}} GROUP BY mo",
+                {"s_dt": dt_s, "e_dt": dt_e},
+                cache=True,
+            )
+            if cdf is not None and not cdf.empty:
+                for _, cr in cdf.iterrows():
+                    q_ = _safe_int(cr["q"])
+                    v_ = _safe_float(cr["v"])
+                    card_fin_qty[fin_label] += q_
+                    card_fin_val[fin_label] += v_
+                    mo_ = _safe_int(cr["mo"])
+                    card_by_mo[mo_] = card_by_mo.get(mo_, 0.0) + v_
+        except Exception as exc:
+            logger.debug("Card EMI monthly lookup skipped for %s: %s", tbl, exc)
+
+    paper_keys = ("BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI")
+    fin_val: dict[str, float] = {k: 0.0 for k in paper_keys + ("PineLab", "PAYTM", "Benow", "aCASH")}
+    fin_qty: dict[str, int] = {k: 0 for k in paper_keys + ("PineLab", "PAYTM", "Benow", "aCASH")}
+    cat_tot: dict[str, list[float]] = {}   # cat -> [fin_val, tot_val, fin_qty, tot_qty]
+    zone_tot: dict[str, list[float]] = {}  # zone -> [fin_val, tot_val]
+    mo_fin: dict[int, float] = {}
+    mo_tot: dict[int, float] = {}
+
+    if df is not None and not df.empty:
+        for _, r in df.iterrows():
+            mo = _safe_int(r["mo"])
+            c = str(r["cat"] or "OTHERS")
+            f = str(r["fin"] or "aCASH")
+            z = str(r["zone"] or "OTHERS")
+            q = _safe_int(r["qty"])
+            v = _safe_float(r["val"])
+
+            fin_val[f] = fin_val.get(f, 0.0) + v
+            fin_qty[f] = fin_qty.get(f, 0) + q
+            mo_tot[mo] = mo_tot.get(mo, 0.0) + v
+            if f in paper_keys:
+                mo_fin[mo] = mo_fin.get(mo, 0.0) + v
+
+            ca_acc = cat_tot.setdefault(c, [0.0, 0.0, 0.0, 0.0])
+            ca_acc[1] += v
+            ca_acc[3] += q
+            if f in paper_keys:
+                ca_acc[0] += v
+                ca_acc[2] += q
+
+            za = zone_tot.setdefault(z, [0.0, 0.0])
+            za[1] += v
+            if f in paper_keys:
+                za[0] += v
+
+    # Integrate Card EMI (deducted from aCASH so Grand Total = ERP Total Sales)
+    card_val_tot = sum(card_fin_val.values())
+    card_qty_tot = sum(card_fin_qty.values())
+    for k in ("PineLab", "PAYTM", "Benow"):
+        fin_val[k] = card_fin_val[k]
+        fin_qty[k] = card_fin_qty[k]
+    fin_val["aCASH"] = max(0.0, fin_val["aCASH"] - card_val_tot)
+    fin_qty["aCASH"] = max(0, fin_qty["aCASH"] - card_qty_tot)
+    for mo_, cv_ in card_by_mo.items():
+        mo_fin[mo_] = mo_fin.get(mo_, 0.0) + cv_
+
+    paper_val_tot = sum(fin_val[k] for k in paper_keys)
+    paper_qty_tot = sum(fin_qty[k] for k in paper_keys)
+    tot_fin_val = paper_val_tot + card_val_tot
+    tot_fin_qty = paper_qty_tot + card_qty_tot
+    tot_sales_val = sum(mo_tot.values())
+    tot_sales_qty = sum(int(v[3]) for v in cat_tot.values())
+
+    return {
+        "start_date": start_d,
+        "end_date": end_d,
+        "total_sales_cr": round(tot_sales_val / 1e7, 2),
+        "total_fin_cr": round(tot_fin_val / 1e7, 2),
+        "paper_fin_cr": round(paper_val_tot / 1e7, 2),
+        "card_fin_cr": round(card_val_tot / 1e7, 2),
+        "fin_share_val_pct": round((tot_fin_val / tot_sales_val * 100.0) if tot_sales_val else 0.0, 2),
+        "total_sales_qty": tot_sales_qty,
+        "total_fin_qty": tot_fin_qty,
+        "paper_fin_qty": paper_qty_tot,
+        "card_fin_qty": card_qty_tot,
+        "fin_share_vol_pct": round((tot_fin_qty / tot_sales_qty * 100.0) if tot_sales_qty else 0.0, 2),
+        "fin_val_cr": {k: round(v / 1e7, 2) for k, v in fin_val.items()},
+        "fin_qty": fin_qty,
+        "categories": {
+            c: {
+                "paper_cr": round(v[0] / 1e7, 2),
+                "tot_cr": round(v[1] / 1e7, 2),
+                "paper_share_pct": round((v[0] / v[1] * 100.0) if v[1] else 0.0, 1),
+                "tot_qty": int(v[3]),
+            }
+            for c, v in cat_tot.items()
+        },
+        "zones": {
+            z: {
+                "paper_cr": round(v[0] / 1e7, 2),
+                "tot_cr": round(v[1] / 1e7, 2),
+                "paper_share_pct": round((v[0] / v[1] * 100.0) if v[1] else 0.0, 1),
+            }
+            for z, v in zone_tot.items()
+        },
+        "monthly_fin_cr": {m: round(mo_fin.get(m, 0.0) / 1e7, 2) for m in range(1, 13)},
+        "monthly_tot_cr": {m: round(mo_tot.get(m, 0.0) / 1e7, 2) for m in range(1, 13)},
+    }
+
+
+def tool_compare_periods(
+    period_a_start: str,
+    period_a_end: str,
+    period_b_start: str,
+    period_b_end: str,
+    label_a: str = "Period A",
+    label_b: str = "Period B",
+    state: str = "KERALA",
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compare any two time periods (e.g. 2024 vs 2025, Q2 vs Q3, Sep vs Oct) safely in ClickHouse."""
+    st = state.upper() if state else (context or {}).get("state", "KERALA")
+    # Execute sequentially to guarantee ClickHouse Cloud stays well below 6.8 GiB RAM
+    a = _query_period_metrics_safe(period_a_start, period_a_end, st)
+    b = _query_period_metrics_safe(period_b_start, period_b_end, st)
+
+    def _pct(new_v: float, old_v: float) -> str:
+        if not old_v:
+            return "—"
+        return f"{((new_v - old_v) / old_v * 100.0):+.1f}%"
+
+    kpi_rows = [
+        ["Total Sales (₹ Cr)", a["total_sales_cr"], b["total_sales_cr"], round(b["total_sales_cr"] - a["total_sales_cr"], 2), _pct(b["total_sales_cr"], a["total_sales_cr"])],
+        ["Total Finance (₹ Cr)", a["total_fin_cr"], b["total_fin_cr"], round(b["total_fin_cr"] - a["total_fin_cr"], 2), _pct(b["total_fin_cr"], a["total_fin_cr"])],
+        ["Paper Finance (₹ Cr)", a["paper_fin_cr"], b["paper_fin_cr"], round(b["paper_fin_cr"] - a["paper_fin_cr"], 2), _pct(b["paper_fin_cr"], a["paper_fin_cr"])],
+        ["Card EMI (₹ Cr)", a["card_fin_cr"], b["card_fin_cr"], round(b["card_fin_cr"] - a["card_fin_cr"], 2), _pct(b["card_fin_cr"], a["card_fin_cr"])],
+        ["Fin Share — Value (%)", f"{a['fin_share_val_pct']:.2f}%", f"{b['fin_share_val_pct']:.2f}%", f"{(b['fin_share_val_pct'] - a['fin_share_val_pct']):+.2f} pp", "—"],
+        ["Total Sales (Qty)", a["total_sales_qty"], b["total_sales_qty"], b["total_sales_qty"] - a["total_sales_qty"], _pct(b["total_sales_qty"], a["total_sales_qty"])],
+        ["Total Finance (Qty)", a["total_fin_qty"], b["total_fin_qty"], b["total_fin_qty"] - a["total_fin_qty"], _pct(b["total_fin_qty"], a["total_fin_qty"])],
+        ["Fin Share — Volume (%)", f"{a['fin_share_vol_pct']:.2f}%", f"{b['fin_share_vol_pct']:.2f}%", f"{(b['fin_share_vol_pct'] - a['fin_share_vol_pct']):+.2f} pp", "—"],
+    ]
+    for fk in ("BAJAJ", "HDB", "IDFC", "PFL", "TVS", "DMI", "PineLab", "PAYTM", "Benow"):
+        av = a["fin_val_cr"].get(fk, 0.0)
+        bv = b["fin_val_cr"].get(fk, 0.0)
+        if av > 0 or bv > 0:
+            kpi_rows.append([f"Financier: {fk} (₹ Cr)", av, bv, round(bv - av, 2), _pct(bv, av)])
+
+    cols = ["Metric", label_a, label_b, "Change", "Growth %"]
+    exp_tok = _store_export(f"Compare_{label_a}_vs_{label_b}", cols, kpi_rows)
+
+    mo_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    chart = {
+        "title": f"Monthly Finance Value (₹ Cr): {label_a} vs {label_b}",
+        "type": "bar",
+        "labels": mo_labels,
+        "datasets": [
+            {"label": f"{label_a} FIN (Cr)", "data": [a["monthly_fin_cr"][m] for m in range(1, 13)]},
+            {"label": f"{label_b} FIN (Cr)", "data": [b["monthly_fin_cr"][m] for m in range(1, 13)]},
+        ],
+    }
+
+    return {
+        "status": "success",
+        "label_a": label_a,
+        "label_b": label_b,
+        "state": st or "ALL",
+        "period_a": a,
+        "period_b": b,
+        "table": {"title": f"Performance Comparison: {label_a} vs {label_b} ({st or 'ALL'})", "columns": cols, "rows": kpi_rows, "export_token": exp_tok},
+        "chart": chart,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Tool Definitions (OpenAI / Gemini / Anthropic JSON-Schema compatible)
 # ---------------------------------------------------------------------------
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "name": "compare_periods",
+        "description": "Memory-safe side-by-side comparison of ANY two date ranges (e.g. full year 2024 vs 2025, Q2 vs Q3, Sep vs Oct) with Sales, Paper/Card Finance, Fin Share %, Financier mix, Category & Zone breakdown, and monthly overlay chart.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "period_a_start": {"type": "string", "description": "YYYY-MM-DD"},
+                "period_a_end": {"type": "string", "description": "YYYY-MM-DD"},
+                "period_b_start": {"type": "string", "description": "YYYY-MM-DD"},
+                "period_b_end": {"type": "string", "description": "YYYY-MM-DD"},
+                "label_a": {"type": "string"},
+                "label_b": {"type": "string"},
+                "state": {"type": "string"},
+            },
+            "required": ["period_a_start", "period_a_end", "period_b_start", "period_b_end"],
+        },
+    },
     {
         "name": "explain_portal_logic",
         "description": "Explain how the myG Finance Portal cleaning process, Paper Finance DO rules, Card EMI deduction, Fin Share / DIF / CRR / DRR formulas, Categories, Blacklist, Zones, or AI capabilities work.",
@@ -1799,6 +2070,8 @@ def execute_tool(name: str, args: dict[str, Any], context: dict[str, Any] | None
     """Dispatch an agent tool call safely and return a JSON-serializable dict."""
     args = args if isinstance(args, dict) else {}
     try:
+        if name == "compare_periods":
+            return tool_compare_periods(**args, context=context)
         if name == "explain_portal_logic":
             return tool_explain_portal_logic(**args)
         if name == "get_dashboard_summary":

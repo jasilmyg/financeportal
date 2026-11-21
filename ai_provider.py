@@ -329,6 +329,82 @@ def _run_builtin_agent(
         }
         return
 
+    # 0b. Multi-period Comparison (e.g., "compare 2024 and 2025", "2024 vs 2025", "Q2 vs Q3", "Sep vs Oct")
+    if re.search(r"\b(compare|vs\.?|versus|yoy|year[\s-]*over[\s-]*year|growth\s+between|difference\s+between)\b", low):
+        yrs = sorted(set(re.findall(r"\b(202[0-9]|203\d)\b", low)))
+        qs = re.findall(r"\bq([1-4])\b", low)
+        mos_found = []
+        for m_tok in re.findall(r"\b[a-z]+\b", low):
+            if m_tok in _MONTH_MAP and _MONTH_MAP[m_tok] not in mos_found:
+                mos_found.append(_MONTH_MAP[m_tok])
+
+        cmp_spec = None
+        if len(yrs) >= 2 and not qs and not mos_found:
+            y1, y2 = yrs[0], yrs[1]
+            cmp_spec = (f"{y1}-01-01", f"{y1}-12-31", f"{y2}-01-01", f"{y2}-12-31", y1, y2)
+        elif len(qs) >= 2:
+            yr_ref = yrs[0] if yrs else (d0[:4] or "2026")
+            q_rng = {1: ("01-01", "03-31"), 2: ("04-01", "06-30"), 3: ("07-01", "09-30"), 4: ("10-01", "12-31")}
+            q1, q2 = int(qs[0]), int(qs[1])
+            cmp_spec = (f"{yr_ref}-{q_rng[q1][0]}", f"{yr_ref}-{q_rng[q1][1]}", f"{yr_ref}-{q_rng[q2][0]}", f"{yr_ref}-{q_rng[q2][1]}", f"Q{q1} {yr_ref}", f"Q{q2} {yr_ref}")
+        elif len(mos_found) >= 2:
+            import calendar as _cal
+            yr_ref = yrs[0] if yrs else (d0[:4] or "2026")
+            m1, m2 = mos_found[0], mos_found[1]
+            d1e = _cal.monthrange(int(yr_ref), m1)[1]
+            d2e = _cal.monthrange(int(yr_ref), m2)[1]
+            cmp_spec = (
+                f"{yr_ref}-{m1:02d}-01", f"{yr_ref}-{m1:02d}-{d1e:02d}",
+                f"{yr_ref}-{m2:02d}-01", f"{yr_ref}-{m2:02d}-{d2e:02d}",
+                f"{_cal.month_abbr[m1]} {yr_ref}", f"{_cal.month_abbr[m2]} {yr_ref}",
+            )
+
+        if cmp_spec:
+            s1, e1, s2, e2, la, lb = cmp_spec
+            yield {"type": "tool_start", "tool": "compare_periods", "label": f"Comparing {la} vs {lb} in ClickHouse (memory-safe)..."}
+            res = ai_tools.tool_compare_periods(s1, e1, s2, e2, label_a=la, label_b=lb, state=st0, context=context)
+            if res.get("chart"):
+                yield {"type": "chart", "chart": res["chart"]}
+            if res.get("table"):
+                yield {"type": "table", "table": res["table"]}
+            yield {"type": "tool_done", "tool": "compare_periods", "summary": f"{la} vs {lb} ready"}
+
+            pa, pb = res["period_a"], res["period_b"]
+            s_chg = pb["total_sales_cr"] - pa["total_sales_cr"]
+            s_pct = (s_chg / pa["total_sales_cr"] * 100.0) if pa["total_sales_cr"] else 0.0
+            f_chg = pb["total_fin_cr"] - pa["total_fin_cr"]
+            f_pct = (f_chg / pa["total_fin_cr"] * 100.0) if pa["total_fin_cr"] else 0.0
+            sh_pp = pb["fin_share_val_pct"] - pa["fin_share_val_pct"]
+
+            cat_lines = []
+            for cname in ("MOBILE", "LAPTOP", "CD PRODUCTS", "SA", "HVA", "OTHERS"):
+                ca_ = (pa.get("categories") or {}).get(cname) or {}
+                cb_ = (pb.get("categories") or {}).get(cname) or {}
+                if ca_.get("tot_cr") or cb_.get("tot_cr"):
+                    cat_lines.append(
+                        f"- **{cname}:** Total ₹{ca_.get('tot_cr', 0):.2f} Cr → **₹{cb_.get('tot_cr', 0):.2f} Cr** | "
+                        f"Paper FIN ₹{ca_.get('paper_cr', 0):.2f} Cr ({ca_.get('paper_share_pct', 0)}%) → **₹{cb_.get('paper_cr', 0):.2f} Cr ({cb_.get('paper_share_pct', 0)}%)**"
+                    )
+
+            za_n, zb_n = (pa.get("zones") or {}).get("NORTH") or {}, (pb.get("zones") or {}).get("NORTH") or {}
+            za_s, zb_s = (pa.get("zones") or {}).get("SOUTH") or {}, (pb.get("zones") or {}).get("SOUTH") or {}
+
+            yield {
+                "type": "answer",
+                "mode": "builtin",
+                "text": (
+                    f"### Performance Comparison: **{la}** vs **{lb}** ({res['state']})\n\n"
+                    f"- **Total Sales:** ₹{pa['total_sales_cr']:.2f} Cr (`{pa['total_sales_qty']:,}` units) → **₹{pb['total_sales_cr']:.2f} Cr** (`{pb['total_sales_qty']:,}` units) — **{s_chg:+.2f} Cr ({s_pct:+.1f}%)**\n"
+                    f"- **Total Finance:** ₹{pa['total_fin_cr']:.2f} Cr (`{pa['total_fin_qty']:,}` units) → **₹{pb['total_fin_cr']:.2f} Cr** (`{pb['total_fin_qty']:,}` units) — **{f_chg:+.2f} Cr ({f_pct:+.1f}%)**\n"
+                    f"  - *Paper Finance:* ₹{pa['paper_fin_cr']:.2f} Cr → **₹{pb['paper_fin_cr']:.2f} Cr** | *Card EMI:* ₹{pa['card_fin_cr']:.2f} Cr → **₹{pb['card_fin_cr']:.2f} Cr**\n"
+                    f"- **Finance Share (Value):** `{pa['fin_share_val_pct']:.2f}%` → **`{pb['fin_share_val_pct']:.2f}%`** (`{sh_pp:+.2f} pp`)\n"
+                    f"- **Finance Share (Volume):** `{pa['fin_share_vol_pct']:.2f}%` → **`{pb['fin_share_vol_pct']:.2f}%`** (`{(pb['fin_share_vol_pct'] - pa['fin_share_vol_pct']):+.2f} pp`)\n"
+                    f"- **Zone Paper Fin Share:** North `{za_n.get('paper_share_pct', 0)}%` → **`{zb_n.get('paper_share_pct', 0)}%`** | South `{za_s.get('paper_share_pct', 0)}%` → **`{zb_s.get('paper_share_pct', 0)}%`**\n\n"
+                    f"#### Category Comparison\n" + "\n".join(cat_lines)
+                ),
+            }
+            return
+
     # 1. Teach / Remember business memory
     m_rem = re.match(r"^(?:remember|note|learn|save\s+rule)\s*(?:that|:)?\s+(.+)$", msg, re.IGNORECASE)
     if m_rem:
