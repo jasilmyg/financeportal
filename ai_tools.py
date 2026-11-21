@@ -222,18 +222,22 @@ def tool_get_dashboard_summary(
     all_fin_keys = paper_keys + card_keys
 
     # Compute overall financier totals across categories
+    # NOTE: dashboard_aggregator cat_perf['qty'][cat] / cat_perf['value'][cat] store per-financier
+    # keys directly (no 'TOTAL' key), so compute totals by summing all financier keys + aCASH.
     fin_qty = {k: 0 for k in all_fin_keys + ["aCASH"]}
     fin_val_cr = {k: 0.0 for k in all_fin_keys + ["aCASH"]}
     cat_summary = []
     for cat in ["MOBILE", "LAPTOP", "CD PRODUCTS", "SA", "HVA", "OTHERS", "BANK EMI"]:
         rq = qty_map.get(cat) or {}
         rv = val_map.get(cat) or {}
-        tot_q = _safe_int(rq.get("TOTAL"))
-        tot_v = _safe_float(rv.get("TOTAL"))
-        if tot_q == 0 and tot_v == 0:
-            continue
         fq = sum(_safe_int(rq.get(k)) for k in all_fin_keys)
         fv = sum(_safe_float(rv.get(k)) for k in all_fin_keys)
+        ac_q = _safe_int(rq.get("aCASH"))
+        ac_v = _safe_float(rv.get("aCASH"))
+        tot_q = fq + ac_q
+        tot_v = fv + ac_v
+        if tot_q == 0 and abs(tot_v) < 1e-9 and fq == 0 and abs(fv) < 1e-9:
+            continue
         for k in all_fin_keys + ["aCASH"]:
             fin_qty[k] += _safe_int(rq.get(k))
             fin_val_cr[k] += _safe_float(rv.get(k))
@@ -1497,9 +1501,120 @@ def evaluate_custom_widgets(
 
 
 # ---------------------------------------------------------------------------
+# TOOL 10: Portal Logic & Cleaning Process Knowledge Inspector
+# ---------------------------------------------------------------------------
+_PORTAL_KNOWLEDGE: dict[str, str] = {
+    "cleaning": """### How the Data Cleaning Process Works in myG Finance Portal
+
+The portal cleans **4 separate data pipelines** — all synchronized between Excel upload cleaners and live ClickHouse SQL:
+
+1. **Combined Sales Report Cleaning (`sales_cleaner.py` & `clickhouse_aggregator.py`):**
+   - **Step 1 — Header & Column Auto-Normalization:** Scans the first 20 rows for sentinel headers (`RBM`, `Branch`, `Sold Price`, `Financier`, `Invoice Number`) and normalizes aliases (e.g. `DO NO` -> `Delivery Order No`, `Selling Price` -> `Sold Price`).
+   - **Step 2 — RBM & Retail Scope Filter:** Drops non-retail RBMs (`GENERAL`, `RAJESH`) and non-retail branch codes (`CSB`, `GPF`, `3GH`, `KSO`, `SMC`). Maps stores to `KERALA` (RBMs: `ALFAS`, `SAMEER`, `SAMEEM`, `RENJITH`, `MAHESH`, `VAISAKH`) vs `KARNATAKA` (`DAKSHINA KANNADA` / `FLF` / `FALNIR FUTURE`).
+   - **Step 3 — Value Threshold & Returns:** Keeps only retail items with `abs(Sold Price) > ₹3,000`. If `Sold Price < 0` (sales return), `QTY` is forced negative (`-abs(QTY)`).
+   - **Step 4 — E-Commerce & Corporate Removal:** Excludes `Customer Type = CORPORATE` and financiers containing `ECOMMERCE`, `E-COMMERCE`, or `MYG ONLINE`.
+   - **Step 5 — Financier Standardization + Delivery Order Overrides (2-Tier):**
+     - *Priority 1 (DO Override):* `^B[0-9]` -> `BAJAJ FINANCE`; contains `DMI` -> `DMI FINANCE`; starts with `10108`/`10109` -> `IDFC FIRST BANK LTD`; starts with `CDSK` -> `Poonawalla Fincorp`; contains `3022CD`/`3023CD` -> `TVS Credit`; 11–12 digits (excluding `1018/1019/10208/11090/3022/3023` and non-Benow) -> `HDB FINANCE`.
+     - *Priority 2 (ERP `inv.financier_name` / `financier_code`):* Maps `BAJAJ`, `HDB`, `DMI`/`SAMSUNG`, `IDFC`, `TVS`/`TVSC`, `POONAWALLA`/`PFL`/`POONA`. Unrecognized institutional / Co-op Society rows without a DO override are excluded; remaining cash/blank rows map to `aCash`.
+   - **Step 6 — Category & Product Mapping + Blacklist Removal:** Missing products are inferred from `Item Code` prefixes (`MOB` -> `MOBILE`, `LAP` -> `LAPTOP`, `WSM` -> `WASHING MACHINES`, etc.). Products map to 6 categories (`MOBILE`, `LAPTOP`, `CD PRODUCTS`, `SA`, `HVA`, `OTHERS`) and 32 non-retail/junk items (`ACCESSORIES`, `CARE PLUS`, `PROTECT MAX`, `OSG WARRANTY`, `DEMO`, `FOC`, `SPARE`, `AC OUTDOOR`, `SERVICE`, `GIFT ITEMS`, etc.) are removed.
+   - **Step 7 — Store Hierarchy & Price Slabs:** Maps every store to authoritative `Fin BDM (TM)`, `RBM`, `BDM`, `Zone` (`NORTH` vs `SOUTH`), and 11 `Price Range` slabs (`Below 10K` up to `Above 200K`).
+
+2. **Card EMI Settlement Cleaners (`pine_lab_cleaner.py`, `paytm_cleaner.py`, `benow_cleaner.py`):**
+   - Clean uploaded **Pine Labs**, **Paytm**, and **Benow** settlement files, normalize store names & sub-products (e.g. AirPods -> `EAR WEARABLES`), classify into portal categories, upload to ClickHouse (`pine_lab_transactions`, `paytm_transactions`, `benow_transactions`, `benow_pine_financier`), and **deduct Card EMI counts/values from `aCASH`** so Grand Total sales are never double-counted.""",
+
+    "paper_finance": """### How Paper Finance & Delivery Order Mapping Works
+
+Paper Finance in ClickHouse ([clickhouse_aggregator.py](file:///c:/Users/rahul_myg/Downloads/FINANCE%20PORTAL/clickhouse_aggregator.py)) uses a **2-tier `CASE` hierarchy**:
+1. **Priority 1 — `sd.delivery_order_no` Overrides (cleans ERP dropdown mistakes):**
+   - `^B[0-9]` -> **BAJAJ**
+   - Contains `DMI` -> **DMI**
+   - Starts with `10108` or `10109` -> **IDFC**
+   - Starts with `CDSK` -> **PFL** (Poonawalla)
+   - Contains `3022CD` or `3023CD` -> **TVS**
+   - Pure 11–12 digits (not `1018/1019/10208/11090/3022/3023`, not `BENOW`) -> **HDB**
+2. **Priority 2 — ERP `inv.financier_name` / `inv.financier_code`:**
+   - Used whenever `delivery_order_no` is blank or doesn't match a known DO pattern (`%BAJAJ%`, `%HDB%`, `%DMI%`/`SAMSUNG%`, `%IDFC%`, `%TVS%`/`TVSC%`, `%POONAWALLA%`/`%PFL%`/`POONA%`).
+3. **Priority 3 — Card EMI & Cash:**
+   - Remaining invoices matched via `benow_pine_financier` (by `invoice_no` or `imei`) become `PineLab`, `PAYTM`, or `Benow` (plus uploaded settlement overrides deducted from `aCASH`); everything else is `aCASH`.""",
+
+    "card_emi": """### How Card EMI Cleaning & Deduction Works (Pine Labs / Paytm / Benow)
+
+1. **Pine Labs (`pine_lab_cleaner.py`):** Accepts main + Angamaly slots, deduplicates by Transaction ID, normalizes store names, resolves sub-products (e.g. AirPods -> `EAR WEARABLES`, iPhone/Mobile -> `MOBILE`), uploads to ClickHouse `pine_lab_transactions` and `benow_pine_financier`.
+2. **Paytm (`paytm_cleaner.py`):** Cleans Paytm EMI exports, maps blank `BANK EMI` items to real product/category via ERP/item rules, uploads to `paytm_transactions`.
+3. **Benow (`benow_cleaner.py`):** Cleans Benow settlement reports, normalizes `Product` and store mappings, uploads to `benow_transactions`.
+4. **Zero Double-Counting Rule:** Because Card EMI sales are initially billed as Cash (`aCASH`) in ERP, `dashboard_aggregator.py` injects uploaded Card EMI totals into `PineLab` / `PAYTM` / `Benow` and **subtracts the exact delta from `aCASH`**, keeping Total Sales = 100% ERP sales.""",
+
+    "fin_share": """### How Store Fin Share, Benchmarks, DIF & TM Metrics Are Calculated (`store_fin_share.py`)
+
+- **FIN** = Paper Finance (`BAJAJ + HDB + IDFC + PFL + TVS + DMI`) + Card EMI (`PineLab + PAYTM + Benow`).
+- **TOTAL** = All cleaned retail ERP sales (Value in ₹ and Volume in Qty).
+- **FIN SHARE %** = `FIN / TOTAL × 100`.
+- **Benchmark & DIF:** Compares current Fin Share against the prior calendar quarter (`AMJ`/`JAS`/`OND`/`JFM`) or any chosen comparison period (`Day`, `Week`, `Month`, `Quarter`, `Year`, `Custom Range`). `DIF = Current Fin Share % - Comparison Fin Share %` (percentage points).
+- **TM Target Metrics:**
+  - `CRR` (Current Run Rate) = `FIN / elapsed_days`
+  - `DRR` (Desired Run Rate) = `(Target - FIN) / remaining_days`
+  - `Ach %` = `FIN / Target`
+  - `Trend %` = `(CRR × days_in_month) / Target`
+  - Targets are stored permanently in ClickHouse table `tm_fin_targets`.""",
+
+    "categories_zones": """### Categories, Blacklist, Price Slabs & Zone Rules
+
+- **6 Standard Categories:**
+  - `MOBILE`: Mobile, Tablet, Tab
+  - `LAPTOP`: Laptop, Desktop
+  - `CD PRODUCTS`: AC, TV, Refrigerators, Washing Machines, Microwave Oven, Dish Washer, Freezer, Dryer, Home Appliances
+  - `SA`: Small Appliances
+  - `HVA`: Audio, Ear Wearables, Smart Watch, Gaming, Home Theatre, CEGI
+  - `OTHERS`: Camera, DIY, IT Accessories, Printer, RIG, Stabilizer
+- **Blacklisted (Removed) Products:** `ACCESSORIES`, `CARE PLUS`, `PROTECT MAX`, `OSG WARRANTY`, `GLAM SHIELD`, `HOUSEHOLD`, `PERSONAL CARE`, `LG AMC`, `DEMO`, `FOC`, `SPARE`, `AC OUTDOOR`, `SERVICE`, `MONITOR`, `CCTV`, `GIFT ITEMS`, `LAPTOP BAG`, `SCHEME`, etc.
+- **Zones (Kerala):** `NORTH` = RBMs `ALFAS`, `SAMEER`, `SAMEEM` | `SOUTH` = RBMs `RENJITH`, `MAHESH`, `VAISAKH`.
+- **11 Price Slabs:** `Below 10K`, `10K–15K`, `15K–20K`, `20K–30K`, `30K–40K`, `40K–50K`, `50K–75K`, `75K–100K`, `100K–150K`, `150K–200K`, `Above 200K`.""",
+
+    "capabilities": """### What myG Finance AI Agent Can Do
+
+1. **Live Finance Analytics (Zero Hallucination):** Ask about overall KPIs, Paper vs Card split, Categories, Brands, Price Slabs, Store / Fin BDM (TM) / RBM / BDM / Staff Fin Share rankings, and Period-over-Period comparisons (you can name any month/quarter like *"October 2026 summary"* or *"Q3 bottom 10 stores"*).
+2. **7-Axis Deep Insights & Morning Brief:** Ask *"Run a deep analysis"* to decompose ₹ variance into Sales Volume vs Conversion %, find steepest store drops/gainers, quantify ₹ Cr recovery upside, and audit ERP-vs-DO mismatches.
+3. **Portal Process & Formula Explanations:** Ask how the cleaning process, Paper Finance DO rules, Card EMI matching, Blacklist, Categories, Zones, or Fin Share formulas work.
+4. **Live Dashboard Control & Editing:**
+   - *UI Control:* *"Open Duplicate Store Fin Share for Q3 by Fin BDM with Paper + Card split"* or *"Highlight rows below 50%"*.
+   - *Persistent Widgets & Targets:* *"Pin a Top 10 Stores chart to Dashboard"* (persisted in ClickHouse with **1-Click Undo**).
+5. **Continuous Memory:** Say *"Remember that Vypin Future was closed Oct 5–12"* to teach permanent business rules.
+6. **Full Unrestricted LLM + Ad-hoc SQL:** Add a **Gemini / OpenAI / Claude API key** in **Learned Memory & Settings** to unlock free-form natural-language ClickHouse SQL, multi-step synthesis, and code-patch proposals.""",
+}
+
+
+def tool_explain_portal_logic(topic: str = "cleaning") -> dict[str, Any]:
+    """Return authoritative documentation of the portal's cleaning, mapping, or calculation rules."""
+    t = str(topic or "cleaning").strip().lower()
+    if any(k in t for k in ("clean", "sales_cleaner", "process", "pipeline", "etl")):
+        key = "cleaning"
+    elif any(k in t for k in ("paper", "delivery", "do ", "financier", "override")):
+        key = "paper_finance"
+    elif any(k in t for k in ("card", "pine", "paytm", "benow", "deduct", "emi")):
+        key = "card_emi"
+    elif any(k in t for k in ("share", "dif", "bench", "crr", "drr", "trend", "formula", "calculat")):
+        key = "fin_share"
+    elif any(k in t for k in ("categor", "blacklist", "zone", "slab", "price", "north", "south")):
+        key = "categories_zones"
+    else:
+        key = "capabilities"
+    return {"status": "success", "topic": key, "explanation": _PORTAL_KNOWLEDGE[key]}
+
+
+# ---------------------------------------------------------------------------
 # Tool Definitions (OpenAI / Gemini / Anthropic JSON-Schema compatible)
 # ---------------------------------------------------------------------------
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "name": "explain_portal_logic",
+        "description": "Explain how the myG Finance Portal cleaning process, Paper Finance DO rules, Card EMI deduction, Fin Share / DIF / CRR / DRR formulas, Categories, Blacklist, Zones, or AI capabilities work.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "cleaning | paper_finance | card_emi | fin_share | categories_zones | capabilities"},
+            },
+        },
+    },
     {
         "name": "get_dashboard_summary",
         "description": "Get exact portal-parity KPIs, Financier breakdown (Paper + Card EMI), and Category performance for a date/timeframe/state. Use this first for overall KPI, category, or financier mix questions.",
@@ -1684,6 +1799,8 @@ def execute_tool(name: str, args: dict[str, Any], context: dict[str, Any] | None
     """Dispatch an agent tool call safely and return a JSON-serializable dict."""
     args = args if isinstance(args, dict) else {}
     try:
+        if name == "explain_portal_logic":
+            return tool_explain_portal_logic(**args)
         if name == "get_dashboard_summary":
             return tool_get_dashboard_summary(**args, context=context)
         if name == "get_store_fin_share":

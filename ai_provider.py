@@ -257,6 +257,40 @@ def test_provider_connection() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Built-in Smart Analytics Fallback Engine (works with ZERO API key!)
 # ---------------------------------------------------------------------------
+_MONTH_MAP = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+
+def _extract_period_from_text(low: str, d0: str, tf0: str, e0: str) -> tuple[str, str, str]:
+    """Detect explicit month/quarter/year/ISO dates in the user prompt so queries match what was asked."""
+    yr_m = re.search(r"\b(202[3-9]|203\d)\b", low)
+    yr = yr_m.group(1) if yr_m else (d0[:4] or "2026")
+
+    iso_dates = re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", low)
+    if len(iso_dates) >= 2:
+        return iso_dates[0], "custom", iso_dates[1]
+    if len(iso_dates) == 1:
+        return iso_dates[0], "daily", ""
+
+    q_m = re.search(r"\bq([1-4])\b", low)
+    if q_m:
+        q_start = {1: "01", 2: "04", 3: "07", 4: "10"}[int(q_m.group(1))]
+        return f"{yr}-{q_start}-01", "quarterly", ""
+
+    for m_name, m_num in _MONTH_MAP.items():
+        if re.search(rf"\b{m_name}\b", low):
+            return f"{yr}-{m_num:02d}-01", "monthly", ""
+
+    if re.search(r"\b(full\s+year|yearly|ytd|annual)\b", low):
+        return f"{yr}-01-01", "yearly", ""
+
+    return d0, tf0, e0
+
+
 def _run_builtin_agent(
     user_message: str,
     context: dict[str, Any],
@@ -264,6 +298,36 @@ def _run_builtin_agent(
     msg = (user_message or "").strip()
     low = msg.lower()
     d0, tf0, e0, st0 = ai_tools._default_date(context)
+    d0, tf0, e0 = _extract_period_from_text(low, d0, tf0, e0)
+
+    if "karnataka" in low:
+        st0 = "KARNATAKA"
+    elif "all state" in low:
+        st0 = ""
+    elif "kerala" in low:
+        st0 = "KERALA"
+
+    # 0. Portal Process / Cleaning / Mapping / Formula / Help questions
+    is_howto = bool(re.search(
+        r"\b(how\s+(is|are|does|do|to)|explain|what\s+is|what\s+are|what\s+can\s+you|"
+        r"clean(?:ing|er|ed)?|blacklist|formula|calculat|mapping|mapped|rule|workflow|"
+        r"delivery\s*order|do\s+override|deduct|capabilities|help)\b",
+        low,
+    ))
+    has_data_metric_ask = bool(re.search(
+        r"\b(show|list|top|bottom|compare|rank|how\s+much|total\s+sales|total\s+fin|drop|gainer|target|pacing)\b",
+        low,
+    ))
+    if is_howto and not has_data_metric_ask:
+        yield {"type": "tool_start", "tool": "explain_portal_logic", "label": "Reading portal architecture & cleaning rules..."}
+        res = ai_tools.tool_explain_portal_logic(low)
+        yield {"type": "tool_done", "tool": "explain_portal_logic", "summary": f"Topic: {res['topic']}"}
+        yield {
+            "type": "answer",
+            "mode": "builtin",
+            "text": res["explanation"],
+        }
+        return
 
     # 1. Teach / Remember business memory
     m_rem = re.match(r"^(?:remember|note|learn|save\s+rule)\s*(?:that|:)?\s+(.+)$", msg, re.IGNORECASE)
@@ -408,7 +472,7 @@ def _run_builtin_agent(
         yield {"type": "tool_start", "tool": "run_deep_analysis", "label": f"Running 7-axis ClickHouse deep diagnostic ({d0} · {tf0})..."}
         res = ai_tools.tool_generate_morning_brief(d0, tf0, e0, st0, context=context)
         if res.get("status") != "success":
-            yield {"type": "answer", "mode": "builtin", "text": f"Could not complete deep analysis: {res.get('error', 'No data')}"}
+            yield {"type": "answer", "mode": "builtin", "text": f"Could not complete deep analysis for `{d0}` ({tf0}): {res.get('error', 'No data')}"}
             return
         if res.get("chart"):
             yield {"type": "chart", "chart": res["chart"]}
@@ -423,7 +487,7 @@ def _run_builtin_agent(
         gains = res.get("biggest_store_gains") or []
 
         lines = [
-            f"### Deep Finance Intelligence — {res['period'].get('start_date')} to {res['period'].get('end_date')} ({st0})",
+            f"### Deep Finance Intelligence — {res['period'].get('start_date')} to {res['period'].get('end_date')} ({st0 or 'ALL STATES'})",
             "",
             f"- **Total Finance:** **₹{vb['cur_fin_cr']:.2f} Cr** out of **₹{vb['cur_tot_cr']:.2f} Cr** total sales (**{vb['cur_fin_share_pct']:.2f}% Fin Share** — Paper ₹{vb['cur_paper_cr']:.2f} Cr + Card ₹{vb['cur_card_cr']:.2f} Cr).",
             f"- **Variance vs {res.get('compare_label')}:** **{vb['delta_fin_cr']:+.2f} Cr** (`{vb['delta_share_pp']:+.2f} pp` Fin Share). Decomposed into **{vb['sales_volume_effect_cr']:+.2f} Cr** sales-volume effect + **{vb['fin_share_conversion_effect_cr']:+.2f} Cr** pure Fin Share conversion effect.",
@@ -443,7 +507,6 @@ def _run_builtin_agent(
             lines.append("\n#### Top Store Gainers")
             for x in gains[:5]:
                 lines.append(f"- **{x['store']}** ({x['fin_bdm']}): `{x['fin_share_pct']}%` (`{x['diff_pp']:+.1f} pp`, Sales ₹{x['tot_cr']} Cr)")
-        lines.append("\n*Tip: Connect a Gemini, OpenAI, or Claude API key in **AI Settings** to unlock unrestricted conversational SQL and custom multi-step reasoning.*")
         yield {"type": "answer", "mode": "builtin", "text": "\n".join(lines)}
         return
 
@@ -467,14 +530,14 @@ def _run_builtin_agent(
         return
 
     # 7. Brand / Price Range
-    if re.search(r"\b(brand|samsung|apple|vivo|oppo|lg|price\s*range|price\s*slab|slab)\b", low):
+    if re.search(r"\b(brand|samsung|apple|vivo|oppo|lg|redmi|realme|oneplus|price\s*range|price\s*slab)\b", low):
         dim = "price" if "price" in low else "brand"
         cat = "ALL"
         for c_cand in ("MOBILE", "LAPTOP", "CD PRODUCTS", "SA", "HVA"):
             if c_cand.lower() in low:
                 cat = c_cand
                 break
-        yield {"type": "tool_start", "tool": "get_brand_and_price_analysis", "label": f"Analyzing {dim} performance ({cat})..."}
+        yield {"type": "tool_start", "tool": "get_brand_and_price_analysis", "label": f"Analyzing {dim} performance ({d0} · {tf0} · {cat})..."}
         res = ai_tools.tool_get_brand_and_price_analysis(d0, tf0, e0, st0, category=cat, dimension=dim, context=context)
         if res.get("chart"):
             yield {"type": "chart", "chart": res["chart"]}
@@ -487,7 +550,7 @@ def _run_builtin_agent(
         return
 
     # 8. Store / TM / RBM / BDM / Staff Fin Share
-    if re.search(r"\b(store|branch|tm\b|fin\s*bdm|rbm|bdm|staff|top|bottom|worst|best|lowest|highest|compare)\b", low):
+    if re.search(r"\b(store|branch|tm\b|fin\s*bdm|rbm|bdm|staff|top|bottom|worst|best|lowest|highest|compare|zone|north|south)\b", low):
         view_by = "store"
         if "staff" in low:
             view_by = "staff"
@@ -499,7 +562,7 @@ def _run_builtin_agent(
             view_by = "bdm"
         sort_by = "fin_share_asc" if re.search(r"\b(bottom|worst|lowest|lagging|weak)\b", low) else "fin_share_desc"
         cmp_w = "month" if "compare" in low else "none"
-        yield {"type": "tool_start", "tool": "get_store_fin_share", "label": f"Querying {view_by.upper()} Fin Share from ClickHouse..."}
+        yield {"type": "tool_start", "tool": "get_store_fin_share", "label": f"Querying {view_by.upper()} Fin Share ({d0} · {tf0})..."}
         res = ai_tools.tool_get_store_fin_share(d0, tf0, e0, st0, view_by=view_by, compare_with=cmp_w, sort_by=sort_by, limit=15, context=context)
         if res.get("status") != "success":
             yield {"type": "answer", "mode": "builtin", "text": f"Query failed: {res.get('error')}"}
@@ -521,33 +584,53 @@ def _run_builtin_agent(
         }
         return
 
-    # 9. Default: Canonical Dashboard Summary (KPIs + Category + Financiers)
-    yield {"type": "tool_start", "tool": "get_dashboard_summary", "label": f"Fetching live ClickHouse summary ({d0} · {tf0} · {st0})..."}
-    res = ai_tools.tool_get_dashboard_summary(d0, tf0, e0, st0, context=context)
-    if res.get("status") != "success":
-        yield {"type": "answer", "mode": "builtin", "text": f"No data found for {d0} ({tf0}, {st0}). Try selecting a date with sales data or connecting an LLM API key in AI Settings."}
-        return
-    if res.get("chart"):
-        yield {"type": "chart", "chart": res["chart"]}
-    if res.get("table"):
-        yield {"type": "table", "table": res["table"]}
-    yield {"type": "tool_done", "tool": "get_dashboard_summary", "summary": "Live summary loaded"}
+    # 9. Summary / Financier / Category / Sales / KPI ask
+    if re.search(r"\b(summary|kpi|sales|financier|finance|bajaj|hdb|idfc|dmi|tvs|pfl|poonawalla|pinelab|paytm|benow|category|mobile|laptop|cd\s*product|overview|report|status)\b", low):
+        yield {"type": "tool_start", "tool": "get_dashboard_summary", "label": f"Fetching live ClickHouse summary ({d0} · {tf0} · {st0})..."}
+        res = ai_tools.tool_get_dashboard_summary(d0, tf0, e0, st0, context=context)
+        if res.get("status") != "success":
+            yield {"type": "answer", "mode": "builtin", "text": f"No data found for `{d0}` ({tf0}, {st0}). Try selecting a period with sales data (e.g. Oct 2026 or Q3 2026)."}
+            return
+        if res.get("chart"):
+            yield {"type": "chart", "chart": res["chart"]}
+        if res.get("table"):
+            yield {"type": "table", "table": res["table"]}
+        yield {"type": "tool_done", "tool": "get_dashboard_summary", "summary": "Live summary loaded"}
 
-    h = res["headline"]
-    cats = "\n".join(
-        f"- **{c['category']}:** ₹{c['fin_val_cr']} Cr / ₹{c['tot_val_cr']} Cr (**{c['val_share_pct']}%** Val · **{c['vol_share_pct']}%** Vol)"
-        for c in (res.get("categories") or [])
-    )
+        h = res["headline"]
+        cats = "\n".join(
+            f"- **{c['category']}:** ₹{c['fin_val_cr']} Cr / ₹{c['tot_val_cr']} Cr (**{c['val_share_pct']}%** Val · **{c['vol_share_pct']}%** Vol)"
+            for c in (res.get("categories") or [])
+        )
+        yield {
+            "type": "answer",
+            "mode": "builtin",
+            "text": (
+                f"### Live Finance Summary — {d0} ({tf0.title()} · {st0 or 'ALL STATES'})\n\n"
+                f"- **Total Finance:** **₹{h['total_fin_cr']:.2f} Cr** (`{h['total_fin_qty']:,}` units) — **Paper:** ₹{h['paper_fin_cr']:.2f} Cr · **Card EMI:** ₹{h['card_fin_cr']:.2f} Cr\n"
+                f"- **Total Sales:** **₹{h['total_sales_cr']:.2f} Cr** (`{h['total_sales_qty']:,}` units)\n"
+                f"- **Fin Share:** **{h['fin_share_val_pct']:.2f}%** (Value) · **{h['fin_share_vol_pct']:.2f}%** (Volume) · **Card Pen:** **{h['card_pen_vol_pct']:.2f}%**\n\n"
+                f"#### Category Breakdown\n{cats}"
+            ),
+        }
+        return
+
+    # 10. Honest guidance when an open-ended question requires a connected LLM API key
     yield {
         "type": "answer",
         "mode": "builtin",
         "text": (
-            f"### Live Finance Summary — {d0} ({tf0.title()} · {st0})\n\n"
-            f"- **Total Finance:** **₹{h['total_fin_cr']:.2f} Cr** (`{h['total_fin_qty']:,}` units) — **Paper:** ₹{h['paper_fin_cr']:.2f} Cr · **Card EMI:** ₹{h['card_fin_cr']:.2f} Cr\n"
-            f"- **Total Sales:** **₹{h['total_sales_cr']:.2f} Cr** (`{h['total_sales_qty']:,}` units)\n"
-            f"- **Fin Share:** **{h['fin_share_val_pct']:.2f}%** (Value) · **{h['fin_share_vol_pct']:.2f}%** (Volume) · **Card Pen:** **{h['card_pen_vol_pct']:.2f}%**\n\n"
-            f"#### Category Breakdown\n{cats}\n\n"
-            f"*Built-in Fast Analytics Mode active — add a Gemini / OpenAI / Claude API key in **AI Settings** for unrestricted natural-language SQL, complex multi-turn synthesis, and custom dashboard/code edits.*"
+            f"### Connect an LLM API Key for Unrestricted Free-Form Answers\n\n"
+            f"Right now the portal is running in **Built-in Fast Analytics Mode** (no Gemini / OpenAI / Claude API key configured yet), so it couldn't freely reason about: *\"{msg}\"*\n\n"
+            f"#### How to unlock full unrestricted AI (30 seconds)\n"
+            f"- Click the **📚 Learned Memory & Settings** sub-tab above (or click the amber pill at top-left).\n"
+            f"- Select **Google Gemini (2.5 Flash + Pro)**, **OpenAI**, or **Anthropic Claude**, paste your API key, and click **Save AI Settings**.\n\n"
+            f"#### What you can ask immediately right now (no API key needed)\n"
+            f"- *\"October 2026 finance summary\"* · *\"Run a deep analysis for Q3\"*\n"
+            f"- *\"Top 10 stores vs bottom 10 stores by Fin Share\"* · *\"TM target pacing\"*\n"
+            f"- *\"How is the cleaning process done?\"* · *\"How is Paper Finance mapped?\"*\n"
+            f"- *\"Open Duplicate Store Fin Share for Q3 by Fin BDM\"* · *\"Pin a Top 10 Stores chart to Dashboard\"*\n"
+            f"- *\"Remember that Vypin Future was closed Oct 5–12\"*"
         ),
     }
 

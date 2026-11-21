@@ -806,9 +806,17 @@
         if (d.mode === "llm") {
           el.className = "ai-mode-pill";
           el.textContent = `● ${d.provider.toUpperCase()} (${d.fast_model})`;
+          el.style.cursor = "default";
+          el.onclick = null;
         } else {
           el.className = "ai-mode-pill builtin";
-          el.textContent = "● Built-in Fast Analytics (Add API Key for Full LLM)";
+          el.textContent = "● Built-in Analytics Mode — Click to Connect Gemini / OpenAI / Claude Key";
+          el.style.cursor = "pointer";
+          el.onclick = () => {
+            closeDrawer();
+            document.querySelector('.nav-item[data-tab="ai-studio"]')?.click();
+            setTimeout(() => switchStudioSubtab("memory"), 80);
+          };
         }
       });
       const provEl = document.getElementById("ai-set-provider");
