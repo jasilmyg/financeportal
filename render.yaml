@@ -6,13 +6,13 @@ services:
     startCommand: gunicorn app:app --config gunicorn.conf.py
     envVars:
       - key: CLICKHOUSE_HOST
-        value: pdhsuv47ec.ap-south-1.aws.clickhouse.cloud
+        value: o4zolc81oe.ap-south-1.aws.clickhouse.cloud
       - key: CLICKHOUSE_PORT
         value: "8443"
       - key: CLICKHOUSE_USER
         value: default
       - key: CLICKHOUSE_PASSWORD
-        value: "ZFlujj9SA_Iei"
+        value: "jNq~6j8EOO8La"
       - key: CLICKHOUSE_DB
         value: default
       - key: PYTHON_VERSION

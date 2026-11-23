@@ -114,10 +114,10 @@ def cache_clear() -> int:
 # ---------------------------------------------------------------------------
 # Configuration (read once at import time)
 # ---------------------------------------------------------------------------
-_HOST = os.environ.get("CLICKHOUSE_HOST", "pdhsuv47ec.ap-south-1.aws.clickhouse.cloud")
+_HOST = os.environ.get("CLICKHOUSE_HOST", "o4zolc81oe.ap-south-1.aws.clickhouse.cloud")
 _PORT = int(os.environ.get("CLICKHOUSE_PORT", 8443))
 _USER = os.environ.get("CLICKHOUSE_USER", "default")
-_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "ZFlujj9SA_Iei")
+_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "jNq~6j8EOO8La")
 _DB = os.environ.get("CLICKHOUSE_DB", "default")
 
 # ---------------------------------------------------------------------------
