@@ -249,7 +249,7 @@ def detect_provider(name: str) -> Optional[str]:
     low = os.path.basename(name).lower()
     if low.startswith("~$") or low.startswith("."):
         return None
-    if "pine" in low or "myemi" in low or "pl " in low:
+    if "pine" in low or "myemi" in low or "pl " in low or "emi transactions report" in low:
         return "pinelab"
     if "paytm" in low:
         return "paytm"
@@ -1074,11 +1074,75 @@ def save_tracker(tracker: dict) -> None:
     os.replace(tmp, STATE_TRACKER_PATH)
 
 
+def clean_pinelab_portal_csv_df(
+    df_raw: pd.DataFrame, filename: str, expected_ym: Optional[str], resolver: BranchResolver
+) -> pd.DataFrame:
+    """Clean raw Pine Labs portal CSV exports ('EMI Transactions report ...') using canonical pine_lab_cleaner."""
+    import pine_lab_cleaner as plc
+
+    if df_raw.empty:
+        return pd.DataFrame()
+
+    df_clean, _ = plc.clean_pine_lab(df_raw)
+    if df_clean.empty:
+        return pd.DataFrame()
+
+    # Preserve Oct 2026 Angamaly separate-login slot if present locally
+    ang_pkl = os.path.join(BASE_DIR, "data", "_pinelab_angamaly_cleaned.pkl")
+    if expected_ym == "2026-10" and os.path.exists(ang_pkl):
+        try:
+            df_ang = pd.read_pickle(ang_pkl)
+            if df_ang is not None and not df_ang.empty:
+                df_clean = pd.concat([df_clean, df_ang], ignore_index=True)
+                df_clean[plc.COL_TXN_ID] = df_clean[plc.COL_TXN_ID].astype(str).str.strip()
+                df_clean = df_clean.drop_duplicates(subset=[plc.COL_TXN_ID], keep="first").reset_index(drop=True)
+                log.info("  Merged Oct 2026 Angamaly slot (%d rows) -> %d combined rows", len(df_ang), len(df_clean))
+        except Exception as exc:
+            log.warning("  Could not merge Oct 2026 Angamaly pkl: %s", exc)
+
+    out = pd.DataFrame(index=df_clean.index)
+    out["_txn_id"] = clean_id_series(df_clean[plc.COL_TXN_ID])
+    out["_date"] = pd.to_datetime(df_clean[plc.COL_DATE], dayfirst=True, format="mixed", errors="coerce").dt.normalize()
+    out["_amt"] = pd.to_numeric(df_clean[plc.COL_ORIG_AMT], errors="coerce").fillna(0.0)
+
+    pos_col = "POS" if "POS" in df_clean.columns else ("POS ID" if "POS ID" in df_clean.columns else None)
+    raw_br = df_clean["Branch"] if "Branch" in df_clean.columns else pd.Series("", index=df_clean.index)
+    raw_st = df_clean[plc.COL_STORE] if plc.COL_STORE in df_clean.columns else pd.Series("", index=df_clean.index)
+    raw_pos = df_clean[pos_col] if pos_col else pd.Series("", index=df_clean.index)
+
+    resolved = [resolver.normalize(b, s, p, provider="pinelab") for b, s, p in zip(raw_br, raw_st, raw_pos)]
+    # Keep clean_pine_lab's Branch if resolver couldn't map a rare branch name
+    br_names, br_codes = [], []
+    for (rn, rc), orig_b in zip(resolved, raw_br):
+        if rn:
+            br_names.append(rn)
+            br_codes.append(rc)
+        else:
+            ob = str(orig_b or "").strip().upper()
+            br_names.append(ob)
+            br_codes.append(resolver.name_to_code.get(ob))
+    out["_branch"] = br_names
+    out["_branch_code"] = br_codes
+
+    rbm_s = df_clean["RBM"].fillna("").astype(str).str.strip().str.upper() if "RBM" in df_clean.columns else pd.Series("", index=df_clean.index)
+    out["_state"] = [
+        "KARNATAKA" if (r == "KARNATAKA RBM" or b in ("FALNIR FUTURE", "FLF")) else "KERALA"
+        for r, b in zip(rbm_s, out["_branch"])
+    ]
+    out["_imei"] = clean_id_series(df_clean[plc.COL_SERIAL]) if plc.COL_SERIAL in df_clean.columns else ""
+    out["_product"] = df_clean["Product"].fillna("").astype(str).str.strip().str.upper() if "Product" in df_clean.columns else ""
+    out["_erp_cat"] = df_clean["Category"].fillna("OTHERS").astype(str).str.strip().str.upper() if "Category" in df_clean.columns else "OTHERS"
+    out["_is_bank_emi"] = out["_erp_cat"] == "BANK EMI"
+
+    out = out[out["_date"].notna()].copy()
+    return out
+
+
 def discover_work_items(folder: str, force: bool, tracker: dict):
     """
-    Scan `folder` for .zip archives and loose .xlsx/.xls/.csv files.
+    Recursively scan `folder` (including quarterly subfolders like AMJ 2026 / JAS 2026 / OND 2026)
+    for .zip archives and loose .xlsx/.xls/.csv files.
     Returns (new_source_keys_meta, all_items_for_touched_months).
-    Each item is (source_key, inner_filename, provider, expected_ym, raw_bytes_loader).
     """
     if not os.path.isdir(folder):
         raise FileNotFoundError(f"Source folder not found: {folder}")
@@ -1087,10 +1151,17 @@ def discover_work_items(folder: str, force: bool, tracker: dict):
     all_entries = []
     new_sources = {}
 
-    for entry in sorted(os.listdir(folder)):
-        full_path = os.path.join(folder, entry)
-        if not os.path.isfile(full_path) or entry.startswith("~$"):
-            continue
+    file_list = []
+    for root, dirs, files in os.walk(folder):
+        dirs.sort()
+        for f in sorted(files):
+            if f.startswith("~$") or f.startswith("."):
+                continue
+            fp = os.path.join(root, f)
+            rel_key = os.path.relpath(fp, folder).replace("\\", "/")
+            file_list.append((rel_key, fp))
+
+    for entry, full_path in file_list:
         st = os.stat(full_path)
         sig = f"{st.st_size}:{int(st.st_mtime)}"
         is_new = force or (processed.get(entry) != sig)
@@ -1103,10 +1174,10 @@ def discover_work_items(folder: str, force: bool, tracker: dict):
                 for member in sorted(zf.namelist()):
                     if member.endswith("/") or not member.lower().endswith((".xlsx", ".xls", ".csv")):
                         continue
-                    prov = detect_provider(member)
+                    prov = detect_provider(member) or detect_provider(entry)
                     if not prov:
                         continue
-                    ym = infer_ym_from_filename(member)
+                    ym = infer_ym_from_filename(member) or infer_ym_from_filename(entry)
                     all_entries.append((entry, is_new, full_path, member, prov, ym))
         elif low.endswith((".xlsx", ".xls", ".csv")):
             prov = detect_provider(entry)
@@ -1237,13 +1308,17 @@ def main():
                     raw_bytes = fh.read()
                 fname = src_name
 
-            df_sheet = pick_sheet_and_read(raw_bytes, fname)
-            if prov == "pinelab":
-                cleaned = clean_pinelab_archive_df(df_sheet, fname, ym_hint, resolver)
-            elif prov == "paytm":
-                cleaned = clean_paytm_archive_df(df_sheet, fname, ym_hint, resolver)
+            if prov == "pinelab" and "emi transactions report" in fname.lower() and fname.lower().endswith(".csv"):
+                df_sheet = pd.read_csv(io.BytesIO(raw_bytes), low_memory=False)
+                cleaned = clean_pinelab_portal_csv_df(df_sheet, fname, ym_hint, resolver)
             else:
-                cleaned = clean_benow_archive_df(df_sheet, fname, ym_hint, resolver)
+                df_sheet = pick_sheet_and_read(raw_bytes, fname)
+                if prov == "pinelab":
+                    cleaned = clean_pinelab_archive_df(df_sheet, fname, ym_hint, resolver)
+                elif prov == "paytm":
+                    cleaned = clean_paytm_archive_df(df_sheet, fname, ym_hint, resolver)
+                else:
+                    cleaned = clean_benow_archive_df(df_sheet, fname, ym_hint, resolver)
 
             if cleaned.empty:
                 log.warning("  [EMPTY] %s -> 0 valid rows", display_name)

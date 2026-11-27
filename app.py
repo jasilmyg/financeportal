@@ -211,6 +211,10 @@ def api_clickhouse_cache_clear():
         return jsonify({'error': 'ClickHouse not available.'}), 503
     cleared = ch_cache_clear()
     try:
+        emi_state.sync_from_clickhouse(force=True)
+    except Exception:
+        pass
+    try:
         import store_fin_share
         store_fin_share.invalidate_cache()
     except Exception:
